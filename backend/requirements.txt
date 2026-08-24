@@ -1,0 +1,10 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+
+# Live data integration (only needed when DATA_SOURCE=live)
+python-dotenv>=1.0          # load backend/.env
+pyodbc>=5.1                 # CRM (SQL Server)
+oracledb>=2.0               # Oracle staging (thin mode; no Oracle client needed)
+openpyxl>=3.1               # read the lot-wise stock workbook (STOCK_XLSX)
+pymysql>=1.1                # app-owned MySQL store (Vooki FG name -> SKU mapping)
+python-multipart>=0.0.9    # file uploads (filled plan template Excel)

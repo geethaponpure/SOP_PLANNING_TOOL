@@ -1,0 +1,55 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Secrets / local config -- never commit DB credentials
+.env
+backend/.env
+
+# Local persisted workflow state (SQLite) + admin settings
+backend/sop_state.db
+*.db
+backend/planning_settings.json
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# OS / editor
+.DS_Store
+.vscode/
+
+# Local Claude Code config (project settings.json may be shared; local is not)
+.claude/settings.local.json
+
+# ---------------------------------------------------------------------------
+# Sensitive business data -- NEVER commit real exports, uploads or dumps
+# ---------------------------------------------------------------------------
+
+# Data exports & internal documents (real customer / user / PO / consumption data)
+*.xlsx
+*.xls
+*.csv
+*.pdf
+*.docx
+*.doc
+
+# Data drop folders
+PO_receipts/
+RM_Consumption/
+backend/srdms_uploads/
+
+# Cached pickled data (contains real records)
+backend/app/.cache/
+*.pkl
+
+# JSON stores with user / role / request / access-log data
+backend/user_master.json
+backend/srdms_store.json
+backend/msl_store.json
+backend/app_roles.json
+
+# Database dumps and backup archives (SQL dumps + copies of JSON stores)
+backups/
+*.zip

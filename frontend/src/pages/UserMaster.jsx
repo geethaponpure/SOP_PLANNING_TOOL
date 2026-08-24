@@ -1,0 +1,325 @@
+import React, { useState, useEffect } from "react";
+import { NAV, HIDDEN } from "../nav";
+import { api } from "../api";
+import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
+
+// grantable modules = the navigable pages (incl. User Master itself, so admins can be
+// created); hidden/non-navigable pages are not offered.
+const MODULES = NAV.filter((n) => !HIDDEN.has(n.id));
+const label = (id) => (NAV.find((n) => n.id === id) || {}).label || id;
+
+export default function UserMaster() {
+  const [ver, setVer] = useState(0);
+  const bump = () => setVer((v) => v + 1);
+  const [approver, setApprover] = useState(() => localStorage.getItem("um_approver") || "");
+  const saveApprover = (v) => { setApprover(v); localStorage.setItem("um_approver", v); };
+  const [tab, setTab] = useState("approved");   // "approved" | "crm"
+
+  const status = useAsync(() => api.userMaster.status(), [ver]);
+  const usersA = useAsync(() => api.userMaster.users(), [ver]);
+  const deptsA = useAsync(() => api.userMaster.departments(), [ver]);
+  const srdmsQ = useAsync(() => api.srdms.userRoles(), [ver]);
+  const mastersQ = useAsync(() => api.srdms.masters(), []);
+  const roleMap = srdmsQ.data?.user_roles || {};
+  const srdmsRoles = srdmsQ.data?.roles || [];
+  const plants = mastersQ.data?.plants || [];
+
+  const act = async (fn) => { try { await fn(); bump(); } catch (e) { alert(e.message); } };
+
+  const approved = usersA.data?.users || [];
+  const st = status.data || {};
+
+  return (
+    <>
+      <div className="banner info page-intro">
+        <b>User Master (admin).</b> Approve <b>CRM users</b> (only supply-chain / planning / manufacturing /
+        warehouse / R&amp;D departments) for the planning tool, and grant each the <b>modules/menus</b> they may access.
+        Everything is add/delete. Stored in the database (<code>sc_app_user</code> / <code>sc_app_user_menu</code>);
+        before the one-time migration is run it persists to a JSON fallback.
+      </div>
+
+      {/* storage status */}
+      {status.data && (
+        <div className={`banner ${st.db_ready ? "info" : "warn"}`} style={{ marginTop: 10 }}>
+          Storage backend: <b>{st.backend === "mysql" ? "MySQL database" : "JSON fallback"}</b>.
+          {!st.db_ready && <> The DB tables aren’t created yet — run <code>{st.migration}</code> as root, then click Import.
+            {st.json_users > 0 && <> ({st.json_users} user(s) currently in the JSON store.)</>}</>}
+          {st.db_ready && st.json_users > 0 &&
+            <> <button className="btn secondary" style={{ marginLeft: 8 }}
+              onClick={() => act(async () => { const r = await api.userMaster.importJson(); alert(`Imported ${r.imported} user(s) into MySQL.`); })}>
+              Import {st.json_users} JSON user(s) → DB</button></>}
+        </div>
+      )}
+
+      {/* login / password status */}
+      {status.data && st.db_ready && !st.password_enabled && (
+        <div className="banner warn" style={{ marginTop: 8 }}>
+          <b>Login passwords not enabled.</b> Run <code>backend/db/migrate_user_password.sql</code> as root
+          (adds the <code>password_hash</code> column), then reload this page. Users can be managed now, but
+          can’t sign in until this is done.
+        </div>
+      )}
+      {status.data && st.password_enabled && (
+        <div className="banner info" style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          🔐 <b>Login enabled.</b> New users’ default password is <b>{st.default_password}</b> (stored hashed).
+          <button className="btn secondary" style={{ marginLeft: "auto" }}
+            onClick={() => act(async () => { const r = await api.userMaster.initPasswords(); alert(`Set default password on ${r.updated} user(s) that had none.`); })}>
+            Initialize default passwords
+          </button>
+        </div>
+      )}
+
+      <div className="pagebar" style={{ marginTop: 10 }}>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>Approving as:</span>
+        <input className="searchbox" style={{ maxWidth: 220 }} placeholder="your name / email"
+          value={approver} onChange={(e) => saveApprover(e.target.value)} />
+      </div>
+
+      <div className="pagebar" style={{ marginTop: 12, gap: 8 }}>
+        <button className={tab === "approved" ? "chip active" : "chip"} onClick={() => setTab("approved")}>👥 Approved users ({approved.length})</button>
+        <button className={tab === "crm" ? "chip active" : "chip"} onClick={() => setTab("crm")}>➕ Add CRM users</button>
+      </div>
+
+      {tab === "crm" && <>
+        <AllowedDepartments deptsA={deptsA} onSaved={bump} />
+        <CrmPicker ver={ver} approver={approver} onAdded={bump} />
+      </>}
+
+      {tab === "approved" && <>
+      {usersA.loading && <Loading what="approved users" />}
+      {usersA.error && <ErrorBox msg={usersA.error} />}
+      {usersA.data && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {approved.map((u) => {
+            const ur = roleMap[u.user_code] || {};
+            const isWhRole = /Warehouse/.test(ur.role || "");
+            const sel = { width: "100%", minWidth: 0, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 13, background: "#fff" };
+            const lbl = { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".3px", color: "var(--muted)", marginBottom: 6, display: "block" };
+            return (
+              <div key={u.user_code} className="card" style={{ padding: 16 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <b style={{ fontSize: 14, color: "var(--navy)" }}>{u.name}</b>
+                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8, fontFamily: "ui-monospace, Menlo, monospace" }}>{u.username} · {u.user_code}</span>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                      {[u.department, u.designation, u.email].filter(Boolean).join("  ·  ") || "—"}
+                    </div>
+                  </div>
+                  <button className="chip" style={{ background: u.status === "active" ? "#E6F6EC" : "#FFE5E5", fontWeight: 600 }}
+                    onClick={() => act(() => api.userMaster.setStatus(u.user_code, u.status === "active" ? "disabled" : "active"))}>
+                    {u.status === "active" ? "● Active" : "○ Disabled"}
+                  </button>
+                  <button className="btn danger" style={{ padding: "5px 12px" }}
+                    onClick={() => { if (confirm(`Remove ${u.name} from the app?`)) act(() => api.userMaster.removeUser(u.user_code)); }}>Delete</button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(230px, 300px) 1fr", gap: 18, marginTop: 12 }}>
+                  <div>
+                    <span style={lbl}>SRDMS role (flow)</span>
+                    <select style={sel} value={ur.role || ""}
+                      onChange={(e) => act(() => api.srdms.setUserRole(u.user_code, e.target.value, ur.plant_id || ""))}>
+                      <option value="">— derive from dept —</option>
+                      {srdmsRoles.map((r) => <option key={r}>{r}</option>)}
+                    </select>
+                    {isWhRole && (
+                      <select style={{ ...sel, marginTop: 6 }} value={ur.plant_id || ""}
+                        onChange={(e) => act(() => api.srdms.setUserRole(u.user_code, ur.role, e.target.value))}>
+                        <option value="">All plants</option>
+                        {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    )}
+                    <div style={{ marginTop: 12 }}>
+                      <span style={lbl}>Login password</span>
+                      {st.password_enabled ? (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button className="chip" title="Reset to the default password"
+                            onClick={() => act(async () => { const r = await api.userMaster.resetPassword(u.user_code); alert(`${u.name}'s password reset to: ${r.password}`); })}>🔑 Reset</button>
+                          <button className="chip" title="Set a specific password"
+                            onClick={() => { const p = prompt(`New password for ${u.name} (min 4 chars):`); if (p) act(() => api.userMaster.setPassword(u.user_code, p)); }}>Set…</button>
+                        </div>
+                      ) : <span style={{ fontSize: 12, color: "var(--muted)" }}>login not enabled</span>}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span style={lbl}>Module / menu access</span>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                      {(u.menus || []).map((m) => (
+                        <span key={m.id} className="chip" style={{ cursor: "default", fontSize: 11, background: "#EEF6FF" }}>
+                          {label(m.id)} <span style={{ cursor: "pointer", color: "var(--red)", fontWeight: 700 }}
+                            onClick={() => act(() => api.userMaster.removeMenu(u.user_code, m.id))}>×</span>
+                        </span>
+                      ))}
+                      {(u.menus || []).length === 0 && <span style={{ fontSize: 12, color: "var(--muted)" }}>no modules granted</span>}
+                      <select className="searchbox" style={{ maxWidth: 200, fontSize: 12, padding: "6px 8px" }} value=""
+                        onChange={(e) => { if (e.target.value) act(() => api.userMaster.addMenu(u.user_code, e.target.value, label(e.target.value))); }}>
+                        <option value="">+ grant module…</option>
+                        {MODULES.filter((m) => !(u.menus || []).some((x) => x.id === m.id)).map((m) => (
+                          <option key={m.id} value={m.id}>{m.label}</option>
+                        ))}
+                      </select>
+                      {(u.menus || []).length > 0 &&
+                        <button className="chip" title="Grant all modules"
+                          onClick={() => act(() => api.userMaster.setMenus(u.user_code, MODULES.map((m) => ({ id: m.id, label: m.label }))))}>all</button>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {approved.length === 0 && <div className="card" style={{ padding: 16, color: "var(--muted)" }}>No users approved yet — switch to <b>Add CRM users</b> to approve someone.</div>}
+        </div>
+      )}
+      </>}
+
+      <AccessLog ver={ver} />
+    </>
+  );
+}
+
+function AccessLog({ ver }) {
+  const [open, setOpen] = useState(false);
+  const { data, loading, error } = useAsync(() => (open ? api.userMaster.accessLog() : Promise.resolve({ log: [] })), [ver, open]);
+  const ACTION = {
+    approved: ["#E6F6EC", "Approved"], removed: ["#FFE5E5", "Removed"], status: ["#FFF4DA", "Status"],
+    grant: ["#E6F6EC", "Grant module"], revoke: ["#FFE5E5", "Revoke module"], set_modules: ["#EEF6FF", "Set modules"],
+    role: ["#E6E6FA", "SRDMS role"], password_set: ["#F3F0E8", "Password set"], password_reset: ["#F3F0E8", "Password reset"],
+  };
+  return (
+    <div style={{ marginTop: 20 }}>
+      <button className="chip" onClick={() => setOpen((o) => !o)}>{open ? "▾" : "▸"} User access change log (audit)</button>
+      {open && (
+        <div style={{ marginTop: 6 }}>
+          {loading && <Loading what="access log" />}
+          {error && <ErrorBox msg={error} />}
+          {data && (
+            <div className="tbl-wrap" style={{ maxHeight: 360, overflow: "auto" }}>
+              <table><thead><tr>
+                <th>When</th><th>User (id)</th><th>Action</th><th>Detail</th><th>Changed by</th>
+              </tr></thead><tbody>
+                {(data.log || []).map((r, i) => {
+                  const a = ACTION[r.action] || ["#EEE", r.action];
+                  return (
+                    <tr key={i}>
+                      <td style={{ fontSize: 11 }}>{r.logged_at}</td>
+                      <td style={{ fontSize: 12 }}>{r.target_name || "—"}{r.target_user_code ? <span style={{ color: "var(--muted)" }}> · {r.target_user_code}</span> : ""}</td>
+                      <td><span className="chip" style={{ cursor: "default", fontSize: 10, background: a[0] }}>{a[1]}</span></td>
+                      <td style={{ fontSize: 12 }}>{r.detail}</td>
+                      <td style={{ fontSize: 12 }}>{r.changed_by_name || "—"}{r.changed_by_code ? <span style={{ color: "var(--muted)" }}> · {r.changed_by_code}</span> : ""}</td>
+                    </tr>
+                  );
+                })}
+                {(data.log || []).length === 0 && <tr><td colSpan={5}>No access changes logged yet.</td></tr>}
+              </tbody></table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AllowedDepartments({ deptsA, onSaved }) {
+  const [open, setOpen] = useState(false);
+  const d = deptsA.data || { allowed: [], all: [] };
+  const [sel, setSel] = useState(null);
+  const allowed = sel ?? d.allowed;
+  const toggle = (name) => setSel((s) => {
+    const cur = new Set(s ?? d.allowed);
+    cur.has(name) ? cur.delete(name) : cur.add(name);
+    return [...cur];
+  });
+  const save = async () => { try { await api.userMaster.setAllowedDepartments(allowed); setSel(null); onSaved(); alert("Eligible departments saved."); } catch (e) { alert(e.message); } };
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button className="chip" onClick={() => setOpen((o) => !o)}>{open ? "▾" : "▸"} Eligible departments ({d.allowed.length})</button>
+      {open && (
+        <div className="card" style={{ padding: 12, marginTop: 6 }}>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Only CRM users in these departments are offered for approval. Click to toggle.</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {(d.all.length ? d.all.map((x) => x.department) : d.allowed).map((name) => (
+              <span key={name} className={`chip ${allowed.includes(name) ? "active" : ""}`} onClick={() => toggle(name)}>
+                {name}{d.all.length ? ` (${(d.all.find((x) => x.department === name) || {}).n})` : ""}
+              </span>
+            ))}
+          </div>
+          {sel && <button className="btn" style={{ marginTop: 10 }} onClick={save}>💾 Save eligible departments</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CrmPicker({ ver, approver, onAdded }) {
+  const [qInput, setQInput] = useState("");
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState("");
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  // live search — debounce keystrokes so it filters as you type (no need to press Enter)
+  useEffect(() => {
+    const t = setTimeout(() => setQ(qInput.trim()), 350);
+    return () => clearTimeout(t);
+  }, [qInput]);
+  // race-safe fetch: only the LATEST query's response is applied — a fast search must
+  // not be overwritten by a slower earlier request. All departments are always shown.
+  useEffect(() => {
+    let alive = true;
+    setLoading(true); setError("");
+    api.userMaster.crmUsers({ q, all: true })
+      .then((d) => { if (alive) { setData(d); setLoading(false); } })
+      .catch((e) => { if (alive) { setError(e.message); setLoading(false); } });
+    return () => { alive = false; };
+  }, [ver, q]);
+
+  const add = async (u) => {
+    setBusy(u.user_code);
+    try {
+      await api.userMaster.addUser({
+        user_code: u.user_code, crm_line_id: u.line_id, name: u.name, username: u.username,
+        email: u.email, mobile: u.mobile, department: u.department, designation: u.designation,
+        menus: [], actor: approver,
+      });
+      onAdded();
+    } catch (e) { alert(e.message); } finally { setBusy(""); }
+  };
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <h3>Available CRM users</h3>
+      <div className="pagebar">
+        <input className="searchbox" placeholder="Search name / username / email / code…" value={qInput}
+          onChange={(e) => setQInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") setQ(qInput); }} />
+        <button className="btn secondary" onClick={() => setQ(qInput)}>Search</button>
+        {qInput && <button className="chip" onClick={() => { setQInput(""); setQ(""); }}>✕ Clear</button>}
+        <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
+          {data?.users?.length || 0} user{(data?.users?.length || 0) === 1 ? "" : "s"} · all departments
+        </span>
+      </div>
+      {loading && <Loading what="CRM users" />}
+      {error && <ErrorBox msg={error} />}
+      {data?.note && <div className="banner warn">{data.note}</div>}
+      {data && !data.note && (
+        <div className="tbl-wrap" style={{ maxHeight: 360, overflow: "auto" }}>
+          <table><thead><tr>
+            <th>Name</th><th>Username</th><th>Code</th><th>Dept</th><th>Designation</th><th>Email</th><th>Mobile</th><th></th>
+          </tr></thead><tbody>
+            {data.users.map((u, i) => (
+              <tr key={u.line_id ?? u.user_code ?? i}>
+                <td><b>{u.name}</b></td><td style={{ fontSize: 12 }}>{u.username}</td><td style={{ fontSize: 12 }}>{u.user_code || "—"}</td>
+                <td style={{ fontSize: 12 }}>{u.department}</td><td style={{ fontSize: 12 }}>{u.designation}</td>
+                <td style={{ fontSize: 12 }}>{u.email || "—"}</td><td style={{ fontSize: 12 }}>{u.mobile || "—"}</td>
+                <td>{u.already_added
+                  ? <span className="chip" style={{ cursor: "default", background: "#E6F6EC", fontSize: 11 }}>added</span>
+                  : <button className="btn" style={{ padding: "3px 10px" }} disabled={!!busy && busy === u.user_code} onClick={() => add(u)}>{busy && busy === u.user_code ? "…" : "+ Add"}</button>}
+                </td>
+              </tr>
+            ))}
+            {data.users.length === 0 && <tr><td colSpan={8}>No CRM users match.</td></tr>}
+          </tbody></table>
+        </div>
+      )}
+    </div>
+  );
+}

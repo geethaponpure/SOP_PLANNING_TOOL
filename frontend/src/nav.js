@@ -1,0 +1,36 @@
+// Shared navigation model (imported by App and by the User Master admin page,
+// where each nav entry is a grantable module/menu).
+export const NAV = [
+  { id: "overview", label: "S&OP Cockpit", icon: "▤" },
+  { id: "dq", label: "Data-Quality Gate", icon: "🛡" },
+  { id: "validation", label: "Demand Validation", icon: "✓" },
+  { id: "forecasting", label: "Forecasting", icon: "📈" },
+  { id: "segmentation", label: "Segmentation", icon: "◫" },
+  { id: "supply", label: "Supply & RM Plan", icon: "⚙" },
+  { id: "mfgstock", label: "MFG Org Stock", icon: "🏭" },
+  { id: "vooki", label: "Vooki Planning", icon: "🧴" },
+  { id: "adhoc", label: "Adhoc Planning", icon: "⚡" },
+  { id: "agedrm", label: "Aged RM → FG", icon: "⏳" },
+  { id: "msl", label: "MSL (Min Stock Level)", icon: "📉" },
+  { id: "projsales", label: "Projection vs Sales", icon: "🎯" },
+  { id: "projaccuracy", label: "Projection Accuracy", icon: "📐" },
+  { id: "rd-samples", label: "R&D Sample Requests", icon: "🧪" },
+  { id: "wh-dispatch", label: "Warehouse Sample Dispatch", icon: "📦" },
+  { id: "qc-samples", label: "QC for R&D Sample", icon: "🔬" },
+  { id: "srdms", label: "Sample Req & Dispatch (admin)", icon: "🗂" },
+  { id: "scorecard", label: "Supplier Scorecard", icon: "🏅" },
+  { id: "ppv", label: "Purchase Price Variance", icon: "💱" },
+  { id: "prodsched", label: "Production Scheduling", icon: "🗓" },
+  { id: "jcplan", label: "JC Plan (multi-period)", icon: "📅" },
+  { id: "analytics", label: "Analytics & What-if", icon: "🔮" },
+  { id: "kpis", label: "KPI Framework", icon: "📊" },
+  { id: "governance", label: "Governance & RACI", icon: "🤝" },
+  { id: "planningsetting", label: "Planning Setting (admin)", icon: "⚙️" },
+  { id: "roles", label: "Role Master (admin)", icon: "🧑‍💼" },
+  { id: "usermaster", label: "User Master (admin)", icon: "👥" },
+  { id: "audit", label: "Audit Trail", icon: "🕘" },
+];
+
+// pages hidden from the sidebar (not accessible)
+export const HIDDEN = new Set(["overview", "dq", "validation", "forecasting", "segmentation", "jcplan",
+  "analytics", "kpis", "governance", "audit"]);
