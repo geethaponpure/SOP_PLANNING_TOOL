@@ -21,6 +21,7 @@ import SupplierScorecard from "./pages/SupplierScorecard.jsx";
 import AdhocPlanning from "./pages/AdhocPlanning.jsx";
 import PPV from "./pages/PPV.jsx";
 import ProductionSchedule from "./pages/ProductionSchedule.jsx";
+import ItemReceiptSchedule from "./pages/ItemReceiptSchedule.jsx";
 import JCPlan from "./pages/JCPlan.jsx";
 import Analytics from "./pages/Analytics.jsx";
 import KPIs from "./pages/KPIs.jsx";
@@ -96,6 +97,7 @@ export default function App() {
     scorecard: <SupplierScorecard />,
     ppv: <PPV />,
     prodsched: <ProductionSchedule />,
+    receipt: <ItemReceiptSchedule />,
     jcplan: <JCPlan />,
     analytics: <Analytics />,
     kpis: <KPIs />,

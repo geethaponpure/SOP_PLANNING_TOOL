@@ -20,8 +20,12 @@ frontend/dist/
 .DS_Store
 .vscode/
 
-# Local Claude Code config (project settings.json may be shared; local is not)
-.claude/settings.local.json
+# Local AI / agent tooling config (not part of the app)
+.claude/
+.agents/
+.codex/
+.mcp.json
+skills-lock.json
 
 # ---------------------------------------------------------------------------
 # Sensitive business data -- NEVER commit real exports, uploads or dumps
@@ -45,11 +49,22 @@ backend/app/.cache/
 *.pkl
 
 # JSON stores with user / role / request / access-log data
+# (match anywhere, so copies inside backups/ folders are also ignored)
 backend/user_master.json
 backend/srdms_store.json
 backend/msl_store.json
 backend/app_roles.json
+user_master.json
+srdms_store.json
+msl_store.json
+app_roles.json
+planning_settings.json
 
 # Database dumps and backup archives (SQL dumps + copies of JSON stores)
 backups/
+backup_data_v1/
+z_backup/
+z_backup_data_v1/
+z_backup*/
+*.sql.gz
 *.zip

@@ -50,8 +50,12 @@ _LEAD_COLS   = ["Lead_Time", "lead_time", "LeadTime", "actual_lead_days"]
 
 def _load_po_receipts(warnings: list[str]) -> list[dict]:
     root = Path(__file__).resolve().parents[4]
+    data_dir = os.getenv("DATA_DIR", "").strip() or str(root / "Data_Ingestion")
     search_dirs = [
         os.getenv("PO_RECEIPTS_DIR", ""),
+        os.path.join(data_dir, "PO_receipts"),
+        data_dir,
+        str(root / "PO_receipts"),
         r"z:\PO_receipts",
         r"\\10.1.0.17\PPCAIProjects\PO_receipts",
         str(root),

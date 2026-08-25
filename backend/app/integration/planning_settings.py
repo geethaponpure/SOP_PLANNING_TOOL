@@ -45,6 +45,32 @@ DEFAULTS = {
     "critical_lead_days": 30,          # supplier criticality: lead time above this is "long"
     "ppv_std_fy": "2025-26",           # PPV standard year (weighted-avg-price baseline)
     "otd_tolerance": 0.25,             # supplier OTD: on-time if lead <= expected*(1+tol)+2
+    # ── Item Receipt Schedule (Planner / WH / Production / QC / BU / Branch view) ──
+    # Warehouse-available date = manufacturing completion + this many days.
+    "receipt_std_lead_days": 3,
+    # Standard logistic lead time (days) branch region-wise. Branch receipt date =
+    # warehouse-available date + the selected region's lead time. Admin-editable.
+    "receipt_logistic_leads": {
+        "South": 2,   # TN, Kerala, Telangana, Karnataka, AP
+        "West":  5,   # Maharashtra
+        "North": 7,   # Gujarat, Rajasthan, Haryana
+        "East":  7,   # West Bengal, Odisha
+    },
+    # State -> region membership (drives the region picker labels). These are
+    # *logistics* regions, not strict geography (e.g. Gujarat is grouped under
+    # North, Maharashtra under West per the branch lead-time table). Central /
+    # North-East states are bucketed to the nearest dispatch hub; admin-editable.
+    "receipt_region_states": {
+        "South": ["Tamil Nadu", "Kerala", "Telangana", "Karnataka", "Andhra Pradesh",
+                  "Puducherry", "Lakshadweep", "Andaman and Nicobar Islands"],
+        "West":  ["Maharashtra", "Goa", "Dadra and Nagar Haveli and Daman and Diu"],
+        "North": ["Gujarat", "Rajasthan", "Haryana", "Punjab", "Delhi",
+                  "Uttar Pradesh", "Uttarakhand", "Himachal Pradesh",
+                  "Jammu and Kashmir", "Ladakh", "Chandigarh", "Madhya Pradesh"],
+        "East":  ["West Bengal", "Odisha", "Bihar", "Jharkhand", "Chhattisgarh",
+                  "Assam", "Sikkim", "Arunachal Pradesh", "Nagaland", "Manipur",
+                  "Mizoram", "Tripura", "Meghalaya"],
+    },
     "max_products": 0,                 # 0 = no cap (build ALL non-zero projection FGs)
     "preprocessing_days": 7,           # added to avg RM lead time for JC-bucket planning
     # In-transit (open PO) source. 'crm' = live BiPoDetails open-PO balance (ordered −

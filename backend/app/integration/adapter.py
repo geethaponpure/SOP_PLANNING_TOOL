@@ -28,6 +28,13 @@ from ..engine import baseline as _bl
 # Project root (…/sop-planning-tool) -- where the supply files live.
 _ROOT = Path(__file__).resolve().parents[3]
 
+# Dedicated data-ingestion folder (…/sop-planning-tool/Data_Ingestion) -- where the
+# client's exports live now, and where future frontend uploads will land. Searched
+# BEFORE the project root, which stays as a fallback so older layouts keep working.
+# Override the location with the DATA_DIR environment variable.
+_DATA_DIR = Path(os.getenv("DATA_DIR", "").strip() or (_ROOT / "Data_Ingestion"))
+_SEARCH_DIRS = [_DATA_DIR, _ROOT]
+
 # Default data files (the client's exports). Glob patterns so timestamped names
 # resolve automatically. Used when the matching env var is unset, so the tool
 # "just works". Sample_Data.xlsx is deliberately excluded (it is only a tiny
@@ -48,14 +55,16 @@ _DEFAULT_FILES = {
 
 
 def _resolve_file(env_var: str) -> str:
-    """Env var path if set, else the latest matching file in the project root."""
+    """Env var path if set, else the latest matching file in the data-ingestion
+    folder (preferred) or the project root (fallback)."""
     val = os.getenv(env_var, "").strip()
     if val:
         return val
     for pattern in _DEFAULT_FILES.get(env_var, []):
-        matches = sorted(_ROOT.glob(pattern))
-        if matches:
-            return str(matches[-1])     # latest by name (newest timestamp)
+        for base in _SEARCH_DIRS:
+            matches = sorted(base.glob(pattern))
+            if matches:
+                return str(matches[-1])     # latest by name (newest timestamp)
     return ""
 
 
@@ -63,6 +72,8 @@ def _resolve_file(env_var: str) -> str:
 # dropped into PO_receipts). Searched in order; the project root is the fallback.
 _PO_DIRS = [
     os.getenv("PO_RECEIPTS_DIR", "").strip(),
+    str(_DATA_DIR / "PO_receipts"),
+    str(_DATA_DIR),
     str(_ROOT / "PO_receipts"),
     r"z:\PO_receipts",
     r"\\10.1.0.17\PPCAIProjects\PO_receipts",

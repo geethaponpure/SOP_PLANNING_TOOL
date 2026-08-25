@@ -21,6 +21,7 @@ export const NAV = [
   { id: "scorecard", label: "Supplier Scorecard", icon: "🏅" },
   { id: "ppv", label: "Purchase Price Variance", icon: "💱" },
   { id: "prodsched", label: "Production Scheduling", icon: "🗓" },
+  { id: "receipt", label: "Item Receipt Schedule", icon: "📦" },
   { id: "jcplan", label: "JC Plan (multi-period)", icon: "📅" },
   { id: "analytics", label: "Analytics & What-if", icon: "🔮" },
   { id: "kpis", label: "KPI Framework", icon: "📊" },

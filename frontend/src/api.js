@@ -120,6 +120,13 @@ export const api = {
   productionSchedule: (planId) => req(`/production-schedule${planId ? `?plan_id=${planId}` : ""}`),
   productionScheduleExport: (planId) => downloadFile(
     `/production-schedule/export${planId ? `?plan_id=${planId}` : ""}`, `Production_Schedule_${planId || "plan"}.xlsx`),
+  itemReceiptSchedule: (planId, region) => {
+    const p = new URLSearchParams();
+    if (planId) p.set("plan_id", planId);
+    if (region) p.set("region", region);
+    const qs = p.toString();
+    return req(`/item-receipt-schedule${qs ? `?${qs}` : ""}`);
+  },
   saveJcPlan: (note = "") => req("/jc-plan/save", { method: "POST", body: JSON.stringify({ note }) }),
   ppv: () => req("/ppv"),
   ppvExport: () => downloadFile("/ppv/export", "PPV_Scorecard.xlsx"),

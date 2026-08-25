@@ -43,6 +43,12 @@ def consumption_root() -> str:
     # backend/app/integration/rm_consumption.py -> repo root is three levels up
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.abspath(os.path.join(here, "..", "..", ".."))
+    # Prefer the data-ingestion folder (Data_Ingestion/RM_Consumption) if present,
+    # else fall back to the project root -- same DATA_DIR convention as the adapter.
+    data_dir = os.getenv("DATA_DIR", "").strip() or os.path.join(root, "Data_Ingestion")
+    in_data = os.path.join(data_dir, "RM_Consumption")
+    if os.path.isdir(in_data):
+        return in_data
     return os.path.join(root, "RM_Consumption")
 
 
