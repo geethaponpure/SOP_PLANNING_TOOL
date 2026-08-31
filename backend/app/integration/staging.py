@@ -13,6 +13,7 @@ existing api/live.py consumers work unchanged.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 from . import mysql_db
@@ -610,6 +611,54 @@ def claim_pending_requests() -> list[dict]:
         return []
 
 
+# ── precomputed plan (Phase 3: heavy build runs in the worker) ────────────────
+
+def save_computed(plan_key: str, obj, n_products: int | None = None) -> None:
+    """Store a finished plan (JSON) the worker built, so the API just reads it."""
+    try:
+        payload = json.dumps(obj, default=str)
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("REPLACE INTO computed_plan (plan_key, payload, n_products, computed_at) "
+                            "VALUES (%s,%s,%s,%s)", (plan_key[:48], payload, n_products, datetime.now()))
+        finally:
+            conn.close()
+    except Exception as e:   # noqa: BLE001
+        print(f"[compute] save '{plan_key}' failed: {type(e).__name__}: {str(e)[:120]}")
+
+
+def read_computed(plan_key: str):
+    """Return the stored plan dict, or None if the worker hasn't computed it yet."""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT payload FROM computed_plan WHERE plan_key=%s", (plan_key,))
+                r = cur.fetchone()
+                return json.loads(r["payload"]) if r and r.get("payload") else None
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return None
+
+
+def computed_meta(plan_key: str) -> dict | None:
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT n_products, computed_at FROM computed_plan WHERE plan_key=%s", (plan_key,))
+                r = cur.fetchone()
+                if r and r.get("computed_at") is not None:
+                    r["computed_at"] = str(r["computed_at"])
+                return r
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return None
+
+
 # ── freshness for the UI (data-as-of banner + Refresh now) ────────────────────
 
 SYNC_SOURCES = [
@@ -650,4 +699,4 @@ def sync_status() -> dict:
         pass
     return {"context": ctx, "sources": sources, "last_synced": last_ok,
             "any_error": any_error, "syncing": running or pending > 0,
-            "pending_requests": pending}
+            "pending_requests": pending, "plan": computed_meta("rm_planning")}

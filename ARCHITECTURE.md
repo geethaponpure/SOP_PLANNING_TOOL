@@ -30,8 +30,12 @@ query now runs once in the worker instead of blocking a page request.
 20 min + drains the Refresh-now queue every 30s), `GET /api/sync-status`,
 `POST /api/refresh`, and a "Data as of…" + Refresh banner in the app header.
 
-**Remaining:** the 2 projection page sources above, and Phase 3 (move the RM-Plan
-*compute* into the worker so the page is instant, not just resilient).
+**Done — Phase 3 (instant pages):** the worker precomputes the RM-Plan after each sync
+(`compute_rm_planning` → `computed_plan` table); the API `_rm_planning()` just reads the
+stored JSON. Measured: a 40s build now serves in **~70 ms** on the page (and survives a
+CRM outage). Override/upload plans still build on demand (user-initiated).
+
+**Remaining:** the 2 projection page sources above (Projection-Accuracy / -vs-Sales).
 
 ---
 

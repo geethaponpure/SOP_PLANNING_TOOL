@@ -374,9 +374,12 @@ def _build_rm(overrides=None, plan_mode="crm", bom_overrides=None):
     return rp
 
 
-@lru_cache(maxsize=1)
 def _rm_planning():
-    return _build_rm()
+    """Serve the pre-computed default RM plan from MySQL (built by the worker,
+    Phase 3). Falls back to an on-demand build if the worker hasn't produced one
+    yet — so the page still works before the first worker run."""
+    plan = staging.read_computed("rm_planning")
+    return plan if plan is not None else _build_rm()
 
 
 @lru_cache(maxsize=1)
@@ -855,7 +858,7 @@ def _all_orgs():
 
 def _reset_live_caches():
     for f in (_business_map, _crm_stock, _stock_lots_audit, _dispatch3, _po_rows, _po_intel, _po_pending, _po_ingest,
-              _rm_planning, _aged_rm, _aged_rm_report, _proj_sales_live, _proj_accuracy, _proj_current_merged, _consump_index,
+              _aged_rm, _aged_rm_report, _proj_sales_live, _proj_accuracy, _proj_current_merged, _consump_index,
               _scorecard_live, _ppv_live, _adhoc_inputs, _vooki_planning, _vooki_fg_map,
               _added_fg_skus, _vooki_division_items, _template_items,
               _vessel_rows, _soc_schedule):

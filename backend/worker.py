@@ -142,6 +142,28 @@ def sync_intransit(ctx) -> int:
 CONTEXT_SYNCS = [sync_projection, sync_soc_pending, sync_soc_detail, sync_intransit]
 
 
+def compute_rm_planning() -> int:
+    """Phase 3: run the heavy RM-Plan build (planning_filter / BOM explosion) from
+    the freshly-synced staging tables and store the result, so the RM-Plan page
+    loads instantly instead of computing on the request."""
+    from app.api.live import _build_rm
+    from fastapi.encoders import jsonable_encoder
+    run_id = staging.start_run("compute_rm_planning")
+    t0 = time.time()
+    try:
+        rp = _build_rm()
+        n = len(rp.get("products", []))
+        staging.save_computed("rm_planning", jsonable_encoder(rp), n)
+        staging.finish_run(run_id, "ok", n)
+        print(f"[compute] rm_planning: {n} products in {time.time() - t0:.1f}s")
+        return n
+    except Exception as e:   # noqa: BLE001
+        msg = f"{type(e).__name__}: {str(e).splitlines()[0]}"
+        staging.finish_run(run_id, "error", None, msg)
+        print(f"[compute] rm_planning FAILED: {msg[:160]}")
+        return -1
+
+
 def run_all() -> None:
     print("[worker] full sync starting…")
     for fn in SYNCS:
@@ -152,6 +174,7 @@ def run_all() -> None:
           f"SOC {ctx['soc_from']}..{ctx['soc_to']} · freeze {ctx['freeze_date']}")
     for fn in CONTEXT_SYNCS:
         fn(ctx)
+    compute_rm_planning()   # Phase 3: precompute the RM plan from the fresh staging
     print("[worker] full sync done.")
 
 
