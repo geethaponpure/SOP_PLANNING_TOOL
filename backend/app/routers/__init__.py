@@ -1,7 +1,7 @@
 """Router registry — every APIRouter mounted by the app, in one list."""
 from . import (
     demand, supply, mfg_stock, msl, vooki, adhoc, aged_rm, projection,
-    scheduling, procurement, admin, srdms, user_master, roles,
+    scheduling, procurement, admin, sync, srdms, user_master, roles,
 )
 
 all_routers = [
@@ -16,6 +16,7 @@ all_routers = [
     scheduling.router,
     procurement.router,
     admin.router,
+    sync.router,
     srdms.router,
     user_master.router,
     roles.router,

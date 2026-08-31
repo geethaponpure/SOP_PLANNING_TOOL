@@ -608,3 +608,46 @@ def claim_pending_requests() -> list[dict]:
             conn.close()
     except Exception:   # noqa: BLE001
         return []
+
+
+# ── freshness for the UI (data-as-of banner + Refresh now) ────────────────────
+
+SYNC_SOURCES = [
+    "item_segments", "stock_lots", "stock_details", "item_business", "pto_pts",
+    "stock_aged", "vooki_items", "soc_schedule", "projection", "soc_pending",
+    "soc_detail", "intransit", "dispatch_jc3", "dispatch_jc13",
+]
+
+
+def sync_status() -> dict:
+    """Everything the UI needs: the planning context, per-source freshness, the
+    most-recent successful sync, whether anything failed, and pending refreshes."""
+    ctx = read_context()
+    sources, last_ok, any_error, running = [], None, False, False
+    for src in SYNC_SOURCES:
+        ls = last_sync(src) or {}
+        st = ls.get("status")
+        sources.append({"source": src, "status": st, "row_count": ls.get("row_count"),
+                        "finished_at": ls.get("finished_at"),
+                        "error": (ls.get("error") or "")[:120] or None})
+        if st == "error":
+            any_error = True
+        if st == "running":
+            running = True
+        fa = ls.get("finished_at")
+        if st == "ok" and fa and (last_ok is None or fa > last_ok):
+            last_ok = fa
+    pending = 0
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) AS c FROM sync_requests WHERE status='pending'")
+                pending = (cur.fetchone() or {}).get("c", 0)
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        pass
+    return {"context": ctx, "sources": sources, "last_synced": last_ok,
+            "any_error": any_error, "syncing": running or pending > 0,
+            "pending_requests": pending}

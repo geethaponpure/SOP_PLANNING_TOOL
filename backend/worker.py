@@ -155,9 +155,35 @@ def run_all() -> None:
     print("[worker] full sync done.")
 
 
+def _drain_requests() -> None:
+    """Run a full sync if any 'Refresh now' request is pending."""
+    if staging.claim_pending_requests():
+        print("[worker] refresh requested → syncing")
+        run_all()
+
+
+def _schedule(interval: int) -> None:
+    """Recommended runner: APScheduler does a full CRM sync every `interval`
+    seconds and drains the Refresh-now queue every 30s. Blocks (dedicated
+    worker process)."""
+    from apscheduler.schedulers.blocking import BlockingScheduler
+    run_all()   # sync once at boot so staging is warm immediately
+    sched = BlockingScheduler()
+    sched.add_job(run_all, "interval", seconds=interval, id="full_sync",
+                  max_instances=1, coalesce=True)
+    sched.add_job(_drain_requests, "interval", seconds=30, id="drain_refresh",
+                  max_instances=1, coalesce=True)
+    print(f"[worker] scheduler running: full sync every {interval}s · "
+          f"refresh-drain every 30s (Ctrl+C to stop)")
+    try:
+        sched.start()
+    except (KeyboardInterrupt, SystemExit):
+        print("[worker] scheduler stopped.")
+
+
 def _loop(interval: int) -> None:
-    """Simple stand-in scheduler until Phase 4 (APScheduler): full sync every
-    `interval` seconds, and drain the Refresh-now queue every ~30s in between."""
+    """Dependency-free fallback scheduler (no APScheduler): full sync every
+    `interval` seconds, draining the Refresh-now queue every ~30s in between."""
     run_all()
     next_full = time.time() + interval
     while True:
@@ -172,7 +198,9 @@ def _loop(interval: int) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) >= 3 and sys.argv[1] == "--loop":
+    if len(sys.argv) >= 2 and sys.argv[1] == "--schedule":
+        _schedule(int(sys.argv[2]) if len(sys.argv) >= 3 else 1200)
+    elif len(sys.argv) >= 3 and sys.argv[1] == "--loop":
         _loop(int(sys.argv[2]))
     else:
         run_all()

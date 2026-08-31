@@ -26,8 +26,12 @@ query now runs once in the worker instead of blocking a page request.
 `business_plan_projection` (multi-JC, Projection-Accuracy) and
 `business_plan_projection_rows` (Projection-vs-Sales).
 
-**Not started:** worker scheduling (APScheduler / `--loop`), the `/api/refresh` +
-freshness UI, and Phase 3 (move the RM-Plan *compute* into the worker).
+**Done — Phase 4 (operational):** `worker.py --schedule` (APScheduler: full sync every
+20 min + drains the Refresh-now queue every 30s), `GET /api/sync-status`,
+`POST /api/refresh`, and a "Data as of…" + Refresh banner in the app header.
+
+**Remaining:** the 2 projection page sources above, and Phase 3 (move the RM-Plan
+*compute* into the worker so the page is instant, not just resilient).
 
 ---
 

@@ -235,6 +235,9 @@ export const api = {
   // admin
   planningSettings: () => req("/planning-settings"),
   savePlanningSettings: (updates) => req("/planning-settings", { method: "POST", body: JSON.stringify(updates) }),
+  // data freshness (sync-to-DB architecture)
+  syncStatus: () => req("/sync-status"),
+  refreshData: (source = "all") => req(`/refresh${source && source !== "all" ? `?source=${encodeURIComponent(source)}` : ""}`, { method: "POST", body: "{}" }),
   orgs: () => req("/orgs"),
   msl: (reference) => req(`/msl${reference ? `?reference=${encodeURIComponent(reference)}` : ""}`),
   mslSnapshots: () => req("/msl/snapshots"),

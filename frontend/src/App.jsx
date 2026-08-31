@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { NAV, HIDDEN } from "./nav";
 import { api } from "./api";
 import { useAsync } from "./components/ui.jsx";
+import DataFreshness from "./components/DataFreshness.jsx";
 import Login from "./pages/Login.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
 import Overview from "./pages/Overview.jsx";
@@ -156,6 +157,7 @@ export default function App() {
         <div className="topbar">
           <h2>{NAV.find((n) => n.id === page)?.label}</h2>
           <div className="cycle-pill">
+            <DataFreshness />
             {cycle && (
               <>
                 <span className="pill">Cycle {cycle.cycle_period}</span>
