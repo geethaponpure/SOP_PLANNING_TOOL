@@ -14,12 +14,16 @@ simple --loop below; the sync functions here stay the same.)
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
+from datetime import date
 
 from app.integration import crm_sources as crm     # importing app also loads backend/.env
+from app.integration import jc_calendar as _jc
 from app.integration import planning_settings as _ps
 from app.integration import staging
+from app.api.common import _months_ago
 
 
 def _sync(source: str, fetch, replace) -> int:
@@ -78,10 +82,64 @@ SYNCS = [sync_item_segments, sync_stock_lots, sync_stock_details,
          sync_stock_aged, sync_vooki_items, sync_soc_schedule]
 
 
+# ── context-keyed sources (content depends on today's planning context) ───────
+
+def compute_context() -> dict:
+    """The planning context the API derives at request time — plan JC, accounting
+    year, SOC window, freeze date, in-transit window. Same jc_calendar logic the
+    API uses, so the worker stages exactly the slice the API will read."""
+    today = date.today()
+    s = _ps.load()
+    pj = _jc.planning_jc_entry(today) or _jc.current_jc_entry(today) or {}
+    plan_jc = pj.get("jc") or _jc.current_jc(today)
+    fy = _jc.fiscal_year(today)
+    acc_year = os.getenv("BP_ACCYEAR") or pj.get("fy") or f"{fy}-{fy + 1}"
+    soc_from, soc_to = _jc.soc_window(today, int(s.get("soc_window_months", 0)))
+    freeze = _jc.active_freeze(today) or today.isoformat()
+    itr_from = _months_ago(today, int(s.get("intransit_po_months", 4) or 4))
+    return {"plan_jc": plan_jc, "acc_year": acc_year,
+            "soc_from": str(soc_from), "soc_to": str(soc_to), "freeze_date": freeze,
+            "intransit_from": str(itr_from),
+            "blanket_po_qty": float(s.get("blanket_po_qty", 500000) or 0),
+            "mfg_orgs": s.get("mfg_soc_orgs")}
+
+
+def sync_projection(ctx) -> int:
+    return _sync("projection",
+                 lambda: crm.business_plan_projection(ctx["acc_year"], ctx["plan_jc"]),
+                 lambda rows: staging.replace_projection(ctx["acc_year"], ctx["plan_jc"], rows))
+
+
+def sync_soc_pending(ctx) -> int:
+    def fetch():
+        return {"all": crm.despatch_pending(ctx["soc_from"], ctx["soc_to"]) or [],
+                "mfg": crm.despatch_pending_mfg(ctx["soc_from"], ctx["soc_to"], ctx["mfg_orgs"]) or []}
+    return _sync("soc_pending", fetch, staging.replace_soc_pending)
+
+
+def sync_soc_detail(ctx) -> int:
+    return _sync("soc_detail", lambda: crm.soc_detail(ctx["freeze_date"]), staging.replace_soc_detail)
+
+
+def sync_intransit(ctx) -> int:
+    return _sync("intransit",
+                 lambda: crm.po_open_intransit_detail(ctx["intransit_from"], ctx["blanket_po_qty"]),
+                 staging.replace_intransit)
+
+
+CONTEXT_SYNCS = [sync_projection, sync_soc_pending, sync_soc_detail, sync_intransit]
+
+
 def run_all() -> None:
     print("[worker] full sync starting…")
     for fn in SYNCS:
         fn()
+    ctx = compute_context()
+    staging.write_context(ctx)
+    print(f"[worker] context: planning JC{ctx['plan_jc']} {ctx['acc_year']} · "
+          f"SOC {ctx['soc_from']}..{ctx['soc_to']} · freeze {ctx['freeze_date']}")
+    for fn in CONTEXT_SYNCS:
+        fn(ctx)
     print("[worker] full sync done.")
 
 

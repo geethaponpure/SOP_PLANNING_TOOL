@@ -32,7 +32,7 @@ function TemplateBar() {
   const segments = data?.segments || [];
   const seg3opts = segments.find((x) => x.segment2 === seg2)?.segment3 || [];
   return (
-    <div className="card" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
+    <div className="card supply-tool-card" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
       <span><b>📄 Plan-input template</b> <span style={{ fontSize: 12, color: "var(--muted)" }}>· Segment 1 = Performance Chemicals</span></span>
       <select className="searchbox" style={{ maxWidth: 210 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
         <option value="">All Segment 2</option>
@@ -73,7 +73,7 @@ function UploadBar({ onPlan, active, onClear }) {
     </label>
   );
   return (
-    <div className="card" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
+    <div className="card supply-tool-card" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
       <span><b>⬆️ Generate plan</b></span>
       <input type="file" accept=".xlsx" disabled={mode === "crm"} onChange={(e) => setFile(e.target.files[0])}
         style={{ fontSize: 13, opacity: mode === "crm" ? 0.5 : 1 }} />
@@ -159,13 +159,13 @@ function RMPlanning() {
   };
 
   return (
-    <>
-      <div className="banner" style={{ background: "#EAF4FF", border: "1px solid #BBD9F5", display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", fontSize: 13 }}>
+    <section className="supply-page">
+      <div className="banner supply-context" style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", fontSize: 13 }}>
         <span>📅 <b>Planning JC{pjc}</b>{data.planning_jc_from ? ` · ${data.planning_jc_from} → ${data.planning_jc_to}` : ""}</span>
         {data.soc_window && <span>🧾 <b>Pending SOC:</b> {data.soc_window.from <= "1900-01-01" ? "As on date" : data.soc_window.from} → {data.soc_window.to}</span>}
         {data.po_window && <span>🚚 <b>Pending PO dates:</b> {data.po_window.from} → {data.po_window.to}</span>}
       </div>
-      <div className="banner info page-intro">
+      <div className="banner info page-intro supply-method">
         <b>Planning Filtration Technique.</b> 3-JC projection → BOM by preference
         (<b>PMO → BULK/HDLK → newest BOM → Primary</b>) with main RM + substitutes → netted against filtered RM stock and PO pending.
         Click a row to expand; use <b>More</b> to override the BOM (RM requirement re-computes instantly).
@@ -193,12 +193,12 @@ function RMPlanning() {
         </div>
       </div>
       {data.projection_jc_note && (
-        <div className="banner" style={{ background: "#FFF7E6", border: "1px solid #F5D9A0" }}>
+        <div className="banner supply-notice">
           ⚠️ <b>Projection roll-forward:</b> {data.projection_jc_note}
         </div>
       )}
 
-      <div className="grid cols-4">
+      <div className="grid cols-4 supply-metrics">
         <div className="card statcard"><div className="ic">📦</div><Stat value={fmt.num(s.projected_products)} label="Projected products (3-JC ≠ 0)" /></div>
         <div className="card statcard blue" style={{ cursor: "pointer" }} onClick={() => { setMode("product"); setCls(cls === "manufacturing" ? "" : "manufacturing"); }}>
           <div className="ic">🏭</div><Stat value={fmt.num(s.manufacturing)} label="Manufacturing (make)" /></div>
@@ -210,7 +210,7 @@ function RMPlanning() {
       <TemplateBar />
       <UploadBar onPlan={setUploaded} active={!!uploaded} onClear={() => setUploaded(null)} />
       {uploaded && (
-        <div className="banner" style={{ background: "#FFF7E6", border: "1px solid #F5D9A0" }}>
+        <div className="banner supply-notice">
           {uploaded.plan_mode === "bom_override"
             ? <>📋 Showing <b>plan #{uploaded.plan_id ?? "—"}</b> with <b>{uploaded.overrides_applied} BOM override(s)</b> applied · saved to DB — flows into consolidated RM, Excel &amp; Production Scheduling. </>
             : <>📋 Showing <b>uploaded plan #{uploaded.plan_id ?? "—"}</b> ({uploaded.plan_mode === "excel_only" ? "Excel only" : "Consolidated: Excel + Projection + Pending SOC"}) · {uploaded.excel_items} Excel items · saved to DB. </>}
@@ -218,7 +218,7 @@ function RMPlanning() {
         </div>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, margin: "16px 0 8px" }}>
+      <div className="supply-workspace" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, margin: "16px 0 8px" }}>
         <SegTabs value={mode}
           onChange={(m) => { setMode(m); setQ(""); if (m !== "product") { setSeg2(""); setSeg3(""); } }}
           tabs={[
@@ -260,7 +260,7 @@ function RMPlanning() {
         </div>
       </div>
 
-      <div className="pagebar">
+      <div className="pagebar supply-filters">
         <input className="searchbox" placeholder={mode === "product" ? "Search product…" : "Search RM code / name…"} value={q} onChange={(e) => setQ(e.target.value)} />
         {mode === "product" && (
           <select className="searchbox" style={{ maxWidth: 190 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
@@ -306,7 +306,7 @@ function RMPlanning() {
       {mode === "consolidated" && <ConsolidatedRM data={data} q={q} rmCls={rmCls} pjc={pjc} />}
       {mode === "realrm" && <RealRM data={data} q={q} pjc={pjc} />}
       {mode === "product" && (
-      <div className="tbl-wrap">
+       <div className="tbl-wrap supply-table">
         <table>
           <thead>
             <tr>
@@ -460,14 +460,14 @@ function RMPlanning() {
       </div>
       )}
       {mode === "product" && (
-        <div className="sub" style={{ marginTop: 8 }}>{s.with_bom} of {s.shown} shown products matched a BOM; {s.without_bom} traded (no recipe).
+        <div className="sub supply-summary" style={{ marginTop: 8 }}>{s.with_bom} of {s.shown} shown products matched a BOM; {s.without_bom} traded (no recipe).
           Net-to-buy: <span className="num-pos">red = buy</span> · <span className="num-zero">green = covered</span>. FG stock = Warehouse (MFG orgs) vs Branch.
           {" "}MFG SOC of <b>{fmt.num(s.mfg_soc_in_plan ?? s.pending_soc_in_plan)}</b> KG added across <b>{s.pending_soc_items}</b> planned items (Overall SOC {fmt.num(s.overall_soc_total)} KG){s.stock_source ? <> · stock source: <b>{s.stock_source}</b></> : null}.
           {s.msl_total > 0 && <> {" "}<b>MSL buffer</b> of <b>{fmt.num(s.msl_total)}</b> KG added across <b>{s.msl_items}</b> valid items; on-hand (WH+Branch) netted <b>{fmt.num(s.onhand_total)}</b> KG. Mfg Req = {s.mfg_required_formula}.{s.msl_only_items > 0 && <> Of these, <b>{s.msl_only_items}</b> had no projection this JC (<b>MSL top-up</b> — a BOM item below its MSL; demand = MSL − on-hand).</>}</>}
           {s.plan_divisions?.length > 0 && <> {" "}Scope: <b>Division = {s.plan_divisions.join(", ")}</b> only{s.out_of_scope_items > 0 && <> ({fmt.num(s.out_of_scope_items)} projected items in other divisions excluded)</>}.</>}
           {s.with_packing_bom > 0 && <> {s.packing_bom_count} packing BOM(s) across {s.with_packing_bom} products shown separately.</>}</div>
       )}
-    </>
+    </section>
   );
 }
 
@@ -721,4 +721,3 @@ function RealRM({ data, q, pjc }) {
     </>
   );
 }
-

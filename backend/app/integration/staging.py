@@ -75,16 +75,19 @@ def last_sync(source: str) -> dict | None:
 
 # ── transactional full-replace helper ─────────────────────────────────────────
 
-def _replace(table: str, columns: list[str], rows: list[tuple]) -> int:
-    """DELETE-all + INSERT-all in one transaction. Readers keep seeing the old
-    snapshot until COMMIT. Returns the number of rows written."""
+def _replace(table: str, columns: list[str], rows: list[tuple],
+             where: str = "", where_params: tuple = ()) -> int:
+    """DELETE + INSERT-all in one transaction. Readers keep seeing the old snapshot
+    until COMMIT. With ``where`` only that slice is replaced (e.g. one acc_year/jc);
+    otherwise the whole table. Returns the number of rows written."""
     conn = mysql_db._connect()
     conn.autocommit(False)
     try:
         placeholders = ",".join(["%s"] * len(columns))
         sql = f"INSERT INTO {table} ({','.join(columns)}) VALUES ({placeholders})"
+        del_sql = f"DELETE FROM {table}" + (f" WHERE {where}" if where else "")
         with conn.cursor() as cur:
-            cur.execute(f"DELETE FROM {table}")
+            cur.execute(del_sql, where_params)
             for i in range(0, len(rows), 2000):
                 cur.executemany(sql, rows[i:i + 2000])
         conn.commit()
@@ -350,6 +353,175 @@ def read_soc_schedule() -> list[dict]:
                 cur.execute("SELECT item_code, item_desc, schedule_date, qty FROM stg_soc_schedule")
                 return [{"ItemCode": r["item_code"], "ItemDesc": r["item_desc"],
                          "ScheduleDate": r["schedule_date"], "Qty": r["qty"]} for r in cur.fetchall()]
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+# ── sync_context (the planning context the worker last synced for) ─────────────
+
+def write_context(ctx: dict) -> None:
+    """Upsert the single-row planning context (plan_jc / acc_year / windows)."""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "REPLACE INTO sync_context (id, plan_jc, acc_year, soc_from, soc_to, "
+                    "freeze_date, intransit_from, blanket_po_qty, computed_at) "
+                    "VALUES (1,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (ctx.get("plan_jc"), ctx.get("acc_year"), ctx.get("soc_from"), ctx.get("soc_to"),
+                     str(ctx.get("freeze_date") or "")[:20] or None, ctx.get("intransit_from"),
+                     ctx.get("blanket_po_qty"), datetime.now()))
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        pass
+
+
+def read_context() -> dict | None:
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT plan_jc, acc_year, soc_from, soc_to, freeze_date, "
+                            "intransit_from, blanket_po_qty, computed_at FROM sync_context WHERE id=1")
+                r = cur.fetchone()
+                if r:
+                    for k in ("soc_from", "soc_to", "intransit_from", "computed_at"):
+                        if r.get(k) is not None:
+                            r[k] = str(r[k])
+                return r
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return None
+
+
+# ── projection (keyed by acc_year + jc) ───────────────────────────────────────
+
+_PROJ_COLS = ["acc_year", "jc", "item_name", "segment2", "segment3",
+              "current_q", "next1_q", "next2_q"]
+
+
+def replace_projection(acc_year: str, jc: int, crm_rows: list[dict]) -> int:
+    data = [(
+        acc_year, int(jc), str(r.get("ItemName") or "")[:255],
+        str(r.get("Segment2") or "")[:64] or None, str(r.get("Segment3") or "")[:64] or None,
+        round(_num(r.get("CurrentQ")), 3), round(_num(r.get("Next1Q")), 3), round(_num(r.get("Next2Q")), 3),
+    ) for r in (crm_rows or []) if r.get("ItemName")]
+    # replace ONLY this (acc_year, jc) slice, leaving other cycles intact
+    return _replace("stg_projection", _PROJ_COLS, data,
+                    where="acc_year=%s AND jc=%s", where_params=(acc_year, int(jc)))
+
+
+def read_projection(acc_year: str, jc: int) -> list[dict]:
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT item_name, segment2, segment3, current_q, next1_q, next2_q "
+                            "FROM stg_projection WHERE acc_year=%s AND jc=%s", (acc_year, int(jc)))
+                return [{"ItemName": r["item_name"], "Segment2": r["segment2"], "Segment3": r["segment3"],
+                         "CurrentQ": r["current_q"], "Next1Q": r["next1_q"], "Next2Q": r["next2_q"]}
+                        for r in cur.fetchall()]
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+# ── SOC pending (scope 'all' | 'mfg', current window) ─────────────────────────
+
+def replace_soc_pending(scoped: dict) -> int:
+    """scoped = {'all': [...], 'mfg': [...]} of CRM despatch-pending rows."""
+    data = []
+    for scope in ("all", "mfg"):
+        for r in (scoped.get(scope) or []):
+            if r.get("ItemCode"):
+                data.append((scope, str(r.get("ItemCode") or "")[:64],
+                             str(r.get("ItemDesc") or "")[:255], round(_num(r.get("PendingQty")), 3)))
+    return _replace("stg_soc_pending", ["scope", "item_code", "item_desc", "pending_qty"], data)
+
+
+def read_soc_pending(scope: str) -> list[dict]:
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT item_code, item_desc, pending_qty FROM stg_soc_pending WHERE scope=%s",
+                            (scope,))
+                return [{"ItemCode": r["item_code"], "ItemDesc": r["item_desc"],
+                         "PendingQty": r["pending_qty"]} for r in cur.fetchall()]
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+# ── post-freeze open SOC detail (current freeze) ──────────────────────────────
+
+_SOC_DET_COLS = ["item_code", "item_name", "soc_qty", "soc_count", "last_soc", "segment2", "segment3"]
+
+
+def replace_soc_detail(crm_rows: list[dict]) -> int:
+    data = [(
+        str(r.get("ItemCode") or "")[:64], str(r.get("ItemName") or "")[:255],
+        round(_num(r.get("SocQty")), 3), _int_or_none(r.get("SocCount")),
+        str(r.get("LastSoc") or "")[:30] or None,
+        str(r.get("Segment2") or "")[:64] or None, str(r.get("Segment3") or "")[:64] or None,
+    ) for r in (crm_rows or []) if r.get("ItemCode")]
+    return _replace("stg_soc_detail", _SOC_DET_COLS, data)
+
+
+def read_soc_detail() -> list[dict]:
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT item_code, item_name, soc_qty, soc_count, last_soc, segment2, segment3 "
+                            "FROM stg_soc_detail")
+                return [{"ItemCode": r["item_code"], "ItemName": r["item_name"], "SocQty": r["soc_qty"],
+                         "SocCount": r["soc_count"], "LastSoc": r["last_soc"],
+                         "Segment2": r["segment2"], "Segment3": r["segment3"]} for r in cur.fetchall()]
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+# ── in-transit open-PO detail (current recency window) ────────────────────────
+
+_INTRANSIT_COLS = ["item_code", "item_desc", "po_number", "po_date", "vendor_name", "org_name",
+                   "procurement_type", "quantity", "received", "cancelled", "in_transit"]
+
+
+def replace_intransit(crm_rows: list[dict]) -> int:
+    data = [(
+        str(r.get("Item_Code") or "")[:64], str(r.get("Item_Desc") or "")[:255],
+        str(r.get("Po_Number") or "")[:48], _date_or_none(r.get("Po_Date")),
+        str(r.get("Vendor_Name") or "")[:255], str(r.get("Org_Name") or "")[:120],
+        str(r.get("Procurement_Type") or "")[:64],
+        round(_num(r.get("Quantity")), 3), round(_num(r.get("Received")), 3),
+        round(_num(r.get("Cancelled")), 3), round(_num(r.get("InTransit")), 3),
+    ) for r in (crm_rows or [])]
+    return _replace("stg_intransit", _INTRANSIT_COLS, data)
+
+
+def read_intransit() -> list[dict]:
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT item_code, item_desc, po_number, po_date, vendor_name, org_name, "
+                            "procurement_type, quantity, received, cancelled, in_transit FROM stg_intransit")
+                return [{"Item_Code": r["item_code"], "Item_Desc": r["item_desc"],
+                         "Po_Number": r["po_number"], "Po_Date": r["po_date"],
+                         "Vendor_Name": r["vendor_name"], "Org_Name": r["org_name"],
+                         "Procurement_Type": r["procurement_type"], "Quantity": r["quantity"],
+                         "Received": r["received"], "Cancelled": r["cancelled"],
+                         "InTransit": r["in_transit"]} for r in cur.fetchall()]
         finally:
             conn.close()
     except Exception:   # noqa: BLE001

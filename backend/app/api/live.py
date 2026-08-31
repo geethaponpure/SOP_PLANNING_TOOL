@@ -121,7 +121,7 @@ def _intransit_lots_audit():
         return []
     from_date = _months_ago(_date.today(), int(s.get("intransit_po_months", 4) or 4))
     blanket = float(s.get("blanket_po_qty", 500000) or 0)
-    rows = _try(lambda: _crm.po_open_intransit_detail(from_date, blanket), "po_intransit_detail") or []
+    rows = staging.read_intransit()
     exclude = _pf._intercompany_set(s)
     bmap = _business_map()
     rm_label = s.get("raw_material_business", "Raw Material")
@@ -311,15 +311,14 @@ def _build_rm(overrides=None, plan_mode="crm", bom_overrides=None):
     acc_year = os.getenv("BP_ACCYEAR") or pj.get("fy") or f"{_fy}-{_fy + 1}"
     win = _jc.soc_window(today, int(s.get("soc_window_months", 0)))
     stock_rows = _crm_stock() or None
-    pending_rows = _try(lambda: _crm.despatch_pending(win[0], win[1]), "pending")
-    mfg_pending_rows = _try(lambda: _crm.despatch_pending_mfg(win[0], win[1], s.get("mfg_soc_orgs")),
-                            "mfg_pending")
+    pending_rows = staging.read_soc_pending("all")
+    mfg_pending_rows = staging.read_soc_pending("mfg")
     drows, n_jc = _dispatch3()
     dispatch_avg = _pf.aggregate_dispatch(drows, n_jc)["by_name"] if drows else None
     po_intel = _po_intel()
     # Projection LIVE from CRM: replicates SP_SCBusinessPlan_GetDetailedReportJCWise
     # for the planning JC — Current = JC{n} WK1+WK2, Next1 = JC{n} Next1, Next2 = Next2.
-    proj_rows = _try(lambda: _crm.business_plan_projection(acc_year, plan_jc), "projection")
+    proj_rows = staging.read_projection(acc_year, plan_jc)
     projection = _pf.projection_from_crm(proj_rows or [], drop_zero=False)
     _intransit_rows, _intransit_from = _po_intransit(s, today)
     # MSL safety-stock buffer per finished-product name — only VALID items (freq > 10 and
@@ -513,12 +512,12 @@ def _adhoc_inputs():
     plan_jc = pj.get("jc") or _jc.current_jc(today)
     _fy = _jc.fiscal_year(today)
     acc_year = os.getenv("BP_ACCYEAR") or pj.get("fy") or f"{_fy}-{_fy + 1}"
-    soc_rows = _try(lambda: _crm.soc_detail(freeze), "soc") or []
-    proj_rows = _try(lambda: _crm.business_plan_projection(acc_year, plan_jc), "projection") or []
+    soc_rows = staging.read_soc_detail()
+    proj_rows = staging.read_projection(acc_year, plan_jc)
     proj_raw = _pf.projection_from_crm(proj_rows, drop_zero=False)
     projection = {_pf._squash(v["name"]): v.get("current", 0.0) for v in proj_raw.values()}
     win = _jc.soc_window(today, int(s.get("soc_window_months", 0)))
-    pend_rows = _try(lambda: _crm.despatch_pending(win[0], win[1]), "pending") or []
+    pend_rows = staging.read_soc_pending("all")
     pending: dict = {}
     for r in pend_rows:
         k = _pf._squash(r.get("ItemDesc"))
