@@ -408,7 +408,7 @@ def _proj_sales_live():
     plan_jc = pj.get("jc") or _jc.current_jc(today)
     _fy = _jc.fiscal_year(today)
     acc_year = os.getenv("BP_ACCYEAR") or pj.get("fy") or f"{_fy}-{_fy + 1}"
-    proj_rows = _try(lambda: _crm.business_plan_projection_rows(acc_year, plan_jc), "proj-rows") or []
+    proj_rows = staging.read_projection_rows(acc_year, plan_jc)
     projection_rows = list(_pf.projection_rows_from_crm(proj_rows))
     rp = _pf.build_projection_vs_sales(None, drows, stock_rows,
                                        settings=s, business_map=_business_map(),
@@ -431,8 +431,7 @@ def _proj_current_merged(acc_year: str, jcs: tuple, approved: bool = True):
     'Current' (WK1+WK2) plan across the given JC numbers for an accounting year."""
     merged: dict = {}
     for j in jcs:
-        rows = _try(lambda j=j: _crm.business_plan_projection(acc_year, j, approved_only=approved),
-                    f"proj-jc{j}") or []
+        rows = staging.read_projection(acc_year, j, approved)
         for _k, v in _pf.projection_from_crm(rows, drop_zero=False).items():
             e = merged.setdefault(_k, {"name": v["name"], "current": 0.0,
                                        "segment2": v.get("segment2", ""),

@@ -35,7 +35,14 @@ query now runs once in the worker instead of blocking a page request.
 stored JSON. Measured: a 40s build now serves in **~70 ms** on the page (and survives a
 CRM outage). Override/upload plans still build on demand (user-initiated).
 
-**Remaining:** the 2 projection page sources above (Projection-Accuracy / -vs-Sales).
+**Done — projection pages:** `projection` now stages JC1→current × approved/unapproved
+(`stg_projection.approved`) for Projection-Accuracy, and `projection_rows`
+(`stg_projection_rows`, per collector) for Projection-vs-Sales. Both render with CRM down.
+
+**Every planning page is now CRM-outage-proof.** The only live CRM calls left are, by
+design: interactive admin lookups (`crm_items`, `crm_users`, `crm_user_departments` — SRDMS
+item search / User-Master approvals) and `despatch_pending_mfg_rows` (used only in the
+export-by-segment ZIP download, which is user-initiated).
 
 ---
 

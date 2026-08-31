@@ -139,7 +139,36 @@ def sync_intransit(ctx) -> int:
                  staging.replace_intransit)
 
 
-CONTEXT_SYNCS = [sync_projection, sync_soc_pending, sync_soc_detail, sync_intransit]
+def sync_projection_rows(ctx) -> int:
+    """Per item x collector projection for the planning JC — Projection-vs-Sales."""
+    return _sync("projection_rows",
+                 lambda: crm.business_plan_projection_rows(ctx["acc_year"], ctx["plan_jc"]),
+                 lambda rows: staging.replace_projection_rows(ctx["acc_year"], ctx["plan_jc"], rows))
+
+
+def sync_projection_accuracy(ctx) -> int:
+    """Projection for JC1..current in BOTH approved states — Projection-Accuracy
+    (compares projected vs actual across the year)."""
+    run_id = staging.start_run("projection_accuracy")
+    t0 = time.time()
+    try:
+        acc, cur_jc, total = ctx["acc_year"], int(ctx["plan_jc"] or 0), 0
+        for j in range(1, cur_jc + 1):
+            for appr in (True, False):
+                rows = crm.business_plan_projection(acc, j, approved_only=appr) or []
+                total += staging.replace_projection(acc, j, rows, approved=appr)
+        staging.finish_run(run_id, "ok", total)
+        print(f"[sync] projection_accuracy: {total} rows ({cur_jc} JCs x2) in {time.time() - t0:.1f}s")
+        return total
+    except Exception as e:   # noqa: BLE001
+        msg = f"{type(e).__name__}: {str(e).splitlines()[0]}"
+        staging.finish_run(run_id, "error", None, msg)
+        print(f"[sync] projection_accuracy FAILED: {msg[:150]}")
+        return -1
+
+
+CONTEXT_SYNCS = [sync_projection, sync_soc_pending, sync_soc_detail, sync_intransit,
+                 sync_projection_rows, sync_projection_accuracy]
 
 
 def compute_rm_planning() -> int:

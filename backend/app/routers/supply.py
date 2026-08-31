@@ -115,7 +115,7 @@ def export_rm_by_segment(plan_id: int | None = None):
     _pr = []
     _ay, _pjc = rp.get("planning_acc_year"), rp.get("planning_jc")
     if _ay and _pjc:
-        _raw = _try(lambda: _crm.business_plan_projection_rows(_ay, _pjc), "proj-rows-seg") or []
+        _raw = staging.read_projection_rows(_ay, _pjc)
         _pr = list(_pf.projection_rows_from_crm(_raw))
     # per (item x collector) MFG SOC pending, for the MFG-SOC-by-collector sheets
     _soc = []

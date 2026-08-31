@@ -402,29 +402,65 @@ def read_context() -> dict | None:
 
 # ── projection (keyed by acc_year + jc) ───────────────────────────────────────
 
-_PROJ_COLS = ["acc_year", "jc", "item_name", "segment2", "segment3",
+_PROJ_COLS = ["acc_year", "jc", "approved", "item_name", "segment2", "segment3",
               "current_q", "next1_q", "next2_q"]
 
 
-def replace_projection(acc_year: str, jc: int, crm_rows: list[dict]) -> int:
+def replace_projection(acc_year: str, jc: int, crm_rows: list[dict], approved: bool = True) -> int:
+    appr = 1 if approved else 0
     data = [(
-        acc_year, int(jc), str(r.get("ItemName") or "")[:255],
+        acc_year, int(jc), appr, str(r.get("ItemName") or "")[:255],
         str(r.get("Segment2") or "")[:64] or None, str(r.get("Segment3") or "")[:64] or None,
         round(_num(r.get("CurrentQ")), 3), round(_num(r.get("Next1Q")), 3), round(_num(r.get("Next2Q")), 3),
     ) for r in (crm_rows or []) if r.get("ItemName")]
-    # replace ONLY this (acc_year, jc) slice, leaving other cycles intact
+    # replace ONLY this (acc_year, jc, approved) slice, leaving other cycles intact
     return _replace("stg_projection", _PROJ_COLS, data,
-                    where="acc_year=%s AND jc=%s", where_params=(acc_year, int(jc)))
+                    where="acc_year=%s AND jc=%s AND approved=%s", where_params=(acc_year, int(jc), appr))
 
 
-def read_projection(acc_year: str, jc: int) -> list[dict]:
+def read_projection(acc_year: str, jc: int, approved: bool = True) -> list[dict]:
+    appr = 1 if approved else 0
     try:
         conn = mysql_db._connect()
         try:
             with conn.cursor() as cur:
                 cur.execute("SELECT item_name, segment2, segment3, current_q, next1_q, next2_q "
-                            "FROM stg_projection WHERE acc_year=%s AND jc=%s", (acc_year, int(jc)))
+                            "FROM stg_projection WHERE acc_year=%s AND jc=%s AND approved=%s",
+                            (acc_year, int(jc), appr))
                 return [{"ItemName": r["item_name"], "Segment2": r["segment2"], "Segment3": r["segment3"],
+                         "CurrentQ": r["current_q"], "Next1Q": r["next1_q"], "Next2Q": r["next2_q"]}
+                        for r in cur.fetchall()]
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+# ── projection ROWS (per item x collector — Projection-vs-Sales) ──────────────
+
+_PROJ_ROWS_COLS = ["acc_year", "jc", "item_name", "collector", "segment2", "segment3",
+                   "current_q", "next1_q", "next2_q"]
+
+
+def replace_projection_rows(acc_year: str, jc: int, crm_rows: list[dict]) -> int:
+    data = [(
+        acc_year, int(jc), str(r.get("ItemName") or "")[:255], str(r.get("Collector") or "")[:400] or None,
+        str(r.get("Segment2") or "")[:64] or None, str(r.get("Segment3") or "")[:64] or None,
+        round(_num(r.get("CurrentQ")), 3), round(_num(r.get("Next1Q")), 3), round(_num(r.get("Next2Q")), 3),
+    ) for r in (crm_rows or []) if r.get("ItemName")]
+    return _replace("stg_projection_rows", _PROJ_ROWS_COLS, data,
+                    where="acc_year=%s AND jc=%s", where_params=(acc_year, int(jc)))
+
+
+def read_projection_rows(acc_year: str, jc: int) -> list[dict]:
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT item_name, collector, segment2, segment3, current_q, next1_q, next2_q "
+                            "FROM stg_projection_rows WHERE acc_year=%s AND jc=%s", (acc_year, int(jc)))
+                return [{"ItemName": r["item_name"], "Collector": r["collector"],
+                         "Segment2": r["segment2"], "Segment3": r["segment3"],
                          "CurrentQ": r["current_q"], "Next1Q": r["next1_q"], "Next2Q": r["next2_q"]}
                         for r in cur.fetchall()]
         finally:
@@ -665,6 +701,7 @@ SYNC_SOURCES = [
     "item_segments", "stock_lots", "stock_details", "item_business", "pto_pts",
     "stock_aged", "vooki_items", "soc_schedule", "projection", "soc_pending",
     "soc_detail", "intransit", "dispatch_jc3", "dispatch_jc13",
+    "projection_rows", "projection_accuracy",
 ]
 
 

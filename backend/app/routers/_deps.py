@@ -42,6 +42,7 @@ from ..integration import rm_consumption as _rmc  # noqa: F401
 from ..integration import projection_accuracy as _pacc  # noqa: F401
 from ..integration import msl as _msl  # noqa: F401
 from ..integration.adapter import _resolve_file, _resolve_po_files, resolve_latest_po_register  # noqa: F401
+from ..integration import staging  # noqa: F401
 from .. import publish as _pub  # noqa: F401
 
 from ..api.common import *   # noqa: F401,F403
