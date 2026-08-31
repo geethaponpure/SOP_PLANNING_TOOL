@@ -528,6 +528,54 @@ def read_intransit() -> list[dict]:
         return []
 
 
+# ── dispatch (wide jc0..jcN stored LONG; variant 'jc3' | 'jc13') ──────────────
+
+def replace_dispatch(variant: str, crm_rows: list[dict], n_jc: int) -> int:
+    """Explode each wide dispatch row (jc0..jc{n-1}) into LONG rows; store non-zero."""
+    data = []
+    for r in (crm_rows or []):
+        code = str(r.get("ItemCode") or "")[:64]
+        name = str(r.get("ItemName") or "")[:255]
+        coll = str(r.get("Collector") or "")[:120]
+        cid = str(r.get("CollectorId") or "")[:64]
+        for i in range(n_jc):
+            q = _num(r.get(f"jc{i}"))
+            if q:
+                data.append((variant, code, name, coll, cid, i, round(q, 3)))
+    return _replace("stg_dispatch",
+                    ["variant", "item_code", "item_name", "collector", "collector_id", "jc_index", "qty"],
+                    data, where="variant=%s", where_params=(variant,))
+
+
+def read_dispatch(variant: str, n_jc: int) -> list[dict]:
+    """Pivot the LONG rows back to the wide dispatch_by_jc() shape
+    ({ItemCode, ItemName, Collector, CollectorId, jc0..jc{n-1}})."""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT item_code, item_name, collector, collector_id, jc_index, qty "
+                            "FROM stg_dispatch WHERE variant=%s", (variant,))
+                agg: dict = {}
+                for r in cur.fetchall():
+                    key = (r["item_code"], r["collector"], r["collector_id"])
+                    d = agg.get(key)
+                    if d is None:
+                        d = {"ItemCode": r["item_code"], "ItemName": r["item_name"],
+                             "Collector": r["collector"], "CollectorId": r["collector_id"]}
+                        for i in range(n_jc):
+                            d[f"jc{i}"] = 0.0
+                        agg[key] = d
+                    idx = r["jc_index"]
+                    if 0 <= idx < n_jc:
+                        d[f"jc{idx}"] = float(r["qty"])
+                return list(agg.values())
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
 # ── "Refresh now" queue (used by the worker's poller in Phase 4) ───────────────
 
 def request_refresh(source: str = "all") -> bool:

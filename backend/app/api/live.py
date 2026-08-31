@@ -184,8 +184,7 @@ def _intransit_unmatched(rp):
 @lru_cache(maxsize=1)
 def _dispatch3():
     jcs = _jc.last_n_jcs(_date.today(), 3)
-    rows = _try(lambda: _crm.dispatch_by_jc(jcs), "dispatch") or []
-    return rows, len(jcs)
+    return staging.read_dispatch("jc3", len(jcs)), len(jcs)
 
 
 @lru_cache(maxsize=1)
@@ -801,7 +800,7 @@ def _msl_dispatch():
     window = _msl.jc_window()
     if not _live():
         return window, []
-    return window, (_try(lambda: _crm.dispatch_by_jc(window), "msl_dispatch") or [])
+    return window, staging.read_dispatch("jc13", len(window))
 
 
 @lru_cache(maxsize=1)

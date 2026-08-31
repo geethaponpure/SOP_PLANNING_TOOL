@@ -6,6 +6,31 @@ This document describes where the backend is today, what's wrong with it for pro
 and the target "sync-to-DB, serve-from-DB" architecture — plus a concrete, incremental
 migration plan that keeps the app working at every step.
 
+## Implementation status (updated as phases land)
+
+**Done — 13 CRM sources now served from MySQL (worker syncs; API reads staging):**
+
+| Source | Staging table | Pages made CRM-outage-proof |
+|---|---|---|
+| item_segments, stock_lots | stg_item_segments, stg_stock_lots | MFG-Stock |
+| stock_details, item_business, pto_pts | stg_stock_details, stg_item_business, stg_pto_pts | orgs, item master |
+| stock_aged, vooki_items, soc_schedule | stg_stock_aged, stg_vooki_items, stg_soc_schedule | Aged-RM |
+| projection, soc_pending, soc_detail, intransit | stg_projection, stg_soc_pending, stg_soc_detail, stg_intransit (+ sync_context) | **RM-Plan, Adhoc** |
+| dispatch (jc3 + jc13) | stg_dispatch (long↔wide pivot) | **MSL, RM-Plan (MSL top-ups)** |
+
+Verified with CRM deliberately unreachable: MFG-Stock, Aged-RM, MSL, Adhoc, and
+**RM-Plan (59 products)** all build entirely from MySQL. The 7.6-minute `soc_pending`
+query now runs once in the worker instead of blocking a page request.
+
+**Remaining CRM calls (2, page-specific — not in the RM-Plan path):**
+`business_plan_projection` (multi-JC, Projection-Accuracy) and
+`business_plan_projection_rows` (Projection-vs-Sales).
+
+**Not started:** worker scheduling (APScheduler / `--loop`), the `/api/refresh` +
+freshness UI, and Phase 3 (move the RM-Plan *compute* into the worker).
+
+---
+
 ---
 
 ## 1. Where we are today

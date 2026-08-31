@@ -21,6 +21,7 @@ from datetime import date
 
 from app.integration import crm_sources as crm     # importing app also loads backend/.env
 from app.integration import jc_calendar as _jc
+from app.integration import msl as _msl
 from app.integration import planning_settings as _ps
 from app.integration import staging
 from app.api.common import _months_ago
@@ -77,9 +78,20 @@ def sync_soc_schedule() -> int:
     return _sync("soc_schedule", crm.soc_schedule, staging.replace_soc_schedule)
 
 
+def sync_dispatch() -> int:
+    """Dispatch for the last 3 JCs (dispatch average) and last 13 (MSL)."""
+    today = date.today()
+    jcs3 = _jc.last_n_jcs(today, 3)
+    _sync("dispatch_jc3", lambda: crm.dispatch_by_jc(jcs3),
+          lambda rows: staging.replace_dispatch("jc3", rows, len(jcs3)))
+    jcs13 = _msl.jc_window()
+    return _sync("dispatch_jc13", lambda: crm.dispatch_by_jc(jcs13),
+                 lambda rows: staging.replace_dispatch("jc13", rows, len(jcs13)))
+
+
 SYNCS = [sync_item_segments, sync_stock_lots, sync_stock_details,
          sync_item_business, sync_pto_pts,
-         sync_stock_aged, sync_vooki_items, sync_soc_schedule]
+         sync_stock_aged, sync_vooki_items, sync_soc_schedule, sync_dispatch]
 
 
 # ── context-keyed sources (content depends on today's planning context) ───────
