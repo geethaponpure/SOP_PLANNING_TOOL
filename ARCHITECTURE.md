@@ -1,0 +1,319 @@
+# S&OP Planning Tool — Target Architecture (Design Doc)
+
+**Status:** proposal for review · **Scope:** single on-prem server · **Freshness target:** CRM data a few minutes old is acceptable (scheduled sync + "Refresh now").
+
+This document describes where the backend is today, what's wrong with it for production,
+and the target "sync-to-DB, serve-from-DB" architecture — plus a concrete, incremental
+migration plan that keeps the app working at every step.
+
+---
+
+## 1. Where we are today
+
+The web request path does **three heavy things inline**:
+
+```
+Browser ──▶ FastAPI route ──▶ ① query CRM (SQL Server, live)
+                              ② run planning math (planning_filter.py, ~3000 lines)
+                              ③ serialize + return JSON
+```
+
+The only thing that stops CRM being hit on every click is an **in-memory** `@lru_cache`
+inside the running Python process.
+
+### Consequences
+| Symptom | Root cause |
+|---|---|
+| Cold start ~150s | The dataset + RM plan are built from CRM on the first request / prewarm. |
+| CRM outage → pages empty | No durable copy of CRM data; the cache is RAM-only. |
+| Every restart re-queries CRM | Cache is in-process memory, lost on restart. |
+| Heavy math blocks requests | BOM explosion / netting runs in the web worker. |
+| Can't run more than one instance | Cache is per-process; state is not shared. |
+| No history of CRM state | Nothing is persisted, so no trend / no audit of "what did stock look like at JC4?". |
+
+**Note:** this is a reasonable *prototype* pattern (read-through cache). It is not "wrong" —
+it simply was not built for resilience, restart-safety, or scale.
+
+---
+
+## 2. Target architecture: sync-to-DB, serve-from-DB
+
+Separate the three concerns into **two processes** that communicate only through MySQL.
+
+```
+        ┌───────────────────────────────────────────────┐
+CRM ───▶ │  worker.py   (APScheduler — every ~20 min)     │
+SQLSvr   │    SYNC:    CRM  → MySQL staging tables         │
+BOMfiles │    COMPUTE: staging + BOM → plan → MySQL         │──┐ writes
+─────────│    also runs on a "refresh now" request         │  │
+         └───────────────────────────────────────────────┘  ▼
+                                              ┌────────────────────────────┐
+                            reads only        │           MySQL            │
+                     ┌──────────────────────▶ │  stg_* (current CRM state) │
+                     │                        │  computed_plan (RM plans)  │
+       ┌─────────────┴────────────────┐       │  sync_runs (freshness log) │
+React ─▶│  main.py  (FastAPI API)      │       │  JC_PLAN / confirmations…  │
+UI     │  reads MySQL only → instant,  │       └────────────────────────────┘
+        │  always up, returns synced_at │
+        └──────────────────────────────┘
+```
+
+- **API (`main.py`)** never talks to CRM. It reads staging + computed plans from MySQL.
+  Fast, restart-safe, available even while CRM is down or the worker is mid-run.
+- **Worker (`worker.py`)** is the only component that touches CRM and runs the planning
+  engine. Scheduled every ~20 min; also triggered on demand.
+- **Coordination is through MySQL** — no message broker needed on a single server.
+
+### What this fixes
+Instant cold start · CRM-down resilience (serve last good snapshot) · restart-safe ·
+heavy compute off the request path · stateless API (can scale later) · CRM history for free.
+
+---
+
+## 2a. Diagrams
+
+### Entity-Relationship — the new tables (Phase 1)
+
+```mermaid
+erDiagram
+    sync_runs {
+      bigint   run_id PK
+      varchar  source
+      datetime started_at
+      datetime finished_at
+      varchar  status
+      int      row_count
+      varchar  error
+    }
+    sync_requests {
+      bigint   id PK
+      varchar  source
+      datetime requested_at
+      varchar  status
+      datetime claimed_at
+    }
+    stg_stock_lots {
+      bigint   id PK
+      varchar  item_code
+      varchar  organization
+      varchar  subinv
+      varchar  lot
+      decimal  qty
+      date     aging_date
+      int      age_days
+    }
+    stg_item_segments {
+      varchar  item_code PK
+      varchar  item_name
+      varchar  division_target
+      varchar  segment1
+      varchar  segment2
+      varchar  segment3
+    }
+    computed_plan {
+      varchar  fy
+      int      jc
+      json     payload_json
+      datetime computed_at
+    }
+    stg_stock_lots ||--o| stg_item_segments : "item_code → division/segment (enrich)"
+    sync_runs ||--o{ stg_stock_lots : "each run replaces"
+    sync_runs ||--o{ stg_item_segments : "each run replaces"
+```
+
+*Note:* the `item_code` link and `sync_runs → stg_*` are **logical** relationships (join
+key / provenance), not enforced foreign keys — staging tables are replaced wholesale.
+`computed_plan` is the Phase-3 table (shown for context).
+
+### Sequence — scheduled sync (worker → CRM → MySQL)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant W as worker.py (scheduled)
+    participant CRM as CRM SQL Server
+    participant DB as MySQL (staging)
+    W->>DB: INSERT sync_runs (status=running)
+    W->>CRM: SELECT stock_lots / item_segments
+    CRM-->>W: rows
+    W->>DB: BEGIN; DELETE stg_*; INSERT rows; COMMIT
+    Note right of DB: readers keep seeing the<br/>previous snapshot until COMMIT
+    W->>DB: UPDATE sync_runs (status=ok, row_count)
+```
+
+### Sequence — a page request (UI → API → MySQL, CRM never touched)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as React (MfgStock.jsx)
+    participant API as FastAPI (routers/mfg_stock)
+    participant DB as MySQL (staging)
+    UI->>API: GET /api/mfg-stock
+    API->>DB: SELECT stg_stock_lots + stg_item_segments
+    DB-->>API: last good snapshot
+    API-->>UI: JSON (+ "data as of <synced_at>")
+    Note over UI,API: no CRM call → the page works<br/>even while CRM is down
+```
+
+### Sequence — "Refresh now"
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI
+    participant API
+    participant DB as MySQL
+    participant W as worker.py
+    UI->>API: POST /api/refresh
+    API->>DB: INSERT sync_requests (pending)
+    API-->>UI: 202 accepted
+    loop every ~30s
+      W->>DB: claim pending requests
+    end
+    W->>CRM: re-sync (on claim)
+    W->>DB: replace staging + write sync_runs
+    UI->>API: GET /api/sync-status (poll)
+    API->>DB: last_sync()
+    API-->>UI: "Updated just now"
+```
+
+---
+
+## 3. Data model & refresh strategy
+
+The central decision: **how do sync writes update the tables?** It depends on the data type.
+The default for current-state data is **UPSERT (replace-in-place by key), never blind append.**
+
+### Table strategies
+| Table | What it holds | Write strategy |
+|---|---|---|
+| `stg_stock`, `stg_soc_pending`, `stg_projection`, `stg_item_master`, `stg_pto_pts` | **current state** (only "now" matters) | **UPSERT + prune by run_id** (or full-replace-via-shadow-swap) |
+| `PO_RECEIPTS`, `stg_dispatch` | **immutable events** (accumulate) | **UPSERT by event key** (dedup) — already implemented for PO |
+| `sync_runs` | one row per sync attempt | **APPEND** — this is the freshness log + audit |
+| `computed_plan` | the finished RM plan per cycle | **UPSERT by (fy, jc)** — one current plan |
+| `stg_stock_snapshot` *(optional)* | periodic stock snapshots for aging/trend | **APPEND with run_id** + retention policy |
+
+### Why not blind append for staging
+Appending current-state data every sync produces **duplicate rows** for the same item
+(one per sync) and unbounded growth; every query would then need "latest per item".
+Upsert keeps exactly one current row per entity.
+
+### The deletion gotcha
+Upsert updates/inserts but never removes rows that **disappeared** from CRM (e.g. stock
+went to zero and CRM stopped returning it). Handle with one of:
+- **Full-replace-via-shadow-swap**: load into `stg_stock_new`, then `RENAME TABLE` swap —
+  deletions handled automatically, no empty window; **or**
+- **Upsert + prune**: stamp every row with the current `run_id`; after the run,
+  `DELETE FROM stg_stock WHERE last_run_id < :this_run`.
+
+### Never truncate the live table
+Do not `TRUNCATE` then `INSERT` on a table the API reads — a request in the gap sees it
+empty. Use the shadow-swap or a transaction so readers always see a complete snapshot.
+
+### `sync_runs` shape
+```
+sync_runs(
+  run_id      BIGINT PK AUTO_INCREMENT,
+  source      VARCHAR(32),     -- 'stock' | 'projection' | 'compute' | 'all'
+  started_at  DATETIME,
+  finished_at DATETIME NULL,
+  status      VARCHAR(16),     -- 'running' | 'ok' | 'error'
+  row_count   INT NULL,
+  error       VARCHAR(255) NULL
+)
+```
+The API reads the latest `ok` run per source to show **"data as of 09:32"** and to warn
+when the last sync failed.
+
+---
+
+## 4. "Refresh now" (no message broker)
+
+1. UI button → `POST /api/refresh` → API inserts a row into a small `sync_requests` table.
+2. `worker.py` polls `sync_requests` every ~30s (in addition to its schedule), claims the
+   request, runs sync + compute, writes `sync_runs`.
+3. UI polls `GET /api/sync-status` → shows "Refreshing…" then "Updated 2 min ago".
+
+Durable (survives restarts), single-server-friendly, and no Redis/Celery required.
+
+---
+
+## 5. What changes in the existing code
+
+| Component | Change |
+|---|---|
+| `app/integration/crm_sources.py` (CRM SQL) | **Moves to the worker**, unchanged — same queries, run on a schedule instead of per request. |
+| `app/api/live.py` loaders (`_crm_stock`, …) | Stop calling `_crm.*`; instead `SELECT` from the `stg_*` tables. Small mechanical change per loader. |
+| `app/integration/planning_filter.py` (engine) | **Untouched** — the worker feeds it staging rows instead of live CRM rows. |
+| `app/prewarm.py` + the lifespan prewarm | **Removed** — nothing heavy runs in the API startup anymore. |
+| `app/integration/mysql_db.py` | Gains the staging upsert/prune helpers (generalizing the existing `ingest_po_receipts`). |
+| New: `backend/worker.py` | APScheduler process: sync jobs + compute job + `sync_requests` poller. |
+
+The React frontend is largely unchanged — add a **freshness indicator** ("data as of …")
+and a **Refresh now** button.
+
+---
+
+## 6. Tech choices (right-sized for one server)
+
+- **Scheduler:** `APScheduler` (in-process to `worker.py`). Simple, no broker. Move to
+  Celery/RQ + Redis **only** if you later need multiple workers, retries, or isolation.
+- **Database:** stay on **MySQL** (already in use). Add `stg_*`, `sync_runs`, `sync_requests`,
+  `computed_plan`.
+- **Cache:** **Redis not needed** at this scale — MySQL reads are fast, and there is one API
+  process. Add it only when running multiple API instances.
+- **Deployment:** two processes on the one on-prem box:
+  `python main.py` (API) and `python worker.py` (sync+compute). Run each under a
+  process manager (NSSM/Task Scheduler on Windows, or systemd on Linux).
+
+---
+
+## 7. Migration plan (incremental — app works after every phase)
+
+**Phase 0 — Metadata (½–1 day)**
+Add `sync_runs` + `sync_requests` tables and a `synced_at` concept. No behavior change yet.
+
+**Phase 1 — Prove the pattern on ONE source: stock (2–3 days)**
+1. Create `stg_stock` (+ upsert/prune helper).
+2. `worker.py` with one job `sync_stock()`: CRM `stock_lots` → upsert `stg_stock` → write `sync_runs`.
+3. Point `_crm_stock()` / `_mfg_stock()` at `stg_stock` instead of CRM.
+4. **Acceptance test:** MFG-Stock page renders from DB; then stop CRM and confirm it *still* works. 🎯
+
+**Phase 2 — Migrate remaining sources (~1 week)**
+projection, SOC pending, dispatch, item master, PTO/PTS → their own `stg_*` tables + sync jobs.
+
+**Phase 3 — Offload compute (3–5 days)**
+Move `_build_rm` / planning into a worker job that writes `computed_plan`; the API serves the
+last computed plan. Remove the prewarm.
+
+**Phase 4 — Schedule + Refresh now (1–2 days)**
+APScheduler runs the full sync+compute every ~20 min; wire `POST /api/refresh` + the UI indicator.
+
+**Phase 5 — (optional, later) Scale**
+Only if needed: Redis cache + multiple API instances + Celery/RQ. No rewrite required — the
+API is already read-only against MySQL.
+
+---
+
+## 8. Trade-offs & decisions
+
+- **Staleness:** data is as fresh as the last sync (~20 min) — acceptable per requirement.
+  The "Refresh now" button covers the "I need it now" case.
+- **CRM load:** far lower — a handful of scheduled queries instead of per-request bursts.
+- **Failure mode:** if a sync fails, the API keeps serving the previous snapshot and shows a
+  "last sync failed at HH:MM" warning (from `sync_runs`).
+- **Consistency:** each `stg_*` table is internally consistent (shadow-swap / transaction);
+  cross-source consistency is "as of the last full sync run".
+- **History:** optional snapshot tables unlock trend/what-changed analysis and make the
+  Projection-Accuracy page a natural byproduct.
+
+---
+
+## 9. Summary
+
+Move CRM access and the planning engine **out of the request path** into a scheduled
+`worker.py`; persist a **current snapshot** of CRM in MySQL `stg_*` tables (upsert-in-place,
+pruned for deletions) plus the **computed plan**; and make the FastAPI API a thin, fast,
+always-available **reader** of MySQL. It reuses the pattern the codebase already has for
+`PO_RECEIPTS`, needs no new infrastructure, and grows into horizontal scale without a rewrite.

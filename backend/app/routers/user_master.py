@@ -12,9 +12,9 @@ import os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .integration import crm_sources as _crm
-from .integration import planning_settings as _ps
-from .integration import user_master as _um
+from ..integration import crm_sources as _crm
+from ..integration import planning_settings as _ps
+from ..integration import user_master as _um
 
 router = APIRouter(prefix="/api/user-master", tags=["user-master"])
 

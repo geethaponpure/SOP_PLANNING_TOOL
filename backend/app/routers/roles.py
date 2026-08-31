@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from .integration import app_roles as _roles
-from .integration import user_master as _um   # reuse the access-audit log
+from ..integration import app_roles as _roles
+from ..integration import user_master as _um   # reuse the access-audit log
 
 router = APIRouter(prefix="/api/roles", tags=["roles"])
 

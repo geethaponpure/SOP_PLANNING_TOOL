@@ -15,10 +15,10 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import publish as _pub
-from .integration import crm_sources as _crm
-from .integration import srdms, srdms_store
-from .integration import user_master as _um
+from .. import publish as _pub
+from ..integration import crm_sources as _crm
+from ..integration import srdms, srdms_store
+from ..integration import user_master as _um
 
 router = APIRouter(prefix="/api/srdms", tags=["srdms"])
 
@@ -181,7 +181,7 @@ def items(q: str | None = None):
 @router.get("/user-roles")
 def get_user_roles():
     m = srdms_store.masters()
-    from .integration import app_roles as _roles
+    from ..integration import app_roles as _roles
     # roles come from the Role Master (DB); fall back to the SRDMS default list.
     roles = _roles.role_names() or m.get("srdms_roles", [])
     return {"user_roles": m.get("user_roles", {}), "roles": roles}

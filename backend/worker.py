@@ -1,0 +1,108 @@
+"""Sync + compute worker — the ONLY component that talks to CRM.
+
+Phase 1 (see ARCHITECTURE.md): pulls the CRM sources the MFG-Stock page needs
+(lot-wise stock + item→segment map) into the MySQL staging tables. The API then
+serves those tables and never touches CRM at request time.
+
+Usage:
+    python worker.py               # run one full sync now, then exit
+    python worker.py --loop 1200   # sync now, then every 1200s; also drains the
+                                   #   "Refresh now" queue every 30s
+
+(The APScheduler-based scheduling in ARCHITECTURE.md Phase 4 will replace the
+simple --loop below; the sync functions here stay the same.)
+"""
+from __future__ import annotations
+
+import sys
+import time
+
+from app.integration import crm_sources as crm     # importing app also loads backend/.env
+from app.integration import planning_settings as _ps
+from app.integration import staging
+
+
+def _sync(source: str, fetch, replace) -> int:
+    """Run one source sync: log a run, pull from CRM, replace the staging table."""
+    run_id = staging.start_run(source)
+    t0 = time.time()
+    try:
+        rows = fetch() or []
+        n = replace(rows)
+        staging.finish_run(run_id, "ok", n)
+        print(f"[sync] {source}: {n} rows in {time.time() - t0:.1f}s")
+        return n
+    except Exception as e:   # noqa: BLE001
+        msg = f"{type(e).__name__}: {str(e).splitlines()[0]}"
+        staging.finish_run(run_id, "error", None, msg)
+        print(f"[sync] {source} FAILED: {msg[:160]}")
+        return -1
+
+
+def sync_stock_lots() -> int:
+    return _sync("stock_lots", crm.stock_lots, staging.replace_stock_lots)
+
+
+def sync_item_segments() -> int:
+    return _sync("item_segments", crm.item_segments, staging.replace_item_segments)
+
+
+def sync_stock_details() -> int:
+    return _sync("stock_details", crm.stock_details, staging.replace_stock_details)
+
+
+def sync_item_business() -> int:
+    return _sync("item_business", crm.item_business, staging.replace_item_business)
+
+
+def sync_pto_pts() -> int:
+    return _sync("pto_pts", crm.pto_pts, staging.replace_pto_pts)
+
+
+def sync_stock_aged() -> int:
+    days = int(_ps.load().get("aged_rm_days", 90))
+    return _sync("stock_aged", lambda: crm.stock_details_aged(days), staging.replace_stock_aged)
+
+
+def sync_vooki_items() -> int:
+    biz = _ps.load().get("vooki_business", "Vooki Division")
+    return _sync("vooki_items", lambda: crm.vooki_division_items(biz), staging.replace_vooki_items)
+
+
+def sync_soc_schedule() -> int:
+    return _sync("soc_schedule", crm.soc_schedule, staging.replace_soc_schedule)
+
+
+SYNCS = [sync_item_segments, sync_stock_lots, sync_stock_details,
+         sync_item_business, sync_pto_pts,
+         sync_stock_aged, sync_vooki_items, sync_soc_schedule]
+
+
+def run_all() -> None:
+    print("[worker] full sync starting…")
+    for fn in SYNCS:
+        fn()
+    print("[worker] full sync done.")
+
+
+def _loop(interval: int) -> None:
+    """Simple stand-in scheduler until Phase 4 (APScheduler): full sync every
+    `interval` seconds, and drain the Refresh-now queue every ~30s in between."""
+    run_all()
+    next_full = time.time() + interval
+    while True:
+        time.sleep(30)
+        if staging.claim_pending_requests():
+            print("[worker] refresh requested → syncing")
+            run_all()
+            next_full = time.time() + interval
+        elif time.time() >= next_full:
+            run_all()
+            next_full = time.time() + interval
+
+
+if __name__ == "__main__":
+    if len(sys.argv) >= 3 and sys.argv[1] == "--loop":
+        _loop(int(sys.argv[2]))
+    else:
+        run_all()
