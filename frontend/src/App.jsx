@@ -4,6 +4,7 @@ import { api } from "./api";
 import { useAsync, Loading, useScrollFade } from "./components/ui.jsx";
 import DataFreshness from "./components/DataFreshness.jsx";
 import ProfileMenu from "./components/ProfileMenu.jsx";
+import SupplyInfo from "./components/SupplyInfo.jsx";
 import Login from "./pages/Login.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
 import Overview from "./pages/Overview.jsx";
@@ -189,6 +190,7 @@ export default function App() {
       <div className="main">
         <div className="topbar">
           <h2>{NAV.find((n) => n.id === page)?.label}</h2>
+          {page === "supply" && <SupplyInfo />}
           <div className="cycle-pill">
             <DataFreshness />
             {cycle && (

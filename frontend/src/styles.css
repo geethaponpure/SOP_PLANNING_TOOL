@@ -537,6 +537,40 @@ body {
 .pg-btn:hover:not(:disabled) { background: #f4f7fe; border-color: #cbd5e0; }
 .pg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* ---- "How it's calculated" info disclosure (Supply page) — scoped <details> popup ---- */
+.supply-info { position: relative; display: inline-flex; align-items: center; }
+.supply-info-btn {
+  display: inline-flex; align-items: center; justify-content: center; border: none; cursor: pointer;
+  width: 28px; height: 28px; padding: 0; border-radius: 50%;
+  color: #185adb; background: transparent; transition: background 0.15s ease, color 0.15s ease;
+}
+.supply-info-btn:hover { background: #e8f0ff; color: #1348af; }
+.supply-info-btn svg { width: 18px; height: 18px; }
+/* transparent full-screen catcher so clicking anywhere closes the popup */
+.supply-info-backdrop { position: fixed; inset: 0; z-index: 55; }
+/* dark popup, opens DOWNWARD from the trigger, right-aligned (was upward in the source) */
+.supply-info-pop {
+  position: absolute; z-index: 60; top: calc(100% + 0.6rem); left: 0;
+  width: 440px; max-width: 92vw; max-height: 380px; overflow-y: auto;
+  background: #1e1e27; color: #95a3b9; padding: 16px 18px; border-radius: 10px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32); transform-origin: 0 0;
+  font-size: 13px; line-height: 1.55; text-align: left; font-weight: 400;
+  animation: supply-info-scale 0.22s ease;
+}
+.supply-info-pop b { color: #e6ebf2; }
+.supply-info-title { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 12px; }
+.supply-info-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.supply-info-list li { line-height: 1.5; }
+.supply-info-list b { color: #9cc4ff; }
+.supply-info-pop code { background: #2a2a35; color: #cfe3ff; padding: 1px 5px; border-radius: 4px; font-family: ui-monospace, monospace; }
+.supply-info-pop::-webkit-scrollbar { width: 12px; background: #1e1e27; }
+.supply-info-pop::-webkit-scrollbar-thumb { border-radius: 99em; background: #95a3b9; border: 4px solid #1e1e27; }
+@keyframes supply-info-scale {
+  0% { transform: scale(0.85); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+
 /* ---- Refresh button (top bar Data-freshness) — red pill, icon spins on hover/sync ---- */
 .refresh-btn {
   display: inline-flex; justify-content: center; align-items: center; gap: 7px;
@@ -1100,6 +1134,37 @@ td.num b { color: var(--navy); }
 }
 .supply-tool-card > span:first-child { color: var(--supply-ink); }
 .supply-tool-card select, .supply-tool-card input[type="file"] { min-height: 38px; }
+
+/* Styled file drop-zone — shown only for Consolidate / Excel-only modes */
+.drop-container {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 2px dashed rgb(171, 202, 255);
+  background: #fff;
+  color: #444;
+  cursor: pointer;
+  transition: background .2s ease-in-out, border-color .2s ease-in-out;
+}
+.drop-container:hover {
+  background: rgba(0, 140, 255, 0.08);
+  border-color: rgba(17, 17, 17, 0.45);
+}
+.drop-container:hover .drop-title { color: #222; }
+.drop-container input[type="file"] { display: none; }
+.drop-icon { width: 12px; height: 12px; color: #084cdf; flex-shrink: 0; }
+.drop-title {
+  color: #444;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  transition: color .2s ease-in-out;
+}
+.drop-title small { display: block; font-weight: 500; font-size: 11px; color: rgb(105,105,105); }
+.drop-container.has-file { border-style: solid; border-color: #084cdf; background: rgba(8, 76, 223, 0.05); }
 
 .supply-workspace {
   /* scrolls with the page (was position: sticky, which pinned it and hid the

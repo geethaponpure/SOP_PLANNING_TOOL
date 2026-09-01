@@ -14,8 +14,8 @@ function TemplateBar() {
   const segments = data?.segments || [];
   const seg3opts = segments.find((x) => x.segment2 === seg2)?.segment3 || [];
   return (
-    <div className="card supply-tool-card" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
-      <span><b>📄 Plan-input template</b> <span style={{ fontSize: 12, color: "var(--muted)" }}>· Segment 1 = Performance Chemicals</span></span>
+    <div className="card supply-tool-card" style={{ display: "flex", flexWrap: "nowrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
+      <span style={{ flexShrink: 0 }}><b>📄 Plan-input template</b> <span style={{ fontSize: 12, color: "var(--muted)" }}>· Segment 1 = Performance Chemicals</span></span>
       <SelectBox className="searchbox" style={{ maxWidth: 210 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
         <option value="">All Segment 2</option>
         {segments.map((x) => <option key={x.segment2} value={x.segment2}>{x.segment2}</option>)}
@@ -24,7 +24,7 @@ function TemplateBar() {
         <option value="">All Segment 3</option>
         {seg3opts.map((o) => <option key={o} value={o}>{o}</option>)}
       </SelectBox>
-      <button className="btn" style={{ marginLeft: "auto" }} disabled={busy}
+      <button className="btn" style={{ marginLeft: "auto", flexShrink: 0, whiteSpace: "nowrap" }} disabled={busy}
         title="Excel template (S.No, Item Description [dropdown], Qty, Current JC, Next JC1, Next JC2)"
         onClick={async () => { setBusy(true); try { await api.templateDownload(seg2, seg3); } catch (e) { alert(e.message); } finally { setBusy(false); } }}>
         {busy ? "Preparing…" : "⤓ Download Template"}
@@ -51,8 +51,6 @@ function UploadBar({ onPlan, active, onClear }) {
   return (
     <div className="card supply-tool-card" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
       <span><b>⬆️ Generate plan</b></span>
-      <input type="file" accept=".xlsx" disabled={mode === "crm"} onChange={(e) => setFile(e.target.files[0])}
-        style={{ fontSize: 13, opacity: mode === "crm" ? 0.5 : 1 }} />
       <SegTabs
         value={mode}
         onChange={setMode}
@@ -62,7 +60,19 @@ function UploadBar({ onPlan, active, onClear }) {
           { id: "excel_only", label: "Excel only" },
         ]}
       />
-      <button className="btn" style={{ marginLeft: "auto" }} disabled={busy} onClick={go}>{busy ? "Planning…" : "▶ Generate Plan"}</button>
+      {mode !== "crm" && (
+        <label className={"drop-container" + (file ? " has-file" : "")} style={{ marginLeft: "auto" }}>
+          <input type="file" accept=".xlsx" onChange={(e) => setFile(e.target.files[0])} />
+          <svg className="drop-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          <span className="drop-title">{file ? file.name : "Choose file"}<small>{file ? "Click to replace" : "Upload filled template (.xlsx)"}</small></span>
+        </label>
+      )}
+      <button className="btn" style={{ marginLeft: mode === "crm" ? "auto" : 0 }} disabled={busy} onClick={go}>{busy ? "Planning…" : "▶ Generate Plan"}</button>
       {active && <button className="btn secondary" onClick={onClear}>↺ Back to CRM plan</button>}
     </div>
   );
@@ -148,33 +158,6 @@ function RMPlanning() {
         {data.soc_window && <span>🧾 <b>Pending SOC:</b> {data.soc_window.from <= "1900-01-01" ? "As on date" : data.soc_window.from} → {data.soc_window.to}</span>}
         {data.po_window && <span>🚚 <b>Pending PO dates:</b> {data.po_window.from} → {data.po_window.to}</span>}
       </div>
-      <div className="banner info page-intro supply-method">
-        <b>Planning Filtration Technique.</b> 3-JC projection → BOM by preference
-        (<b>PMO → BULK/HDLK → newest BOM → Primary</b>) with main RM + substitutes → netted against filtered RM stock and PO pending.
-        Click a row to expand; use <b>More</b> to override the BOM (RM requirement re-computes instantly).
-        Packing BOMs are shown separately under each product for packing-material planning.
-        <div style={{ marginTop: 6, fontSize: 12.5 }}>
-          <b>JC{pjc} Qty = (JC{pjc} WK1 + WK2) + MFG SOC Pending.</b> The current-JC quantity is the sum of the approved
-          projection's JC{pjc}&nbsp;week-1 and week-2 qty
-          {data.planning_jc_from ? ` (JC${pjc}: ${data.planning_jc_from} → ${data.planning_jc_to})` : ""}. Stock is read live from CRM (<code>SPBiStockDetails</code>);
-          <b>MFG SOC Pending</b> (un-despatched sale orders for the manufacturing/trading dispatch orgs, by <code>soc_date</code>) is added to the planning JC —
-          <b>Overall SOC</b> (all orgs) is shown for reference only. <b>Mfg Req (Current)</b> = (JC{pjc} Qty + <b>MSL</b>) − on-hand FG (Warehouse + Branch); <b>Mfg Req (3 JC)</b> = (Total + MSL) − on-hand (Warehouse + Branch). The <b>MSL</b> safety-stock buffer applies only to valid items (moved in &gt;10 of 13 JCs AND &gt;5 unique customers).
-          {" "}<b>Producible (RM)</b> = FG makeable from currently-available RM (bottleneck: limited by the scarcest component, only if all RMs are on hand).
-          {data.soc_window && <> SOC window <b>{data.soc_window.from <= "1900-01-01" ? "As on date" : data.soc_window.from} → {data.soc_window.to}</b> (all open pending — “as on date” — up to the close of the JC before JC{pjc})</>}.
-          {typeof s?.min_plan_qty === "number" && (
-            <div style={{ marginTop: 4 }}>
-              🔎 <b>Negligible-quantity filter:</b> an item is planned only if a projection JC quantity (any of JC{pjc}–JC{pjc + 2})
-              {" "}<b>or</b> its Pending SOC is <b>more than {fmt.num(s.min_plan_qty)} KG</b>. Example: projection is 0 but SOC is 40 → still planned;
-              {" "}if all three JC quantities and the SOC are ≤ {fmt.num(s.min_plan_qty)}, the item is dropped as negligible.
-            </div>)}
-          {data.intransit && (
-            <div style={{ marginTop: 4 }}>
-              🚚 <b>In-transit</b> = {data.intransit.source === "crm"
-                ? <>live open-PO balance from CRM (<code>ordered − received − cancelled</code>), for POs placed since <b>{data.intransit.from}</b> (last {data.intransit.po_months} months) and ordered ≤ <b>{fmt.num(data.intransit.blanket_po_qty)} KG</b> (excludes blanket/framework contracts)</>
-                : <>the PO_receipts register file (date-windowed snapshot)</>}. It's added to RM <b>Available</b> and reduces <b>Net to buy</b>.
-            </div>)}
-        </div>
-      </div>
       {data.projection_jc_note && (
         <div className="banner supply-notice">
           ⚠️ <b>Projection roll-forward:</b> {data.projection_jc_note}
@@ -201,7 +184,42 @@ function RMPlanning() {
         </div>
       )}
 
-      <div className="supply-workspace" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, margin: "16px 0 8px" }}>
+      {/* Card 1 — actions */}
+      <div className="supply-workspace supply-actions" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "16px 0 10px" }}>
+        {overrideCount > 0 && (
+          <button className="btn" disabled={applying}
+            title="Rebuild & save the plan using your chosen BOMs (flows into consolidated RM, Excel & Production Scheduling)"
+            onClick={applyOverrides}>
+            {applying ? "Applying… (~2 min)" : `✓ Apply ${overrideCount} BOM override${overrideCount > 1 ? "s" : ""}`}
+          </button>
+        )}
+        <button className="btn secondary" disabled={savingPlan}
+          title="Save this JC's RM plan (freezes RM allocation for adhoc planning)"
+          onClick={async () => {
+            setSavingPlan(true);
+            try { const r = await api.saveJcPlan(); alert(`✓ JC Plan saved — Plan ID ${r.plan_id}. Adhoc planning can now deduct this plan's RM allocation.`); }
+            catch (e) { alert("Save failed: " + e.message); } finally { setSavingPlan(false); }
+          }}>
+          {savingPlan ? "Saving…" : "💾 Save JC Plan"}
+        </button>
+        <button className="btn" disabled={exporting}
+          onClick={async () => { setExporting(true); try { await (uploaded?.plan_id ? api.planExport(uploaded.plan_id) : api.rmPlanningExport()); } catch (e) { alert(e.message); } finally { setExporting(false); } }}>
+          {exporting ? "Exporting…" : (uploaded ? "⤓ Download uploaded plan (Excel)" : "⤓ Download report (Excel)")}
+        </button>
+        <button className="btn secondary" disabled={segExporting}
+          title="A ZIP with a separate Excel file per Segment 2 (each split Manufacturing / Others) to share with the Business Units — each file includes a Reference sheet (understanding note + organization matrix)"
+          onClick={async () => { setSegExporting(true); try { await api.rmSegmentExport(uploaded?.plan_id || null); } catch (e) { alert(e.message); } finally { setSegExporting(false); } }}>
+          {segExporting ? "Zipping…" : "⤓ Projection Confirmation to Share BU"}
+        </button>
+        <button className="btn secondary" disabled={packExporting}
+          title="Separate workbook: Packing Material (consolidated) + Packing BOMs (per-FG packing components) — split out of the RM plan"
+          onClick={async () => { setPackExporting(true); try { await api.packingExport(uploaded?.plan_id || null); } catch (e) { alert(e.message); } finally { setPackExporting(false); } }}>
+          {packExporting ? "Exporting…" : "⤓ Packing plan (Excel)"}
+        </button>
+      </div>
+
+      {/* Card 2 — view toggle */}
+      <div className="supply-workspace supply-viewtabs" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, margin: "0 0 8px" }}>
         <SegTabs value={mode}
           onChange={(m) => { setMode(m); setQ(""); if (m !== "product") { setSeg2(""); setSeg3(""); } }}
           tabs={[
@@ -209,38 +227,6 @@ function RMPlanning() {
             { id: "consolidated", label: "Consolidated RM purchase" },
             { id: "realrm", label: "Real RM (exploded)", title: "Intermediates exploded to their purchased (leaf) raw materials — the true buy-list" },
           ]} />
-        <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap", alignItems: "center" }}>
-          {overrideCount > 0 && (
-            <button className="btn" disabled={applying}
-              title="Rebuild & save the plan using your chosen BOMs (flows into consolidated RM, Excel & Production Scheduling)"
-              onClick={applyOverrides}>
-              {applying ? "Applying… (~2 min)" : `✓ Apply ${overrideCount} BOM override${overrideCount > 1 ? "s" : ""}`}
-            </button>
-          )}
-          <button className="btn secondary" disabled={savingPlan}
-            title="Save this JC's RM plan (freezes RM allocation for adhoc planning)"
-            onClick={async () => {
-              setSavingPlan(true);
-              try { const r = await api.saveJcPlan(); alert(`✓ JC Plan saved — Plan ID ${r.plan_id}. Adhoc planning can now deduct this plan's RM allocation.`); }
-              catch (e) { alert("Save failed: " + e.message); } finally { setSavingPlan(false); }
-            }}>
-            {savingPlan ? "Saving…" : "💾 Save JC Plan"}
-          </button>
-          <button className="btn" disabled={exporting}
-            onClick={async () => { setExporting(true); try { await (uploaded?.plan_id ? api.planExport(uploaded.plan_id) : api.rmPlanningExport()); } catch (e) { alert(e.message); } finally { setExporting(false); } }}>
-            {exporting ? "Exporting…" : (uploaded ? "⤓ Download uploaded plan (Excel)" : "⤓ Download report (Excel)")}
-          </button>
-          <button className="btn secondary" disabled={segExporting}
-            title="A ZIP with a separate Excel file per Segment 2 (each split Manufacturing / Others) to share with the Business Units — each file includes a Reference sheet (understanding note + organization matrix)"
-            onClick={async () => { setSegExporting(true); try { await api.rmSegmentExport(uploaded?.plan_id || null); } catch (e) { alert(e.message); } finally { setSegExporting(false); } }}>
-            {segExporting ? "Zipping…" : "⤓ Projection Confirmation to Share BU"}
-          </button>
-          <button className="btn secondary" disabled={packExporting}
-            title="Separate workbook: Packing Material (consolidated) + Packing BOMs (per-FG packing components) — split out of the RM plan"
-            onClick={async () => { setPackExporting(true); try { await api.packingExport(uploaded?.plan_id || null); } catch (e) { alert(e.message); } finally { setPackExporting(false); } }}>
-            {packExporting ? "Exporting…" : "⤓ Packing plan (Excel)"}
-          </button>
-        </div>
       </div>
 
       <div className="pagebar supply-filters">
