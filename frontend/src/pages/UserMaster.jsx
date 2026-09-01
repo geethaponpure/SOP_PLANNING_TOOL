@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from "react";
+import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
+import AvatarPicker from "../components/AvatarPicker.jsx";
+import { avatarUrl } from "../assets/avatars/index.js";
 import { NAV, HIDDEN } from "../nav";
 import { api } from "../api";
 import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
@@ -14,6 +18,7 @@ export default function UserMaster() {
   const [approver, setApprover] = useState(() => localStorage.getItem("um_approver") || "");
   const saveApprover = (v) => { setApprover(v); localStorage.setItem("um_approver", v); };
   const [tab, setTab] = useState("approved");   // "approved" | "crm"
+  const [pickFor, setPickFor] = useState(null); // user_code whose avatar picker is open
 
   const status = useAsync(() => api.userMaster.status(), [ver]);
   const usersA = useAsync(() => api.userMaster.users(), [ver]);
@@ -71,7 +76,7 @@ export default function UserMaster() {
 
       <div className="pagebar" style={{ marginTop: 10 }}>
         <span style={{ fontSize: 12, color: "var(--muted)" }}>Approving as:</span>
-        <input className="searchbox" style={{ maxWidth: 220 }} placeholder="your name / email"
+        <SmoothInput className="searchbox" style={{ maxWidth: 220 }} placeholder="your name / email"
           value={approver} onChange={(e) => saveApprover(e.target.value)} />
       </div>
 
@@ -98,6 +103,13 @@ export default function UserMaster() {
             return (
               <div key={u.user_code} className="card" style={{ padding: 16 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
+                  <button className="um-avatar" onClick={() => setPickFor(u.user_code)}
+                    title="Change avatar">
+                    {avatarUrl(u.avatar)
+                      ? <img src={avatarUrl(u.avatar)} alt={`${u.name} avatar`} />
+                      : <span className="um-avatar-ph">👤</span>}
+                    <span className="um-avatar-edit">✎</span>
+                  </button>
                   <div style={{ flex: 1, minWidth: 200 }}>
                     <b style={{ fontSize: 14, color: "var(--navy)" }}>{u.name}</b>
                     <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8, fontFamily: "ui-monospace, Menlo, monospace" }}>{u.username} · {u.user_code}</span>
@@ -151,13 +163,13 @@ export default function UserMaster() {
                         </span>
                       ))}
                       {(u.menus || []).length === 0 && <span style={{ fontSize: 12, color: "var(--muted)" }}>no modules granted</span>}
-                      <select className="searchbox" style={{ maxWidth: 200, fontSize: 12, padding: "6px 8px" }} value=""
+                      <SelectBox className="searchbox" style={{ maxWidth: 200, fontSize: 12, padding: "6px 8px" }} value=""
                         onChange={(e) => { if (e.target.value) act(() => api.userMaster.addMenu(u.user_code, e.target.value, label(e.target.value))); }}>
                         <option value="">+ grant module…</option>
                         {MODULES.filter((m) => !(u.menus || []).some((x) => x.id === m.id)).map((m) => (
                           <option key={m.id} value={m.id}>{m.label}</option>
                         ))}
-                      </select>
+                      </SelectBox>
                       {(u.menus || []).length > 0 &&
                         <button className="chip" title="Grant all modules"
                           onClick={() => act(() => api.userMaster.setMenus(u.user_code, MODULES.map((m) => ({ id: m.id, label: m.label }))))}>all</button>}
@@ -171,6 +183,18 @@ export default function UserMaster() {
         </div>
       )}
       </>}
+
+      {pickFor && (() => {
+        const u = approved.find((x) => x.user_code === pickFor) || {};
+        return (
+          <AvatarPicker
+            current={u.avatar || ""}
+            title={`Avatar — ${u.name || pickFor}`}
+            onSelect={(id) => { act(() => api.userMaster.setAvatar(pickFor, id)); setPickFor(null); }}
+            onClose={() => setPickFor(null)}
+          />
+        );
+      })()}
 
       <AccessLog ver={ver} />
     </>
@@ -289,7 +313,7 @@ function CrmPicker({ ver, approver, onAdded }) {
     <div style={{ marginTop: 16 }}>
       <h3>Available CRM users</h3>
       <div className="pagebar">
-        <input className="searchbox" placeholder="Search name / username / email / code…" value={qInput}
+        <SmoothInput className="searchbox" placeholder="Search name / username / email / code…" value={qInput}
           onChange={(e) => setQInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") setQ(qInput); }} />
         <button className="btn secondary" onClick={() => setQ(qInput)}>Search</button>
         {qInput && <button className="chip" onClick={() => { setQInput(""); setQ(""); }}>✕ Clear</button>}

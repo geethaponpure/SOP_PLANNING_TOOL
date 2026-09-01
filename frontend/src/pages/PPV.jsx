@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 
@@ -11,7 +13,7 @@ export default function PPV() {
   const [seg2, setSeg2] = useState("");
   const [seg3, setSeg3] = useState("");
   const [exporting, setExporting] = useState(false);
-  if (loading) return <Loading what="PPV scorecard — reading 2-year PO receipts (first load ~40s)" />;
+  if (loading) return <Loading what="PPV Scorecard" />;
   if (error) return <ErrorBox msg={error} />;
   if (data.note && (!data.jc_performance || data.jc_performance.length === 0))
     return (
@@ -85,19 +87,19 @@ export default function PPV() {
       </div>
 
       <div className="pagebar" style={{ marginTop: 14 }}>
-        <input className="searchbox" placeholder="Search item…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className="searchbox" style={{ maxWidth: 190 }} value={seg1} onChange={(e) => { setSeg1(e.target.value); setSeg2(""); setSeg3(""); }}>
+        <SmoothInput className="searchbox" placeholder="Search item…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <SelectBox className="searchbox" style={{ maxWidth: 190 }} value={seg1} onChange={(e) => { setSeg1(e.target.value); setSeg2(""); setSeg3(""); }}>
           <option value="">All Segment 1</option>
           {seg1opts.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <select className="searchbox" style={{ maxWidth: 190 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
+        </SelectBox>
+        <SelectBox className="searchbox" style={{ maxWidth: 190 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
           <option value="">All Segment 2</option>
           {seg2opts.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <select className="searchbox" style={{ maxWidth: 190 }} value={seg3} onChange={(e) => setSeg3(e.target.value)}>
+        </SelectBox>
+        <SelectBox className="searchbox" style={{ maxWidth: 190 }} value={seg3} onChange={(e) => setSeg3(e.target.value)}>
           <option value="">All Segment 3</option>
           {seg3opts.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
+        </SelectBox>
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>{items.length} items (by timing overspend)</span>
         <button className="btn" disabled={exporting}
           onClick={async () => { setExporting(true); try { await api.ppvExport(); } catch (e) { alert(e.message); } finally { setExporting(false); } }}>

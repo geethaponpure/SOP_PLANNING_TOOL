@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 
@@ -14,7 +16,7 @@ export default function ItemReceiptSchedule() {
   const [view, setView] = useState("branch"); // "branch" | "warehouse"
   const { data, loading, error } = useAsync(
     () => api.itemReceiptSchedule(planId || null, region), [planId, region]);
-  if (loading) return <Loading what="item receipt schedule — plan demand + production + lead times (first load ~30s)" />;
+  if (loading) return <Loading what="Item Receipt Schedule" />;
   if (error) return <ErrorBox msg={error} />;
 
   const s = data.summary || {};
@@ -42,22 +44,22 @@ export default function ItemReceiptSchedule() {
       <div className="pagebar">
         <label style={{ display: "flex", alignItems: "center", gap: 6, margin: 0, fontSize: 13 }}>
           JC Plan:
-          <select className="searchbox" style={{ maxWidth: 340 }} value={planId || data.selected_plan_id || ""} onChange={(e) => setPlanId(e.target.value)}>
+          <SelectBox className="searchbox" style={{ maxWidth: 340 }} value={planId || data.selected_plan_id || ""} onChange={(e) => setPlanId(e.target.value)}>
             {plans.length === 0 && <option value="">No plans saved</option>}
             {plans.map((p) => <option key={p.plan_id} value={p.plan_id}>#{p.plan_id} · JC{p.jc_number} · {p.plan_type} · {p.plan_datetime}{(p.planned_fg_qty || 0) > 0 ? "" : " · (empty)"}</option>)}
-          </select>
+          </SelectBox>
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: 6, margin: 0, fontSize: 13 }}>
           Branch region:
-          <select className="searchbox" style={{ maxWidth: 260 }} value={region} onChange={(e) => setRegion(e.target.value)}>
+          <SelectBox className="searchbox" style={{ maxWidth: 260 }} value={region} onChange={(e) => setRegion(e.target.value)}>
             {Object.keys(regions).map((rg) => (
               <option key={rg} value={rg} title={(regionStates[rg] || []).join(", ")}>
                 {rg} (+{regions[rg]}d)
               </option>
             ))}
-          </select>
+          </SelectBox>
         </label>
-        <input className="searchbox" style={{ maxWidth: 220 }} placeholder="🔍 Search item…"
+        <SmoothInput className="searchbox" style={{ maxWidth: 220 }} placeholder="🔍 Search item…"
           value={q} onChange={(e) => setQ(e.target.value)} />
         {ql && <span style={{ fontSize: 12, color: "var(--muted)" }}>{items.length} item(s) match</span>}
         <div style={{ marginLeft: "auto", display: "inline-flex", background: "#eef2f7", border: "1px solid var(--border)", borderRadius: 10, padding: 3, gap: 2 }}>

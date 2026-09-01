@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
+import SegTabs from "../components/SegTabs.jsx";
+import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 
@@ -35,27 +38,6 @@ const STATUS_CHIP = {
   "Projected, not produced": { bg: "#FFF4DA", fg: "#8a6d00" },
   "Produced, not projected": { bg: "#FFE5E5", fg: "#9b2c2c" },
 };
-
-// A clean segmented-control tab strip (matches the other planning pages).
-function SegTabs({ tabs, value, onChange }) {
-  return (
-    <div style={{ display: "inline-flex", background: "#eef2f7", border: "1px solid var(--border)",
-      borderRadius: 10, padding: 3, gap: 2 }}>
-      {tabs.map((t) => {
-        const active = value === t.id;
-        return (
-          <button key={t.id} onClick={() => onChange(t.id)}
-            style={{ border: "none", cursor: "pointer", borderRadius: 7, whiteSpace: "nowrap",
-              padding: "7px 15px", fontSize: 13, fontWeight: active ? 700 : 500,
-              background: active ? "#fff" : "transparent", color: active ? "var(--navy)" : "var(--muted)",
-              boxShadow: active ? "0 1px 3px rgba(15,23,42,.14)" : "none", transition: "all .12s" }}>
-            {t.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function ProjectionAccuracy() {
   const meta = useAsync(api.projAccuracyMeta, []);
@@ -112,17 +94,17 @@ export default function ProjectionAccuracy() {
       <div className="pagebar" style={{ marginTop: 12, flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <label style={{ display: "inline-flex", flexDirection: "column", gap: 3, fontSize: 11, color: "var(--muted)" }}>
           Accounting year
-          <select className="searchbox" style={{ width: 150 }} value={accYear} onChange={(e) => { setAccYear(e.target.value); setJc(""); }}>
+          <SelectBox className="searchbox" style={{ width: 150 }} value={accYear} onChange={(e) => { setAccYear(e.target.value); setJc(""); }}>
             {meta.data.years.map((y) => <option key={y.acc_year} value={y.acc_year}>{y.acc_year}</option>)}
-          </select>
+          </SelectBox>
         </label>
         <label style={{ display: "inline-flex", flexDirection: "column", gap: 3, fontSize: 11, color: "var(--muted)" }}>
           Journey cycle
-          <select className="searchbox" style={{ width: 190 }} value={jc} onChange={(e) => setJc(e.target.value)}>
+          <SelectBox className="searchbox" style={{ width: 190 }} value={jc} onChange={(e) => setJc(e.target.value)}>
             <option value="">All JCs (year-to-date)</option>
             {(yearMeta?.jcs || []).map((n) => <option key={n} value={n}>JC{n}</option>)}
             {yearMeta?.has_full && <option value="0">Full-year file</option>}
-          </select>
+          </SelectBox>
         </label>
         <label className="chip" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7,
           whiteSpace: "nowrap", flexShrink: 0, alignSelf: "flex-end", height: 38, padding: "0 12px" }}
@@ -136,7 +118,7 @@ export default function ProjectionAccuracy() {
         </button>
       </div>
 
-      {data.loading && <Loading what="projection accuracy (reading CRM projection + consumption)" />}
+      {data.loading && <Loading what="Projection Accuracy" />}
       {data.error && <ErrorBox msg={data.error} />}
       {data.data && (
         <>
@@ -168,13 +150,13 @@ export default function ProjectionAccuracy() {
               { id: "item", label: "Item" }, { id: "division", label: "Division" }, { id: "product", label: "Product" }]} />
             {tab === "item" && (
               <>
-                <input className="searchbox" style={{ maxWidth: 260 }} placeholder="Search item…" value={q} onChange={(e) => setQ(e.target.value)} />
-                <select className="searchbox" style={{ maxWidth: 200 }} value={statusF} onChange={(e) => setStatusF(e.target.value)}>
+                <SmoothInput className="searchbox" style={{ maxWidth: 260 }} placeholder="Search item…" value={q} onChange={(e) => setQ(e.target.value)} />
+                <SelectBox className="searchbox" style={{ maxWidth: 200 }} value={statusF} onChange={(e) => setStatusF(e.target.value)}>
                   <option value="">All statuses</option>
                   <option>Matched</option>
                   <option>Projected, not produced</option>
                   <option>Produced, not projected</option>
-                </select>
+                </SelectBox>
               </>
             )}
             <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>

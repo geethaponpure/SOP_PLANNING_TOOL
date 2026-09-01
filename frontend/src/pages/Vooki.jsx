@@ -1,29 +1,10 @@
 import React, { useState } from "react";
+import SegTabs from "../components/SegTabs.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
 
 const NetCell = ({ v }) => <span className={v > 0 ? "num-pos" : "num-zero"}>{fmt.num(v)}</span>;
-
-// A clean segmented-control tab strip (replaces the plain underlined link tabs).
-function SegTabs({ tabs, value, onChange }) {
-  return (
-    <div style={{ display: "inline-flex", background: "#eef2f7", border: "1px solid var(--border)",
-      borderRadius: 10, padding: 3, gap: 2 }}>
-      {tabs.map((t) => {
-        const active = value === t.id;
-        return (
-          <button key={t.id} onClick={() => onChange(t.id)} title={t.title || ""}
-            style={{ border: "none", cursor: "pointer", borderRadius: 7, whiteSpace: "nowrap",
-              padding: "7px 15px", fontSize: 13, fontWeight: active ? 700 : 500,
-              background: active ? "#fff" : "transparent", color: active ? "var(--navy)" : "var(--muted)",
-              boxShadow: active ? "0 1px 3px rgba(15,23,42,.14)" : "none", transition: "all .12s" }}>
-            {t.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 const LEAD_AMBER = 30, LEAD_RED = 60;   // days
 const leadColor = (d) => (d == null ? "var(--muted)" : d >= LEAD_RED ? "#a11" : d >= LEAD_AMBER ? "#8a6d00" : "#1a7d4f");
@@ -64,7 +45,7 @@ export default function Vooki() {
   const [rowBusy, setRowBusy] = useState(null);   // product name being exported
   const [sortP, setSortP] = useState({ key: "name", dir: "asc" });
   const [sortC, setSortC] = useState({ key: "net_to_buy", dir: "desc" });
-  if (loading) return <Loading what="Vooki planning — reading BOM + CRM stock + item master (first load ~40s)" />;
+  if (loading) return <Loading what="Vooki Planning" />;
   if (error) return <ErrorBox msg={error} />;
   if (data.note) return <div className="banner info">{data.note}</div>;
 
@@ -142,7 +123,7 @@ export default function Vooki() {
       </div>
 
       <div className="pagebar">
-        <input className="searchbox" placeholder={mode === "product" ? "Search Vooki product…" : "Search RM…"} value={q} onChange={(e) => setQ(e.target.value)} />
+        <SmoothInput className="searchbox" placeholder={mode === "product" ? "Search Vooki product…" : "Search RM…"} value={q} onChange={(e) => setQ(e.target.value)} />
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
           {mode === "product" ? `${products.length} products` : `${cons.length} RMs to plan`}
         </span>

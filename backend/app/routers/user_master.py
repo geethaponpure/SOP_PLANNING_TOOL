@@ -56,6 +56,10 @@ class StatusIn(BaseModel):
     status: str = "active"
 
 
+class AvatarIn(BaseModel):
+    avatar: str = ""
+
+
 class MenuIn(BaseModel):
     menu_id: str
     menu_label: str = ""
@@ -216,6 +220,14 @@ def remove_user(user_code: str, actor_code: str = "", actor_name: str = ""):
 def set_status(user_code: str, body: StatusIn, actor_code: str = "", actor_name: str = ""):
     _um.set_status(user_code, body.status)
     _um.log_access(user_code, _uname(user_code), "status", f"status → {body.status}", _act(actor_code, actor_name))
+    return {"users": _um.list_users()}
+
+
+@router.post("/users/{user_code}/avatar")
+def set_avatar(user_code: str, body: AvatarIn, actor_code: str = "", actor_name: str = ""):
+    _um.set_avatar(user_code, body.avatar)
+    _um.log_access(user_code, _uname(user_code), "avatar",
+                   f"avatar → {body.avatar or 'cleared'}", _act(actor_code, actor_name))
     return {"users": _um.list_users()}
 
 

@@ -1,28 +1,9 @@
 import React, { useState } from "react";
+import SegTabs from "../components/SegTabs.jsx";
+import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
-
-// A clean segmented-control tab strip (replaces the plain underlined link tabs).
-function SegTabs({ tabs, value, onChange, size = "md" }) {
-  return (
-    <div style={{ display: "inline-flex", background: "#eef2f7", border: "1px solid var(--border)",
-      borderRadius: 10, padding: 3, gap: 2 }}>
-      {tabs.map((t) => {
-        const active = value === t.id;
-        return (
-          <button key={t.id} onClick={() => onChange(t.id)} title={t.title || ""}
-            style={{ border: "none", cursor: "pointer", borderRadius: 7, whiteSpace: "nowrap",
-              padding: size === "sm" ? "5px 12px" : "7px 15px", fontSize: 13,
-              fontWeight: active ? 700 : 500, background: active ? "#fff" : "transparent",
-              color: active ? "var(--navy)" : "var(--muted)",
-              boxShadow: active ? "0 1px 3px rgba(15,23,42,.14)" : "none", transition: "all .12s" }}>
-            {t.icon ? t.icon + " " : ""}{t.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function TemplateBar() {
   const { data } = useAsync(api.templateSegments);
@@ -34,14 +15,14 @@ function TemplateBar() {
   return (
     <div className="card supply-tool-card" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
       <span><b>📄 Plan-input template</b> <span style={{ fontSize: 12, color: "var(--muted)" }}>· Segment 1 = Performance Chemicals</span></span>
-      <select className="searchbox" style={{ maxWidth: 210 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
+      <SelectBox className="searchbox" style={{ maxWidth: 210 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
         <option value="">All Segment 2</option>
         {segments.map((x) => <option key={x.segment2} value={x.segment2}>{x.segment2}</option>)}
-      </select>
-      <select className="searchbox" style={{ maxWidth: 210 }} value={seg3} onChange={(e) => setSeg3(e.target.value)} disabled={!seg2}>
+      </SelectBox>
+      <SelectBox className="searchbox" style={{ maxWidth: 210 }} value={seg3} onChange={(e) => setSeg3(e.target.value)} disabled={!seg2}>
         <option value="">All Segment 3</option>
         {seg3opts.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
+      </SelectBox>
       <button className="btn" style={{ marginLeft: "auto" }} disabled={busy}
         title="Excel template (S.No, Item Description [dropdown], Qty, Current JC, Next JC1, Next JC2)"
         onClick={async () => { setBusy(true); try { await api.templateDownload(seg2, seg3); } catch (e) { alert(e.message); } finally { setBusy(false); } }}>
@@ -66,20 +47,20 @@ function UploadBar({ onPlan, active, onClear }) {
       alert(`✓ Plan #${r.plan_id ?? "—"} generated (${src})` + (r.mysql_ok ? " and saved to DB." : " — DB save failed: " + (r.mysql_error || "")));
     } catch (e) { alert(e.message); } finally { setBusy(false); }
   };
-  const R = (val, label) => (
-    <label style={{ display: "flex", alignItems: "center", gap: 5, margin: 0, fontSize: 13 }}>
-      <input type="radio" name="pmode" style={{ width: "auto" }} checked={mode === val} onChange={() => setMode(val)} />
-      {label}
-    </label>
-  );
   return (
     <div className="card supply-tool-card" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
       <span><b>⬆️ Generate plan</b></span>
       <input type="file" accept=".xlsx" disabled={mode === "crm"} onChange={(e) => setFile(e.target.files[0])}
         style={{ fontSize: 13, opacity: mode === "crm" ? 0.5 : 1 }} />
-      {R("crm", "Projection + Pending SOC (no Excel)")}
-      {R("consolidate", "Consolidate (Excel + Projection + Pending SOC)")}
-      {R("excel_only", "Excel only")}
+      <SegTabs
+        value={mode}
+        onChange={setMode}
+        tabs={[
+          { id: "crm", label: "Projection + Pending SOC" },
+          { id: "consolidate", label: "Consolidate" },
+          { id: "excel_only", label: "Excel only" },
+        ]}
+      />
       <button className="btn" style={{ marginLeft: "auto" }} disabled={busy} onClick={go}>{busy ? "Planning…" : "▶ Generate Plan"}</button>
       {active && <button className="btn secondary" onClick={onClear}>↺ Back to CRM plan</button>}
     </div>
@@ -122,7 +103,7 @@ function RMPlanning() {
   const [savingPlan, setSavingPlan] = useState(false);
   const [applying, setApplying] = useState(false);
   const [mode, setMode] = useState("product");
-  if (loading) return <Loading what="RM planning — reading stock / BOM / projection files (first load can take ~30–60s)" />;
+  if (loading) return <Loading what="Supply & RM Plan" />;
   if (error) return <ErrorBox msg={error} />;
   if (data.note) return <div className="banner info">{data.note}</div>;
 
@@ -261,36 +242,36 @@ function RMPlanning() {
       </div>
 
       <div className="pagebar supply-filters">
-        <input className="searchbox" placeholder={mode === "product" ? "Search product…" : "Search RM code / name…"} value={q} onChange={(e) => setQ(e.target.value)} />
+        <SmoothInput className="searchbox" placeholder={mode === "product" ? "Search product…" : "Search RM code / name…"} value={q} onChange={(e) => setQ(e.target.value)} />
         {mode === "product" && (
-          <select className="searchbox" style={{ maxWidth: 190 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
+          <SelectBox className="searchbox" style={{ maxWidth: 190 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
             <option value="">All Segment 2</option>
             {seg2opts.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
+          </SelectBox>
         )}
         {mode === "product" && (
-          <select className="searchbox" style={{ maxWidth: 190 }} value={seg3} onChange={(e) => setSeg3(e.target.value)}>
+          <SelectBox className="searchbox" style={{ maxWidth: 190 }} value={seg3} onChange={(e) => setSeg3(e.target.value)}>
             <option value="">All Segment 3</option>
             {seg3opts.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
+          </SelectBox>
         )}
         {mode === "product" && (
-          <select className="searchbox" style={{ maxWidth: 210 }} value={cls} onChange={(e) => setCls(e.target.value)}>
+          <SelectBox className="searchbox" style={{ maxWidth: 210 }} value={cls} onChange={(e) => setCls(e.target.value)}>
             <option value="">All activities</option>
             <option value="manufacturing">Manufacturing (make)</option>
             <option value="repack_relabel">Repack / Relabel</option>
             <option value="trading">Trading / Distribution</option>
             <option value="unclassified">Unclassified</option>
             <option value="internal">Internal (conv/decode)</option>
-          </select>
+          </SelectBox>
         )}
         {mode === "consolidated" && (
-          <select className="searchbox" style={{ maxWidth: 240 }} value={rmCls} onChange={(e) => setRmCls(e.target.value)}>
+          <SelectBox className="searchbox" style={{ maxWidth: 240 }} value={rmCls} onChange={(e) => setRmCls(e.target.value)}>
             <option value="manufacturing">Manufacturing RM</option>
             <option value="repack">Repack / Relabel RM</option>
             <option value="packing">Packing Material</option>
             <option value="all">RM — All (combined)</option>
-          </select>
+          </SelectBox>
         )}
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
           {mode === "product" ? `${rows.length} products` : (() => {

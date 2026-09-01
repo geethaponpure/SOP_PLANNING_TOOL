@@ -1,27 +1,9 @@
 import React, { useState } from "react";
+import SegTabs from "../components/SegTabs.jsx";
+import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
-
-// A clean segmented-control tab strip (matches the other planning pages).
-function SegTabs({ tabs, value, onChange }) {
-  return (
-    <div style={{ display: "inline-flex", background: "#eef2f7", border: "1px solid var(--border)",
-      borderRadius: 10, padding: 3, gap: 2 }}>
-      {tabs.map((t) => {
-        const active = value === t.id;
-        return (
-          <button key={t.id} onClick={() => onChange(t.id)}
-            style={{ border: "none", cursor: "pointer", borderRadius: 7, whiteSpace: "nowrap",
-              padding: "7px 15px", fontSize: 13, fontWeight: active ? 700 : 500,
-              background: active ? "#fff" : "transparent", color: active ? "var(--navy)" : "var(--muted)",
-              boxShadow: active ? "0 1px 3px rgba(15,23,42,.14)" : "none", transition: "all .12s" }}>
-            {t.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 // priority -> colour + label (SOC scenario x RM availability) + start-date basis
 const PRIO = {
@@ -131,7 +113,7 @@ export default function ProductionSchedule() {
   const [exporting, setExporting] = useState(false);
   const [q, setQ] = useState("");
   const [equip, setEquip] = useState("");
-  if (loading) return <Loading what="production schedule — plan demand + SOC + vessel + RM (first load ~30s)" />;
+  if (loading) return <Loading what="Production Schedule" />;
   if (error) return <ErrorBox msg={error} />;
 
   const s = data.summary || {};
@@ -158,12 +140,12 @@ export default function ProductionSchedule() {
       <div className="pagebar">
         <label style={{ display: "flex", alignItems: "center", gap: 6, margin: 0, fontSize: 13 }}>
           JC Plan:
-          <select className="searchbox" style={{ maxWidth: 360 }} value={planId || data.selected_plan_id || ""} onChange={(e) => setPlanId(e.target.value)}>
+          <SelectBox className="searchbox" style={{ maxWidth: 360 }} value={planId || data.selected_plan_id || ""} onChange={(e) => setPlanId(e.target.value)}>
             {plans.length === 0 && <option value="">No plans saved</option>}
             {plans.map((p) => <option key={p.plan_id} value={p.plan_id}>#{p.plan_id} · JC{p.jc_number} · {p.plan_type} · {p.plan_datetime}{(p.planned_fg_qty || 0) > 0 ? "" : " · (empty)"}</option>)}
-          </select>
+          </SelectBox>
         </label>
-        <input className="searchbox" style={{ maxWidth: 220 }} placeholder="🔍 Search item…"
+        <SmoothInput className="searchbox" style={{ maxWidth: 220 }} placeholder="🔍 Search item…"
           value={q} onChange={(e) => setQ(e.target.value)} />
         {ql && <span style={{ fontSize: 12, color: "var(--muted)" }}>{matches.length} job(s) match</span>}
         <span style={{ fontSize: 12, color: "var(--muted)" }}>

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { api } from "../api";
+import SmoothInput from "../components/SmoothInput.jsx";
 
 export default function Login({ onLogin }) {
   const [login, setLogin] = useState("");
@@ -28,10 +29,10 @@ export default function Login({ onLogin }) {
         </div>
         {err && <div className="banner err" style={{ marginBottom: 12 }}>⚠ {err}</div>}
         <label style={{ display: "block", fontSize: 12, color: "#475569", marginBottom: 4 }}>Username or user code</label>
-        <input className="searchbox" style={{ width: "100%", marginBottom: 12 }} autoFocus value={login}
+        <SmoothInput className="searchbox" style={{ width: "100%", marginBottom: 12 }} autoFocus value={login}
           onChange={(e) => setLogin(e.target.value)} placeholder="e.g. SARANYAA" />
         <label style={{ display: "block", fontSize: 12, color: "#475569", marginBottom: 4 }}>Password</label>
-        <input className="searchbox" style={{ width: "100%", marginBottom: 18 }} type="password" value={pw}
+        <SmoothInput className="searchbox" style={{ width: "100%", marginBottom: 18 }} type="password" value={pw}
           onChange={(e) => setPw(e.target.value)} placeholder="Password" />
         <button className="btn" type="submit" disabled={busy} style={{ width: "100%", justifyContent: "center" }}>
           {busy ? "Signing in…" : "Sign in"}

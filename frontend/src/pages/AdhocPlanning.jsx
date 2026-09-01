@@ -1,29 +1,11 @@
 import React, { useState } from "react";
+import SegTabs from "../components/SegTabs.jsx";
+import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
 
 const NetCell = ({ v }) => <span className={v > 0 ? "num-pos" : "num-zero"}>{fmt.num(v)}</span>;
-
-// A clean segmented-control tab strip (replaces the plain underlined link tabs).
-function SegTabs({ tabs, value, onChange }) {
-  return (
-    <div style={{ display: "inline-flex", background: "#eef2f7", border: "1px solid var(--border)",
-      borderRadius: 10, padding: 3, gap: 2 }}>
-      {tabs.map((t) => {
-        const active = value === t.id;
-        return (
-          <button key={t.id} onClick={() => onChange(t.id)} title={t.title || ""}
-            style={{ border: "none", cursor: "pointer", borderRadius: 7, whiteSpace: "nowrap",
-              padding: "7px 15px", fontSize: 13, fontWeight: active ? 700 : 500,
-              background: active ? "#fff" : "transparent", color: active ? "var(--navy)" : "var(--muted)",
-              boxShadow: active ? "0 1px 3px rgba(15,23,42,.14)" : "none", transition: "all .12s" }}>
-            {t.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 const STATUS = {
   exceeds: { label: "Exceeds", bg: "#FFE5E5", color: "#a11" },
@@ -70,7 +52,7 @@ export default function AdhocPlanning() {
   const [sortC, setSortC] = useState({ key: "net_to_buy", dir: "desc" });
   const [exporting, setExporting] = useState(false);
   const [running, setRunning] = useState(false);
-  if (loading) return <Loading what="adhoc planning — reading post-freeze SOC + projection + pending SOC (first load ~40s)" />;
+  if (loading) return <Loading what="Adhoc Planning" />;
   if (error) return <ErrorBox msg={error} />;
   if (data.note) return <div className="banner info">{data.note}</div>;
 
@@ -110,10 +92,10 @@ export default function AdhocPlanning() {
         ))}
         <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, margin: 0, fontSize: 13 }}>
           Deduct RM from JC Plan:
-          <select className="searchbox" style={{ maxWidth: 260 }} value={planId} onChange={(e) => setPlanId(e.target.value)} disabled={!data.mysql_ready}>
+          <SelectBox className="searchbox" style={{ maxWidth: 260 }} value={planId} onChange={(e) => setPlanId(e.target.value)} disabled={!data.mysql_ready}>
             <option value="">None (full stock)</option>
             {plans.map((p) => <option key={p.plan_id} value={p.plan_id}>#{p.plan_id} · JC{p.jc_number} · {p.plan_datetime} · RM {fmt.num(p.planned_rm_qty)}</option>)}
-          </select>
+          </SelectBox>
         </label>
         <button className="btn" disabled={running || !data.mysql_ready}
           title="Run adhoc evaluation and log each item to ADHOC_EVALUATION"
@@ -137,18 +119,18 @@ export default function AdhocPlanning() {
       </div>
 
       <div className="pagebar">
-        <input className="searchbox" placeholder={mode === "product" ? "Search item…" : "Search RM…"} value={q} onChange={(e) => setQ(e.target.value)} />
+        <SmoothInput className="searchbox" placeholder={mode === "product" ? "Search item…" : "Search RM…"} value={q} onChange={(e) => setQ(e.target.value)} />
         {mode === "product" && (
-          <select className="searchbox" style={{ maxWidth: 190 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
+          <SelectBox className="searchbox" style={{ maxWidth: 190 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
             <option value="">All Segment 2</option>
             {seg2opts.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
+          </SelectBox>
         )}
         {mode === "product" && (
-          <select className="searchbox" style={{ maxWidth: 190 }} value={seg3} onChange={(e) => setSeg3(e.target.value)}>
+          <SelectBox className="searchbox" style={{ maxWidth: 190 }} value={seg3} onChange={(e) => setSeg3(e.target.value)}>
             <option value="">All Segment 3</option>
             {seg3opts.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
+          </SelectBox>
         )}
         {mode === "product" && (
           <label style={{ display: "flex", alignItems: "center", gap: 6, margin: 0, fontSize: 13 }}>

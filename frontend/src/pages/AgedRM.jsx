@@ -1,34 +1,15 @@
 import React, { useState } from "react";
+import SegTabs from "../components/SegTabs.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
-
-// A clean segmented-control tab strip (replaces the plain underlined link tabs).
-function SegTabs({ tabs, value, onChange }) {
-  return (
-    <div style={{ display: "inline-flex", background: "#eef2f7", border: "1px solid var(--border)",
-      borderRadius: 10, padding: 3, gap: 2, flexWrap: "wrap" }}>
-      {tabs.map((t) => {
-        const active = value === t.id;
-        return (
-          <button key={t.id} onClick={() => onChange(t.id)} title={t.title || ""}
-            style={{ border: "none", cursor: "pointer", borderRadius: 7, whiteSpace: "nowrap",
-              padding: "7px 15px", fontSize: 13, fontWeight: active ? 700 : 500,
-              background: active ? "#fff" : "transparent", color: active ? "var(--navy)" : "var(--muted)",
-              boxShadow: active ? "0 1px 3px rgba(15,23,42,.14)" : "none", transition: "all .12s" }}>
-            {t.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function AgedRM() {
   const { data, loading, error } = useAsync(api.agedRmPlan);
   const [tab, setTab] = useState("recommended");
   const [q, setQ] = useState("");
   const [exporting, setExporting] = useState(false);
-  if (loading) return <Loading what="aged-RM plan — reading CRM stock + BOM (first load can take ~30–60s)" />;
+  if (loading) return <Loading what="Aged RM Plan" />;
   if (error) return <ErrorBox msg={error} />;
   if (data.note) return <div className="banner info">{data.note}</div>;
 
@@ -70,7 +51,7 @@ export default function AgedRM() {
       </div>
 
       <div className="pagebar">
-        <input className="searchbox" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <SmoothInput className="searchbox" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="btn secondary" style={{ marginLeft: "auto" }} disabled={exporting === "report"}
           title="Aged-RM excess analysis: aged qty/value vs last-3-JC consumption, sales requirement and projection requirement, with a Critical/Excess/OK status."
           onClick={async () => { setExporting("report"); try { await api.agedRmReportExport(); } catch (e) { alert(e.message); } finally { setExporting(false); } }}>

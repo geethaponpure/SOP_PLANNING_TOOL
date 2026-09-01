@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api } from "../api";
 import { Loading, ErrorBox } from "../components/ui.jsx";
 
@@ -72,12 +74,12 @@ function OrgEditor({ label, hint, value, onChange, allOrgs }) {
         {list.length === 0 && <span style={{ fontSize: 12, color: "var(--muted)" }}>none</span>}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        <select className="searchbox" style={{ maxWidth: 280, fontSize: 12 }} value=""
+        <SelectBox className="searchbox" style={{ maxWidth: 280, fontSize: 12 }} value=""
           onChange={(e) => { if (e.target.value) add(e.target.value); }}>
           <option value="">＋ Add organization…{available.length ? "" : " (no CRM orgs loaded)"}</option>
           {available.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <input className="searchbox" style={{ maxWidth: 220, fontSize: 12 }} placeholder="or type a custom org + Enter"
+        </SelectBox>
+        <SmoothInput className="searchbox" style={{ maxWidth: 220, fontSize: 12 }} placeholder="or type a custom org + Enter"
           value={custom} onChange={(e) => setCustom(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(custom); setCustom(""); } }} />
         {custom.trim() && <button className="chip" onClick={() => { add(custom); setCustom(""); }}>Add</button>}
@@ -128,7 +130,7 @@ function VookiFgMapSection() {
         <>
           <div className="card">
             <div className="pagebar" style={{ marginTop: 0 }}>
-              <input className="searchbox" placeholder="Search SKU code / name…" value={q} onChange={(e) => setQ(e.target.value)} />
+              <SmoothInput className="searchbox" placeholder="Search SKU code / name…" value={q} onChange={(e) => setQ(e.target.value)} />
               <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>{rows.length} FG SKUs</span>
             </div>
             <div className="tbl-wrap" style={{ maxHeight: "38vh" }}>
@@ -155,7 +157,7 @@ function VookiFgMapSection() {
             ) : (
               <>
                 <div className="pagebar" style={{ marginTop: 0 }}>
-                  <input className="searchbox" placeholder="Search Vooki Division item description…" value={cq} onChange={(e) => setCq(e.target.value)} />
+                  <SmoothInput className="searchbox" placeholder="Search Vooki Division item description…" value={cq} onChange={(e) => setCq(e.target.value)} />
                   <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>{fg.candidates.length} Vooki Division items</span>
                 </div>
                 <div className="tbl-wrap" style={{ maxHeight: "34vh" }}>

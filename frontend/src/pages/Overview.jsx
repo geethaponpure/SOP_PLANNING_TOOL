@@ -1,7 +1,7 @@
 import React from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { api, fmt } from "../api";
-import { useAsync, Loading, ErrorBox, Stat, Tag } from "../components/ui.jsx";
+import { useAsync, Loading, ErrorBox, Stat, KitStat, Tag } from "../components/ui.jsx";
 
 export default function Overview() {
   const { data, loading, error } = useAsync(api.overview);
@@ -46,10 +46,10 @@ export default function Overview() {
       )}
 
       <div className="grid cols-4">
-        <div className="card"><Stat value={counts.skus} label={`Finished goods · ${counts.families} families`} /></div>
-        <div className="card"><Stat value={cycle.exceptions_open} label="Open validation exceptions" /></div>
-        <div className="card"><Stat value={autoAccept} label="Auto-accepted within band" /></div>
-        <div className="card"><Stat value={supply_summary.capacity_gaps} label="RCCP capacity gaps" /></div>
+        <div className="card"><KitStat label="Finished goods" value={counts.skus} foot={`${counts.families} families`} /></div>
+        <div className="card"><KitStat label="Open exceptions" value={cycle.exceptions_open} foot="pending validation" /></div>
+        <div className="card"><KitStat label="Auto-accepted" value={autoAccept} foot="within tolerance band" /></div>
+        <div className="card"><KitStat label="RCCP capacity gaps" value={supply_summary.capacity_gaps} foot="bottleneck assets" /></div>
       </div>
 
       {gates && (

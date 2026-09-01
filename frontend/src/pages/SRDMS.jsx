@@ -1,4 +1,7 @@
 import React, { useEffect, useState } from "react";
+import SegTabs from "../components/SegTabs.jsx";
+import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
 
@@ -12,27 +15,6 @@ const STATUS_COLORS = {
   Received: "#E6F6EC", ReceivedWithDiscrepancy: "#FFF4DA", Rejected: "#FFE5E5", ShortClosed: "#F3F0E8",
 };
 const Chip = ({ v }) => <span className="chip" style={{ cursor: "default", fontSize: 11, background: STATUS_COLORS[v] || "#EEE" }}>{v}</span>;
-
-// A clean segmented-control tab strip (matches the other planning pages).
-function SegTabs({ tabs, value, onChange }) {
-  return (
-    <div style={{ display: "inline-flex", background: "#eef2f7", border: "1px solid var(--border)",
-      borderRadius: 10, padding: 3, gap: 2, flexWrap: "wrap" }}>
-      {tabs.map((t) => {
-        const active = value === t.id;
-        return (
-          <button key={t.id} onClick={() => onChange(t.id)} title={t.title || ""}
-            style={{ border: "none", cursor: "pointer", borderRadius: 7, whiteSpace: "nowrap",
-              padding: "7px 14px", fontSize: 13, fontWeight: active ? 700 : 500,
-              background: active ? "#fff" : "transparent", color: active ? "var(--navy)" : "var(--muted)",
-              boxShadow: active ? "0 1px 3px rgba(15,23,42,.14)" : "none", transition: "all .12s" }}>
-            {t.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function usePersona() {
   const [persona, setPersona] = useState(() => {
@@ -109,10 +91,10 @@ export default function SRDMS({ session, mode = "all" }) {
               <span className="chip" style={{ cursor: "default" }}>{realRole}{persona.plant_id ? ` · plant ${persona.plant_id}` : ""}</span>
               <label style={{ fontSize: 12, color: "var(--muted)", display: "flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
                 View as:
-                <select className="searchbox" style={{ maxWidth: 210 }} value={viewAs || realRole}
+                <SelectBox className="searchbox" style={{ maxWidth: 210 }} value={viewAs || realRole}
                   onChange={(e) => setViewAs(e.target.value === realRole ? "" : e.target.value)}>
                   {ROLES.map((r) => <option key={r}>{r}</option>)}
-                </select>
+                </SelectBox>
               </label>
               {viewAs && viewAs !== realRole && <span style={{ fontSize: 11, color: "#8a6d00" }}>viewing as {viewAs}</span>}
             </>
@@ -161,14 +143,14 @@ function ManualPersona({ persona, setPersona }) {
   return (
     <>
       <span style={{ fontSize: 12, color: "var(--muted)" }}>Acting user (no login layer — recorded on every action):</span>
-      <input className="searchbox" style={{ maxWidth: 180 }} placeholder="Your name" value={persona.name}
+      <SmoothInput className="searchbox" style={{ maxWidth: 180 }} placeholder="Your name" value={persona.name}
         onChange={(e) => setPersona({ ...persona, name: e.target.value })} />
-      <input className="searchbox" style={{ maxWidth: 230 }} placeholder="email@pure-chemical.com" value={persona.email}
+      <SmoothInput className="searchbox" style={{ maxWidth: 230 }} placeholder="email@pure-chemical.com" value={persona.email}
         onChange={(e) => setPersona({ ...persona, email: e.target.value })} />
-      <select className="searchbox" style={{ maxWidth: 220 }} value={persona.role}
+      <SelectBox className="searchbox" style={{ maxWidth: 220 }} value={persona.role}
         onChange={(e) => setPersona({ ...persona, role: e.target.value })}>
         {ROLES.map((r) => <option key={r}>{r}</option>)}
-      </select>
+      </SelectBox>
     </>
   );
 }
@@ -306,17 +288,17 @@ function RequestList({ onOpen, masters, persona, mode, ver }) {
   return (
     <>
       <div className="pagebar" style={{ marginTop: 12 }}>
-        <input className="searchbox" placeholder="Search SR / requester / item…" value={f.q}
+        <SmoothInput className="searchbox" placeholder="Search SR / requester / item…" value={f.q}
           onChange={(e) => setF({ ...f, q: e.target.value })} />
-        <select className="searchbox" style={{ maxWidth: 180 }} value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
+        <SelectBox className="searchbox" style={{ maxWidth: 180 }} value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
           <option value="">All statuses</option>
           {["Draft", "Submitted", "PendingApproval", "Acknowledged", "InProgress", "Dispatched", "Closed", "Cancelled", "ApprovalRejected"].map((s) => <option key={s}>{s}</option>)}
-        </select>
-        <select className="searchbox" style={{ maxWidth: 180 }} value={eff.plant_id} disabled={!!boundPlant}
+        </SelectBox>
+        <SelectBox className="searchbox" style={{ maxWidth: 180 }} value={eff.plant_id} disabled={!!boundPlant}
           title={boundPlant ? "You are bound to this plant" : ""} onChange={(e) => setF({ ...f, plant_id: e.target.value })}>
           <option value="">All plants</option>
           {(masters.plants || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        </SelectBox>
       </div>
       {loading && <Loading what="requests" />}
       {error && <ErrorBox msg={error} />}
@@ -534,8 +516,8 @@ function ActionPanel({ req, line, persona, masters, onChange }) {
 
       {act === "qa" && (
         <div className="grid cols-3" style={{ gap: 6, marginTop: 8 }}>
-          <select className="searchbox" style={{ width: "100%", minWidth: 0 }} value={f.decision || "Released"} onChange={(e) => setF({ ...f, decision: e.target.value })}>
-            <option value="Released">✓ QC OK / Passed</option><option value="Rejected">✗ QC Rejected</option></select>
+          <SelectBox className="searchbox" style={{ width: "100%", minWidth: 0 }} value={f.decision || "Released"} onChange={(e) => setF({ ...f, decision: e.target.value })}>
+            <option value="Released">✓ QC OK / Passed</option><option value="Rejected">✗ QC Rejected</option></SelectBox>
           {inp("remarks", "QC remarks / COA / test ref")}
           <button className="btn" onClick={() => run(() => api.srdms.qaRelease(req.id, line.line_id, { decision: f.decision || "Released", remarks: f.remarks, actor: persona }))}>Submit QC result</button>
         </div>
@@ -577,8 +559,8 @@ function ActionPanel({ req, line, persona, masters, onChange }) {
             </div>
             <div style={{ fontSize: 12, fontWeight: 700, margin: "2px 0 4px" }}>Delivery mode*</div>
             <div className="grid cols-3" style={{ gap: 6 }}>
-              <select className="searchbox" style={{ width: "100%", minWidth: 0 }} value={mode} onChange={(e) => setF({ ...f, mode: e.target.value })}>
-                {(masters.delivery_modes || []).map((m) => <option key={m}>{m}</option>)}</select>
+              <SelectBox className="searchbox" style={{ width: "100%", minWidth: 0 }} value={mode} onChange={(e) => setF({ ...f, mode: e.target.value })}>
+                {(masters.delivery_modes || []).map((m) => <option key={m}>{m}</option>)}</SelectBox>
               {mode === "Courier" && <>{inp("courier_name", "Courier name")}{inp("awb_no", "Docket / AWB no")}{inp("tracking_link", "Tracking link")}</>}
               {mode === "Vehicle" && <>{inp("vehicle_no", "Vehicle no")}{inp("driver_name", "Driver name")}{inp("driver_contact", "Driver contact")}</>}
               {inPerson && <>{inp("person_name", "Handed to (person)")}{inp("contact", "Contact")}</>}
@@ -587,9 +569,9 @@ function ActionPanel({ req, line, persona, masters, onChange }) {
               {!inPerson && inp("expected_arrival", "Expected delivery", "date")}
               {!inPerson && inp("packages", "Packages", "number")}
               {!inPerson && (
-                <select className="searchbox" style={{ width: "100%", minWidth: 0 }} value={f.freight || ""} onChange={(e) => setF({ ...f, freight: e.target.value })}>
+                <SelectBox className="searchbox" style={{ width: "100%", minWidth: 0 }} value={f.freight || ""} onChange={(e) => setF({ ...f, freight: e.target.value })}>
                   <option value="">Freight…</option>{(masters.freight_terms || ["Paid", "To pay"]).map((t) => <option key={t}>{t}</option>)}
-                </select>
+                </SelectBox>
               )}
             </div>
             <button className="btn" style={{ marginTop: 8 }} onClick={() => run(() => api.srdms.dispatch(req.id, line.line_id, {
@@ -603,19 +585,19 @@ function ActionPanel({ req, line, persona, masters, onChange }) {
       })()}
       {act === "hold" && (
         <div className="grid cols-3" style={{ gap: 6, marginTop: 8 }}>
-          <select className="searchbox" value={f.reason || ""} onChange={(e) => setF({ ...f, reason: e.target.value })}>
-            <option value="">Hold reason…</option>{(masters.hold_reasons || []).map((r) => <option key={r}>{r}</option>)}</select>
+          <SelectBox className="searchbox" value={f.reason || ""} onChange={(e) => setF({ ...f, reason: e.target.value })}>
+            <option value="">Hold reason…</option>{(masters.hold_reasons || []).map((r) => <option key={r}>{r}</option>)}</SelectBox>
           {inp("planned_date", "Planned delivery date", "date")}
-          <select className="searchbox" value={f.responsible_dept || ""} onChange={(e) => setF({ ...f, responsible_dept: e.target.value })}>
-            <option value="">Responsible dept…</option>{(masters.responsible_depts || []).map((d) => <option key={d}>{d}</option>)}</select>
+          <SelectBox className="searchbox" value={f.responsible_dept || ""} onChange={(e) => setF({ ...f, responsible_dept: e.target.value })}>
+            <option value="">Responsible dept…</option>{(masters.responsible_depts || []).map((d) => <option key={d}>{d}</option>)}</SelectBox>
           {inp("remarks", "Hold remarks")}
           <button className="btn" onClick={() => run(() => api.srdms.hold(req.id, line.line_id, { reason: f.reason, remarks: f.remarks, planned_date: f.planned_date, responsible_dept: f.responsible_dept, actor: persona }))}>Put on hold</button>
         </div>
       )}
       {act === "reject" && (
         <div className="grid cols-3" style={{ gap: 6, marginTop: 8 }}>
-          <select className="searchbox" value={f.reason || ""} onChange={(e) => setF({ ...f, reason: e.target.value })}>
-            <option value="">Reason…</option>{(masters.reject_reasons || []).map((r) => <option key={r}>{r}</option>)}</select>
+          <SelectBox className="searchbox" value={f.reason || ""} onChange={(e) => setF({ ...f, reason: e.target.value })}>
+            <option value="">Reason…</option>{(masters.reject_reasons || []).map((r) => <option key={r}>{r}</option>)}</SelectBox>
           {inp("remarks", "Remarks")}
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
             <input type="checkbox" checked={!!f.short_close} onChange={(e) => setF({ ...f, short_close: e.target.checked })} /> Short-close (else reject)</label>
@@ -792,7 +774,7 @@ function EmailTemplates({ masters, setMasters }) {
       {codes.map(([code, t]) => (
         <div key={code} className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 600 }}><span className="chip" style={{ cursor: "default", fontSize: 10 }}>{code}</span> {t.event} {(tpl[code]) && <span style={{ color: "var(--teal)", fontSize: 11 }}>· customised</span>}</div>
-          <input className="searchbox" style={{ width: "100%", marginTop: 4 }} placeholder={t.default_subject}
+          <SmoothInput className="searchbox" style={{ width: "100%", marginTop: 4 }} placeholder={t.default_subject}
             value={(tpl[code]?.subject) ?? ""} onChange={(e) => set(code, "subject", e.target.value, t.default_subject)} />
           <textarea className="searchbox" style={{ width: "100%", minHeight: 48, marginTop: 4 }} placeholder={t.default_body}
             value={(tpl[code]?.body) ?? ""} onChange={(e) => set(code, "body", e.target.value, t.default_body)} />

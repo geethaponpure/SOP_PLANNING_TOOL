@@ -1,26 +1,9 @@
 import React, { useState } from "react";
+import SegTabs from "../components/SegTabs.jsx";
+import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
-
-function SegTabs({ tabs, value, onChange }) {
-  return (
-    <div style={{ display: "inline-flex", background: "#eef2f7", border: "1px solid var(--border)",
-      borderRadius: 10, padding: 3, gap: 2, flexWrap: "wrap" }}>
-      {tabs.map((t) => {
-        const active = value === t.id;
-        return (
-          <button key={t.id} onClick={() => onChange(t.id)}
-            style={{ border: "none", cursor: "pointer", borderRadius: 7, whiteSpace: "nowrap",
-              padding: "7px 14px", fontSize: 13, fontWeight: active ? 700 : 500,
-              background: active ? "#fff" : "transparent", color: active ? "var(--navy)" : "var(--muted)",
-              boxShadow: active ? "0 1px 3px rgba(15,23,42,.14)" : "none", transition: "all .12s" }}>
-            {t.label}{t.n != null ? ` (${fmt.num(t.n)})` : ""}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function SortTh({ label, k, sort, setSort, className, title }) {
   const active = sort.key === k;
@@ -111,12 +94,12 @@ export default function MSL() {
         ]} />
         <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap", alignItems: "center" }}>
           {snaps.data?.snapshots?.length > 0 && (
-            <select className="searchbox" style={{ maxWidth: 240, fontSize: 12 }} value={ref} onChange={(e) => setRef(e.target.value)}>
+            <SelectBox className="searchbox" style={{ maxWidth: 240, fontSize: 12 }} value={ref} onChange={(e) => setRef(e.target.value)}>
               <option value="">● Live (current window)</option>
               {snaps.data.snapshots.map((s) => (
                 <option key={s.reference} value={s.reference}>{s.reference} · {s.jc_to} · {fmt.num(s.n_items)} items</option>
               ))}
-            </select>
+            </SelectBox>
           )}
           {!ref && <button className="btn secondary" disabled={busy === "save"} onClick={save} title="Store this MSL snapshot in the database">{busy === "save" ? "Saving…" : "💾 Save snapshot"}</button>}
           <button className="btn" disabled={busy === "dl"} onClick={dl}>{busy === "dl" ? "Exporting…" : "⤓ Download (Excel)"}</button>
@@ -124,11 +107,11 @@ export default function MSL() {
       </div>
 
       <div className="pagebar">
-        <input className="searchbox" placeholder="Search item name / code…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <SmoothInput className="searchbox" placeholder="Search item name / code…" value={q} onChange={(e) => setQ(e.target.value)} />
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>{fmt.num(rows.length)} items · sorted by {sort.key}</span>
       </div>
 
-      {loading && <Loading what="MSL (reading 13-JC dispatch — first load ~2 min)" />}
+      {loading && <Loading what="MSL" />}
       {data && (
         <div className="tbl-wrap">
           <table style={{ width: "100%", tableLayout: "fixed", fontSize: 12 }}>

@@ -1,0 +1,37 @@
+{
+  "detector": {
+    "ignoreRules": [
+      "layout-transition"
+    ],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "frontend/src/styles.css"
+        ],
+        "createdAt": "2026-08-31T12:28:00.481Z",
+        "reason": "pre-existing design-system statcard accent (.statcard border-left with blue/amber/red variants), not introduced this session"
+      },
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "frontend/src/styles.css"
+        ],
+        "createdAt": "2026-08-31T12:28:00.815Z",
+        "reason": "pre-existing sidebar collapse width transition, standard established behavior, not introduced this session"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "cubic-bezier(0.37, 1.95, 0.66, 0.56)",
+        "files": [
+          "frontend/src/styles.css"
+        ],
+        "createdAt": "2026-09-01T05:30:46.997Z",
+        "reason": "user confirmed: provided this exact glider easing in the pasted glass-radio code and asked to apply it; springy overshoot is the intended effect"
+      }
+    ]
+  }
+}

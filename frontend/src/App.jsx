@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { NAV, HIDDEN } from "./nav";
 import { api } from "./api";
-import { useAsync } from "./components/ui.jsx";
+import { useAsync, Loading, useScrollFade } from "./components/ui.jsx";
 import DataFreshness from "./components/DataFreshness.jsx";
+import ProfileMenu from "./components/ProfileMenu.jsx";
 import Login from "./pages/Login.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
 import Overview from "./pages/Overview.jsx";
@@ -32,8 +33,34 @@ import RoleMaster from "./pages/RoleMaster.jsx";
 import UserMaster from "./pages/UserMaster.jsx";
 import Audit from "./pages/Audit.jsx";
 
+function BurgerIcon({ collapsed, onClick }) {
+  return (
+    <button
+      type="button"
+      className={`burger-btn ${collapsed ? "is-collapsed" : ""}`}
+      onClick={onClick}
+      title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+      aria-label="Toggle sidebar"
+    >
+      <span className="burger-line line-1" />
+      <span className="burger-line line-2" />
+      <span className="burger-line line-3" />
+    </button>
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState("supply");
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("sidebar_collapsed") === "true"; } catch { return false; }
+  });
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("sidebar_collapsed", String(next)); } catch {}
+      return next;
+    });
+  };
   // shared cycle status drives the badge + header; bumped on any mutation
   const [version, setVersion] = useState(0);
   const bump = () => setVersion((v) => v + 1);
@@ -53,6 +80,7 @@ export default function App() {
   const isAdmin = !gate || menus.has("usermaster");
   const allowed = (id) => !HIDDEN.has(id) && (isAdmin || menus.has(id));
   const navItems = NAV.filter((n) => allowed(n.id));
+  const navRef = useScrollFade([navItems.length, collapsed]);
 
   const [showChangePw, setShowChangePw] = useState(false);
   const saveSession = (s) => { setSession(s); localStorage.setItem("app_session", JSON.stringify(s)); };
@@ -70,7 +98,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gate, session, page]);
 
-  if (auth.loading) return <div className="loading" style={{ padding: 40 }}>Loading…</div>;
+  if (auth.loading) return <Loading what="workspace" />;
   if (gate && !session) return <Login onLogin={doLogin} />;
   if (gate && session && session.user?.must_change_password) {
     return <ChangePassword login={loginName} forced
@@ -111,36 +139,41 @@ export default function App() {
 
   return (
     <div className="app">
-      <aside className="sidebar">
+      <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
         <div className="brand">
-          <span>Supply Chain</span>
-          <h1>Planning Tool</h1>
+          <div className="brand-content">
+            <span>Supply Chain</span>
+            <h1>Planning Tool</h1>
+          </div>
+          <BurgerIcon collapsed={collapsed} onClick={toggleCollapsed} />
         </div>
-        <nav>
+        <nav ref={navRef}>
           {navItems.map((n) => (
             <button
               key={n.id}
               className={page === n.id ? "active" : ""}
               onClick={() => setPage(n.id)}
+              title={collapsed ? n.label : undefined}
             >
-              <span>{n.icon}</span>
-              {n.label}
+              <span className="nav-icon">{n.icon}</span>
+              <span className="nav-label">{n.label}</span>
               {n.id === "validation" && openEx > 0 && <span className="badge">{openEx}</span>}
             </button>
           ))}
         </nav>
         <div className="foot">
           {session && (
-            <div style={{ marginBottom: 8 }}>
-              👤 <b>{session.user?.name || session.user?.username}</b>
-              <br />
-              <button onClick={() => setShowChangePw(true)}>🔑 Change password</button>
-              <button onClick={doLogout}>⎋ Sign out</button>
+            <div className="user-profile-box">
+              <div className="user-info">👤 <b>{session.user?.name || session.user?.username}</b></div>
+              <div className="user-actions">
+                <button onClick={() => setShowChangePw(true)} title="Change password">🔑 {!collapsed && "Password"}</button>
+                <button className="logout-btn" onClick={doLogout} title="Sign out">⏻ {!collapsed && "Logout"}</button>
+              </div>
             </div>
           )}
-          Integrated S&amp;OP / IBP
-          <br />
+          <div className="foot-caption">Integrated S&amp;OP / IBP</div>
           <button
+            className="reset-btn"
             onClick={async () => {
               if (confirm("Reset the cycle to its initial synthetic state?")) {
                 await api.reset();
@@ -163,6 +196,15 @@ export default function App() {
                 <span className="pill">Cycle {cycle.cycle_period}</span>
                 <span className="pill">{cycle.step}</span>
               </>
+            )}
+            {session && (
+              <ProfileMenu
+                name={session.user?.name || session.user?.username || session.user?.user_code || "User"}
+                role={isAdmin ? "Admin" : "User"}
+                avatar={session.user?.avatar}
+                onChangePassword={() => setShowChangePw(true)}
+                onLogout={doLogout}
+              />
             )}
           </div>
         </div>

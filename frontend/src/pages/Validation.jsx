@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from "recharts";
@@ -120,15 +122,15 @@ export default function Validation({ onChange }) {
       </div>
 
       <div className="pagebar">
-        <input className="searchbox" placeholder="Search item name…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className="searchbox" style={{ maxWidth: 200 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
+        <SmoothInput className="searchbox" placeholder="Search item name…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <SelectBox className="searchbox" style={{ maxWidth: 200 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
           <option value="">All Segment 2</option>
           {seg2opts.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <select className="searchbox" style={{ maxWidth: 200 }} value={seg3} onChange={(e) => setSeg3(e.target.value)}>
+        </SelectBox>
+        <SelectBox className="searchbox" style={{ maxWidth: 200 }} value={seg3} onChange={(e) => setSeg3(e.target.value)}>
           <option value="">All Segment 3</option>
           {seg3opts.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
+        </SelectBox>
         <span className="chip" style={{ cursor: "default" }}>Scope: Segment 1 = Performance Chemicals</span>
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>{shown.length} of {rows.length} items</span>
       </div>

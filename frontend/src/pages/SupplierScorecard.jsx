@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 
@@ -58,7 +60,7 @@ export default function SupplierScorecard() {
   const [open, setOpen] = useState(null);
   const [sort, setSort] = useState({ key: "score", dir: "desc" });
   const [exporting, setExporting] = useState(false);
-  if (loading) return <Loading what="supplier scorecard — reading 2-year PO receipts (first load ~40s)" />;
+  if (loading) return <Loading what="Supplier Scorecard" />;
   if (error) return <ErrorBox msg={error} />;
   if (data.note) return <div className="banner info">{data.note}</div>;
 
@@ -91,18 +93,18 @@ export default function SupplierScorecard() {
       </div>
 
       <div className="pagebar" style={{ marginTop: 14 }}>
-        <input className="searchbox" placeholder="Search supplier…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className="searchbox" style={{ maxWidth: 150 }} value={trade} onChange={(e) => setTrade(e.target.value)}>
+        <SmoothInput className="searchbox" placeholder="Search supplier…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <SelectBox className="searchbox" style={{ maxWidth: 150 }} value={trade} onChange={(e) => setTrade(e.target.value)}>
           <option value="">All suppliers</option>
           <option value="Domestic">Domestic</option>
           <option value="Import">Import</option>
-        </select>
-        <select className="searchbox" style={{ maxWidth: 170 }} value={crit} onChange={(e) => setCrit(e.target.value)}>
+        </SelectBox>
+        <SelectBox className="searchbox" style={{ maxWidth: 170 }} value={crit} onChange={(e) => setCrit(e.target.value)}>
           <option value="">All criticality</option>
           <option value="critical">Critical only</option>
           <option value="high">High criticality</option>
           <option value="sole">Sole-source only</option>
-        </select>
+        </SelectBox>
         <label style={{ display: "flex", alignItems: "center", gap: 6, margin: 0, fontSize: 13 }}>
           Min PO lines
           <input type="number" value={minLines} style={{ width: 70 }} onChange={(e) => setMinLines(parseInt(e.target.value || "0", 10))} />

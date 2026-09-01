@@ -96,6 +96,28 @@ def _has_pw_col(force=False) -> bool:
     return _pwcol_cache["ok"]
 
 
+_avatarcol_cache = {"ok": None}
+
+
+def _has_avatar_col(force=False) -> bool:
+    """True if sc_app_user has the `avatar` column (added by a later migration).
+    Until the ALTER runs, avatar just isn't persisted to MySQL (JSON store still works)."""
+    if _avatarcol_cache["ok"] is not None and not force:
+        return _avatarcol_cache["ok"]
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) AS c FROM information_schema.columns WHERE "
+                            "table_schema=DATABASE() AND table_name='sc_app_user' AND column_name='avatar'")
+                _avatarcol_cache["ok"] = (cur.fetchone() or {}).get("c", 0) > 0
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        _avatarcol_cache["ok"] = False
+    return _avatarcol_cache["ok"]
+
+
 def password_enabled() -> bool:
     """Passwords work when using JSON, or MySQL with the password_hash column present."""
     return (not _db_ready()) or _has_pw_col(force=True)
@@ -293,14 +315,27 @@ def _json_set_password(user_code, password_hash) -> None:
         _json_save(d)
 
 
+def _json_set_avatar(user_code, avatar) -> None:
+    with _LOCK:
+        d = _json_load()
+        for u in d["users"]:
+            if u["user_code"] == user_code:
+                if avatar:
+                    u["avatar"] = str(avatar)[:64]
+                else:
+                    u.pop("avatar", None)
+        _json_save(d)
+
+
 # ── MySQL path ────────────────────────────────────────────────────────────────
 def _mysql_list() -> list[dict]:
     conn = mysql_db._connect()
     try:
         with conn.cursor() as cur:
             pw = "password_hash, " if _has_pw_col() else ""
+            av = "avatar, " if _has_avatar_col() else ""
             cur.execute(f"SELECT user_code, crm_line_id, name, username, email, mobile, department, "
-                        f"designation, status, {pw}approved_by, approved_at "
+                        f"designation, status, {pw}{av}approved_by, approved_at "
                         f"FROM sc_app_user ORDER BY name")
             users = {r["user_code"]: {**r, "menus": []} for r in cur.fetchall()}
             cur.execute("SELECT user_code, menu_id, menu_label FROM sc_app_user_menu ORDER BY menu_label")
@@ -385,6 +420,18 @@ def _mysql_set_password(user_code, password_hash) -> None:
         with conn.cursor() as cur:
             cur.execute("UPDATE sc_app_user SET password_hash=%s WHERE user_code=%s",
                         (password_hash, user_code))
+    finally:
+        conn.close()
+
+
+def _mysql_set_avatar(user_code, avatar) -> None:
+    if not _has_avatar_col():
+        return
+    conn = mysql_db._connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE sc_app_user SET avatar=%s WHERE user_code=%s",
+                        ((avatar or None) and str(avatar)[:64], user_code))
     finally:
         conn.close()
 
@@ -505,6 +552,12 @@ def remove_user(user_code) -> dict:
 def set_status(user_code, status) -> dict:
     (_mysql_set_status if _db_ready() else _json_set_status)(user_code, status)
     return {"ok": True}
+
+
+def set_avatar(user_code, avatar) -> dict:
+    """Assign (or clear, when avatar is falsy) a user's avatar id."""
+    (_mysql_set_avatar if _db_ready() else _json_set_avatar)(user_code, avatar)
+    return {"ok": True, "avatar": avatar or None}
 
 
 def add_menu(user_code, menu_id, label) -> dict:

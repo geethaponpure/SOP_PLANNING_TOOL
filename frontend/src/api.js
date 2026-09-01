@@ -217,6 +217,7 @@ export const api = {
     addUser: (body) => req(`/user-master/users${_actorQS()}`, { method: "POST", body: JSON.stringify(body) }),
     removeUser: (code) => req(`/user-master/users/${encodeURIComponent(code)}${_actorQS()}`, { method: "DELETE" }),
     setStatus: (code, status) => req(`/user-master/users/${encodeURIComponent(code)}/status${_actorQS()}`, { method: "POST", body: JSON.stringify({ status }) }),
+    setAvatar: (code, avatar) => req(`/user-master/users/${encodeURIComponent(code)}/avatar${_actorQS()}`, { method: "POST", body: JSON.stringify({ avatar }) }),
     addMenu: (code, menu_id, menu_label) => req(`/user-master/users/${encodeURIComponent(code)}/menus/add${_actorQS()}`, { method: "POST", body: JSON.stringify({ menu_id, menu_label }) }),
     removeMenu: (code, menu_id) => req(`/user-master/users/${encodeURIComponent(code)}/menus/remove${_actorQS()}`, { method: "POST", body: JSON.stringify({ menu_id }) }),
     setMenus: (code, menus) => req(`/user-master/users/${encodeURIComponent(code)}/menus${_actorQS()}`, { method: "PUT", body: JSON.stringify({ menus }) }),

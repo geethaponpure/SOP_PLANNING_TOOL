@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { api } from "../api";
+import SmoothInput from "../components/SmoothInput.jsx";
 
 // forced=true -> full-screen, no cancel (first-login password change).
 // forced=false -> modal overlay with a Cancel button (self-service).
@@ -32,13 +33,13 @@ export default function ChangePassword({ login, forced = false, onDone, onCancel
       </div>
       {err && <div className="banner err" style={{ marginBottom: 12 }}>⚠ {err}</div>}
       <label style={{ fontSize: 12, color: "#475569" }}>Current password</label>
-      <input className="searchbox" style={{ width: "100%", margin: "4px 0 12px" }} type="password" autoFocus
+      <SmoothInput className="searchbox" style={{ width: "100%", margin: "4px 0 12px" }} type="password" autoFocus
         value={cur} onChange={(e) => setCur(e.target.value)} placeholder={forced ? "pure@123" : "Current password"} />
       <label style={{ fontSize: 12, color: "#475569" }}>New password</label>
-      <input className="searchbox" style={{ width: "100%", margin: "4px 0 12px" }} type="password"
+      <SmoothInput className="searchbox" style={{ width: "100%", margin: "4px 0 12px" }} type="password"
         value={nw} onChange={(e) => setNw(e.target.value)} placeholder="At least 4 characters" />
       <label style={{ fontSize: 12, color: "#475569" }}>Confirm new password</label>
-      <input className="searchbox" style={{ width: "100%", margin: "4px 0 18px" }} type="password"
+      <SmoothInput className="searchbox" style={{ width: "100%", margin: "4px 0 18px" }} type="password"
         value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Re-type new password" />
       <div style={{ display: "flex", gap: 8 }}>
         <button className="btn" type="submit" disabled={busy} style={{ flex: 1, justifyContent: "center" }}>
