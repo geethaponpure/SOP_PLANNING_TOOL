@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import SegTabs from "../components/SegTabs.jsx";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
@@ -73,6 +74,8 @@ export default function ProjectionAccuracy() {
     }
     return applySort((tab === "division" ? d.divisions : d.products) || [], sort);
   }, [data.data, tab, q, statusF, sort]);
+
+  const pg = usePagination(rows, [data.data, tab, q, statusF, sort]);
 
   if (meta.loading) return <Loading what="consumption file index" />;
   if (meta.error) return <ErrorBox msg={meta.error} />;
@@ -184,7 +187,7 @@ export default function ProjectionAccuracy() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, k) => {
+                  {pg.pageRows.map((r, k) => {
                     const ch = STATUS_CHIP[r.status] || {};
                     return (
                       <tr key={k}>
@@ -224,7 +227,7 @@ export default function ProjectionAccuracy() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, k) => (
+                  {pg.pageRows.map((r, k) => (
                     <tr key={k}>
                       <td><b>{r.name}</b></td>
                       <td className="num">{fmt.num(r.n_items)}</td>
@@ -243,6 +246,7 @@ export default function ProjectionAccuracy() {
                 </tbody>
               </table>
             )}
+            <Pagination {...pg} />
           </div>
         </>
       )}

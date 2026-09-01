@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
+import IconButton from "../components/IconButton.jsx";
 import { api } from "../api";
 import { Loading, ErrorBox } from "../components/ui.jsx";
 
@@ -141,7 +142,7 @@ function VookiFgMapSection() {
                     <tr key={s.code}>
                       <td><b>{s.name}</b>{s.added && <span className="chip" style={chip("#EAF3FF", "#1768c4")}>added</span>}
                         <div style={{ fontSize: 11, color: "var(--muted)" }}>{s.code}{s.group ? ` · ${s.group}` : ""}</div></td>
-                      <td>{s.added && <button className="link" disabled={busy === s.code} onClick={() => removeSku(s.code)}>{busy === s.code ? "…" : "remove"}</button>}</td>
+                      <td>{s.added && <IconButton icon="trash" tooltip="Remove SKU" color="danger" size="xs" disabled={busy === s.code} onClick={() => removeSku(s.code)} />}</td>
                     </tr>
                   ))}
                   {rows.length === 0 && <tr><td colSpan={2} style={{ color: "var(--muted)" }}>No Vooki FG SKUs.</td></tr>}

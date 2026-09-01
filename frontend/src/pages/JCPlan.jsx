@@ -1,10 +1,13 @@
 import React, { useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat, Tag } from "../components/ui.jsx";
 
 export default function JCPlan() {
   const { data, loading, error } = useAsync(api.jcPlan);
   const [metric, setMetric] = useState("production");
+  const rows = data ? data.fg : [];
+  const pg = usePagination(rows, []);
   if (loading) return <Loading what="JC plan" />;
   if (error) return <ErrorBox msg={error} />;
 
@@ -68,7 +71,7 @@ export default function JCPlan() {
             </tr>
           </thead>
           <tbody>
-            {fg.slice(0, 40).map((r) => (
+            {pg.pageRows.map((r) => (
               <tr key={r.sku}>
                 <td style={{ position: "sticky", left: 0, background: "var(--card)" }}>
                   <b>{r.sku}</b><div style={{ fontSize: 11, color: "var(--muted)" }}>{(r.name || "").slice(0, 20)}</div>
@@ -85,8 +88,9 @@ export default function JCPlan() {
             ))}
           </tbody>
         </table>
+        <Pagination {...pg} />
       </div>
-      <div className="sub">Showing top {Math.min(40, fg.length)} of {fg.length} planned items by annual volume.</div>
+      <div className="sub">{fg.length} planned items by annual volume.</div>
     </>
   );
 }

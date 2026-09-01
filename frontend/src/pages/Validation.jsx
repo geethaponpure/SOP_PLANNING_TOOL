@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import {
@@ -57,20 +58,23 @@ export default function Validation({ onChange }) {
   const [statusF, setStatusF] = useState("");   // "" | open | confirmed | auto-accepted
   const [sort, setSort] = useState({ key: "", dir: "asc" });
 
-  if (loading) return <Loading what="exception inbox" />;
-  if (error) return <ErrorBox msg={error} />;
-
-  const rows = data.rows;
-  const open = rows.filter((r) => r.confirmation.status === "open");
-  const confirmedCount = rows.filter((r) => r.confirmation.status === "confirmed").length;
-  const autoCount = rows.filter((r) => r.confirmation.status === "auto-accepted").length;
+  const rows = data?.rows ?? [];
   const ql = q.toLowerCase();
-  const seg2opts = [...new Set(rows.map((r) => r.segment2).filter(Boolean))].sort();
-  const seg3opts = [...new Set(rows.filter((r) => !seg2 || r.segment2 === seg2).map((r) => r.segment3).filter(Boolean))].sort();
   const shown = rows.filter((r) =>
     (!statusF || r.confirmation.status === statusF) &&
     (!ql || r.name.toLowerCase().includes(ql) || (r.sku || "").toLowerCase().includes(ql)) &&
     (!seg2 || r.segment2 === seg2) && (!seg3 || r.segment3 === seg3));
+  const sortedShown = applySort(shown, sort);
+  const pg = usePagination(sortedShown, [q, seg2, seg3, statusF, sort]);
+
+  if (loading) return <Loading what="exception inbox" />;
+  if (error) return <ErrorBox msg={error} />;
+
+  const open = rows.filter((r) => r.confirmation.status === "open");
+  const confirmedCount = rows.filter((r) => r.confirmation.status === "confirmed").length;
+  const autoCount = rows.filter((r) => r.confirmation.status === "auto-accepted").length;
+  const seg2opts = [...new Set(rows.map((r) => r.segment2).filter(Boolean))].sort();
+  const seg3opts = [...new Set(rows.filter((r) => !seg2 || r.segment2 === seg2).map((r) => r.segment3).filter(Boolean))].sort();
 
   async function doLock() {
     if (!confirm("Lock the consensus demand for this cycle? Downstream supply planning will consume the locked numbers. Changes after lock require re-approval.")) return;
@@ -155,7 +159,7 @@ export default function Validation({ onChange }) {
             </tr>
           </thead>
           <tbody>
-            {applySort(shown, sort).map((r) => {
+            {pg.pageRows.map((r) => {
               const c = r.confirmation;
               return (
                 <tr key={r.sku}>
@@ -188,6 +192,7 @@ export default function Validation({ onChange }) {
             {shown.length === 0 && <tr><td colSpan={13} style={{ color: "var(--muted)" }}>No items match the current filters.</td></tr>}
           </tbody>
         </table>
+        <Pagination {...pg} />
       </div>
 
       {active && (

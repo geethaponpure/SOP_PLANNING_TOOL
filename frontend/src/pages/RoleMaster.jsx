@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { api } from "../api";
+import IconButton from "../components/IconButton.jsx";
 import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
 
 export default function RoleMaster() {
@@ -89,10 +90,8 @@ export default function RoleMaster() {
                   </td>
                   <td style={{ fontSize: 11, color: "var(--muted)" }}>{r.created_by || "—"}</td>
                   <td>
-                    <button className="btn danger" style={{ padding: "3px 10px" }}
-                      onClick={() => { if (confirm(`Delete role "${r.role_name}"? Users already assigned this role keep it until reassigned.`)) act(() => api.roles.remove(r.role_name), `Role "${r.role_name}" deleted.`); }}>
-                      Delete
-                    </button>
+                    <IconButton icon="trash" tooltip="Delete role" color="danger"
+                      onClick={() => { if (confirm(`Delete role "${r.role_name}"? Users already assigned this role keep it until reassigned.`)) act(() => api.roles.remove(r.role_name), `Role "${r.role_name}" deleted.`); }} />
                   </td>
                 </tr>
               ))}

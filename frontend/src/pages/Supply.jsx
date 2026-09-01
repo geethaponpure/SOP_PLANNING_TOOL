@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import SegTabs from "../components/SegTabs.jsx";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
@@ -103,6 +104,11 @@ function RMPlanning() {
   const [savingPlan, setSavingPlan] = useState(false);
   const [applying, setApplying] = useState(false);
   const [mode, setMode] = useState("product");
+  const rows = (data && !data.note) ? data.products
+    .map((p, i) => ({ p, i }))
+    .filter(({ p }) => (!cls || p.bom_class === cls) && (!q || p.name.toLowerCase().includes(q.toLowerCase()))
+      && (!seg2 || p.segment2 === seg2) && (!seg3 || p.segment3 === seg3)) : [];
+  const pg = usePagination(rows, [q, cls, seg2, seg3, mode]);
   if (loading) return <Loading what="Supply & RM Plan" />;
   if (error) return <ErrorBox msg={error} />;
   if (data.note) return <div className="banner info">{data.note}</div>;
@@ -116,10 +122,6 @@ function RMPlanning() {
   const seg3opts = [...new Set(data.products
     .filter((p) => !seg2 || p.segment2 === seg2)
     .map((p) => p.segment3).filter(Boolean))].sort();
-  const rows = data.products
-    .map((p, i) => ({ p, i }))
-    .filter(({ p }) => (!cls || p.bom_class === cls) && (!q || p.name.toLowerCase().includes(q.toLowerCase()))
-      && (!seg2 || p.segment2 === seg2) && (!seg3 || p.segment3 === seg3));
 
   // BOM overrides chosen in the UI: {product name -> "assembly|org|designator"}
   const bomOverrides = {};
@@ -309,7 +311,7 @@ function RMPlanning() {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ p, i }) => {
+            {pg.pageRows.map(({ p, i }) => {
               const bi = sel[i] ?? 0;
               const bom = p.boms && p.boms[bi];
               const overridden = bi !== 0 || p.overridden;
@@ -438,6 +440,7 @@ function RMPlanning() {
             })}
           </tbody>
         </table>
+        <Pagination {...pg} />
       </div>
       )}
       {mode === "product" && (
@@ -528,6 +531,7 @@ function ConsolidatedRM({ data, q, rmCls = "manufacturing", pjc = 4 }) {
   const cs = pick.cs;
   const rows = (pick.list || []).filter((r) =>
     !q || r.rm_code.toLowerCase().includes(q.toLowerCase()) || (r.rm_desc || "").toLowerCase().includes(q.toLowerCase()));
+  const pg = usePagination(rows, [q, rmCls]);
   return (
     <>
       <div className="banner info page-intro" style={{ marginTop: 0 }}>
@@ -559,7 +563,7 @@ function ConsolidatedRM({ data, q, rmCls = "manufacturing", pjc = 4 }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => {
+            {pg.pageRows.map((r, i) => {
               const isOpen = open === i;
               return (
                 <React.Fragment key={i}>
@@ -607,6 +611,7 @@ function ConsolidatedRM({ data, q, rmCls = "manufacturing", pjc = 4 }) {
             })}
           </tbody>
         </table>
+        <Pagination {...pg} />
       </div>
       <div className="sub" style={{ marginTop: 8 }}>{rows.length} of {cs.distinct_rms} RMs shown. Net-to-buy: <span className="num-pos">red = buy</span> · <span className="num-zero">green = covered</span>. One RM used by multiple FGs is summed into a single purchase quantity.</div>
     </>
@@ -619,6 +624,7 @@ function RealRM({ data, q, pjc }) {
   const list = data.real_rm_requirement || [];
   const rows = list.filter((r) =>
     !q || (r.rm_code || "").toLowerCase().includes(q.toLowerCase()) || (r.rm_desc || "").toLowerCase().includes(q.toLowerCase()));
+  const pg = usePagination(rows, [q]);
   return (
     <>
       <div className="banner info page-intro" style={{ marginTop: 0 }}>
@@ -655,7 +661,7 @@ function RealRM({ data, q, pjc }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => {
+            {pg.pageRows.map((r, i) => {
               const isOpen = open === i;
               return (
                 <React.Fragment key={i}>
@@ -697,6 +703,7 @@ function RealRM({ data, q, pjc }) {
             })}
           </tbody>
         </table>
+        <Pagination {...pg} />
       </div>
       <div className="sub" style={{ marginTop: 8 }}>{rows.length} of {cs.distinct_rms} leaf RMs shown. Net-to-buy: <span className="num-pos">red = buy</span> · <span className="num-zero">green = covered</span>.</div>
     </>

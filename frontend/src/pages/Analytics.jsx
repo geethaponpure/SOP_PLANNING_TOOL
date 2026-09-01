@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat, Tag } from "../components/ui.jsx";
 
@@ -65,6 +66,8 @@ const inp = { width: "100%", padding: "6px 8px", marginTop: 4, border: "1px soli
 
 export default function Analytics() {
   const { data, loading, error } = useAsync(api.analytics);
+  const anomalyRows = data ? data.anomaly_detection.rows : [];
+  const pg = usePagination(anomalyRows, []);
   if (loading) return <Loading what="analytics" />;
   if (error) return <ErrorBox msg={error} />;
 
@@ -96,7 +99,7 @@ export default function Analytics() {
             <tr><th>SKU</th><th>Owner</th><th className="num">Projection</th><th className="num">Expected</th><th className="num">z-score</th><th className="num">Value at risk</th><th>Level</th></tr>
           </thead>
           <tbody>
-            {anomaly_detection.rows.map((r) => (
+            {pg.pageRows.map((r) => (
               <tr key={r.sku}>
                 <td><b>{r.sku}</b> <span style={{ color: "var(--muted)", fontSize: 12 }}>{r.name}</span></td>
                 <td>{r.owner}</td>
@@ -110,6 +113,7 @@ export default function Analytics() {
             {anomaly_detection.rows.length === 0 && <tr><td colSpan={7}>No projection anomalies this cycle.</td></tr>}
           </tbody>
         </table>
+        <Pagination {...pg} />
       </div>
 
       <div className="grid cols-2">

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import SegTabs from "../components/SegTabs.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
@@ -73,6 +74,7 @@ export default function AgedRM() {
 
 function Recommended({ rows }) {
   const [open, setOpen] = useState(null);
+  const pg = usePagination(rows, [rows]);
   return (
     <div className="tbl-wrap">
       <div className="sub" style={{ margin: "0 0 8px" }}>Greedy plan — produce in this order to consume the most aged inventory. Shared RMs are depleted as you go, so quantities reflect contention. Click a row to see the aged RMs it draws.</div>
@@ -83,7 +85,8 @@ function Recommended({ rows }) {
             <th className="num">Aged value</th><th className="num">Cumulative aged (KG)</th></tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => {
+          {pg.pageRows.map((r, j) => {
+            const i = pg.start + j;
             const isOpen = open === i;
             return (
               <React.Fragment key={i}>
@@ -108,6 +111,7 @@ function Recommended({ rows }) {
           {rows.length === 0 && <tr><td colSpan={7}>No finished goods can be produced from aged RM.</td></tr>}
         </tbody>
       </table>
+      <Pagination {...pg} />
     </div>
   );
 }

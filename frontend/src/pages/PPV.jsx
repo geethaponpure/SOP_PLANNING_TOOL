@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
@@ -13,6 +14,11 @@ export default function PPV() {
   const [seg2, setSeg2] = useState("");
   const [seg3, setSeg3] = useState("");
   const [exporting, setExporting] = useState(false);
+  const ql0 = q.toLowerCase();
+  const pgItems = (data?.items || []).filter((i) =>
+    (!q || i.name.toLowerCase().includes(ql0) || i.code.toLowerCase().includes(ql0)) &&
+    (!seg1 || i.segment1 === seg1) && (!seg2 || i.segment2 === seg2) && (!seg3 || i.segment3 === seg3));
+  const pg = usePagination(pgItems, [q, seg1, seg2, seg3]);
   if (loading) return <Loading what="PPV Scorecard" />;
   if (error) return <ErrorBox msg={error} />;
   if (data.note && (!data.jc_performance || data.jc_performance.length === 0))
@@ -112,7 +118,7 @@ export default function PPV() {
           <thead><tr><th>Item</th><th className="num">Std price (₹)</th><th className="num">Min</th><th className="num">Max</th>
             <th className="num">Volatility</th><th className="num">JCs ▲/▼</th><th className="num">Timing overspend</th><th className="num">Worst JC</th><th className="num">Spend</th></tr></thead>
           <tbody>
-            {items.slice(0, 400).map((it, k) => (
+            {pg.pageRows.map((it, k) => (
               <tr key={k}>
                 <td><b>{it.name}</b><div style={{ fontSize: 11, color: "var(--muted)" }}>
                   {it.code}{[it.segment1, it.segment2, it.segment3].filter(Boolean).length ? ` · ${[it.segment1, it.segment2, it.segment3].filter(Boolean).join(" / ")}` : ""}</div></td>
@@ -129,6 +135,7 @@ export default function PPV() {
             {items.length === 0 && <tr><td colSpan={9}>No items.</td></tr>}
           </tbody>
         </table>
+        <Pagination {...pg} />
       </div>
       <div className="sub" style={{ marginTop: 8 }}>
         <b>Timing overspend</b> = ₹ paid above the annual WAP in unfavourable JCs (the saving available from better purchase timing).

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import AvatarPicker from "../components/AvatarPicker.jsx";
+import IconButton from "../components/IconButton.jsx";
 import { avatarUrl } from "../assets/avatars/index.js";
 import { NAV, HIDDEN } from "../nav";
 import { api } from "../api";
@@ -121,8 +122,8 @@ export default function UserMaster() {
                     onClick={() => act(() => api.userMaster.setStatus(u.user_code, u.status === "active" ? "disabled" : "active"))}>
                     {u.status === "active" ? "● Active" : "○ Disabled"}
                   </button>
-                  <button className="btn danger" style={{ padding: "5px 12px" }}
-                    onClick={() => { if (confirm(`Remove ${u.name} from the app?`)) act(() => api.userMaster.removeUser(u.user_code)); }}>Delete</button>
+                  <IconButton icon="trash" tooltip="Delete user" color="danger"
+                    onClick={() => { if (confirm(`Remove ${u.name} from the app?`)) act(() => api.userMaster.removeUser(u.user_code)); }} />
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(230px, 300px) 1fr", gap: 18, marginTop: 12 }}>

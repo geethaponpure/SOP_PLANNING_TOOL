@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import SegTabs from "../components/SegTabs.jsx";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
@@ -52,6 +53,16 @@ export default function AdhocPlanning() {
   const [sortC, setSortC] = useState({ key: "net_to_buy", dir: "desc" });
   const [exporting, setExporting] = useState(false);
   const [running, setRunning] = useState(false);
+
+  const ql = q.toLowerCase();
+  const products = data && !data.note ? applySort(data.products.filter((p) =>
+    (!onlyAdhoc || p.is_adhoc) && (!q || p.name.toLowerCase().includes(ql))
+    && (!seg2 || p.segment2 === seg2) && (!seg3 || p.segment3 === seg3)), sortP) : [];
+  const cons = data && !data.note ? applySort(data.consolidated_rm.filter((r) =>
+    !q || r.rm_code.toLowerCase().includes(ql) || (r.rm_desc || "").toLowerCase().includes(ql)), sortC) : [];
+  const pgP = usePagination(products, [q, seg2, seg3, onlyAdhoc, sortP.key, sortP.dir, mode]);
+  const pgC = usePagination(cons, [q, sortC.key, sortC.dir, mode]);
+
   if (loading) return <Loading what="Adhoc Planning" />;
   if (error) return <ErrorBox msg={error} />;
   if (data.note) return <div className="banner info">{data.note}</div>;
@@ -59,16 +70,10 @@ export default function AdhocPlanning() {
   const s = data.summary;
   const fz = data.freeze || {};
   const plans = data.jc_plans || [];
-  const ql = q.toLowerCase();
   const seg2opts = [...new Set(data.products.map((p) => p.segment2).filter(Boolean))].sort();
   const seg3opts = [...new Set(data.products
     .filter((p) => !seg2 || p.segment2 === seg2)
     .map((p) => p.segment3).filter(Boolean))].sort();
-  const products = applySort(data.products.filter((p) =>
-    (!onlyAdhoc || p.is_adhoc) && (!q || p.name.toLowerCase().includes(ql))
-    && (!seg2 || p.segment2 === seg2) && (!seg3 || p.segment3 === seg3)), sortP);
-  const cons = applySort(data.consolidated_rm.filter((r) =>
-    !q || r.rm_code.toLowerCase().includes(ql) || (r.rm_desc || "").toLowerCase().includes(ql)), sortC);
 
   return (
     <>
@@ -160,7 +165,7 @@ export default function AdhocPlanning() {
               <SortTh label="Net to buy" k="net_to_buy" sort={sortC} setSort={setSortC} className="num" />
             </tr></thead>
             <tbody>
-              {cons.map((r, i) => (
+              {pgC.pageRows.map((r, i) => (
                 <tr key={i}>
                   <td><b>{data.decode_names ? r.rm_desc : r.rm_code}</b><div style={{ fontSize: 11, color: "var(--muted)" }}>{data.decode_names ? r.rm_code : r.rm_desc}</div></td>
                   <td className="num">{r.item_count}</td>
@@ -174,6 +179,7 @@ export default function AdhocPlanning() {
               {cons.length === 0 && <tr><td colSpan={7}>No adhoc RM to buy.</td></tr>}
             </tbody>
           </table>
+          <Pagination {...pgC} />
         </div>
       ) : (
         <div className="tbl-wrap">
@@ -190,7 +196,7 @@ export default function AdhocPlanning() {
               <SortTh label="RM to buy" k="net_total" sort={sortP} setSort={setSortP} className="num" />
             </tr></thead>
             <tbody>
-              {products.map((p, i) => {
+              {pgP.pageRows.map((p, i) => {
                 const isOpen = open === p.name;
                 const accent = p.status === "exceeds" ? "#e05353" : p.status === "new" ? "#1768c4" : "transparent";
                 return (
@@ -235,6 +241,7 @@ export default function AdhocPlanning() {
               {products.length === 0 && <tr><td colSpan={9}>No items.</td></tr>}
             </tbody>
           </table>
+          <Pagination {...pgP} />
         </div>
       )}
       <div className="sub" style={{ marginTop: 8 }}>{s.adhoc_items} adhoc items ({fmt.num(s.adhoc_soc_qty)} KG SOC); consolidated to {s.consolidated_rms} RMs, {s.rms_to_buy} to buy.</div>

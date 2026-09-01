@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
@@ -60,17 +61,18 @@ export default function SupplierScorecard() {
   const [open, setOpen] = useState(null);
   const [sort, setSort] = useState({ key: "score", dir: "desc" });
   const [exporting, setExporting] = useState(false);
+  const ql = q.toLowerCase();
+  const rows = (data && !data.note) ? applySort(data.suppliers.filter((x) =>
+    (!q || x.vendor.toLowerCase().includes(ql)) &&
+    (!trade || x.trade === trade) && x.po_lines >= minLines &&
+    (!crit || (crit === "critical" && x.critical) || (crit === "sole" && x.sole_source_count > 0) ||
+      (crit === "high" && x.criticality === "High"))), sort) : [];
+  const pg = usePagination(rows, [q, trade, crit, minLines, sort]);
   if (loading) return <Loading what="Supplier Scorecard" />;
   if (error) return <ErrorBox msg={error} />;
   if (data.note) return <div className="banner info">{data.note}</div>;
 
   const s = data.summary;
-  const ql = q.toLowerCase();
-  const rows = applySort(data.suppliers.filter((x) =>
-    (!q || x.vendor.toLowerCase().includes(ql)) &&
-    (!trade || x.trade === trade) && x.po_lines >= minLines &&
-    (!crit || (crit === "critical" && x.critical) || (crit === "sole" && x.sole_source_count > 0) ||
-      (crit === "high" && x.criticality === "High"))), sort);
 
   return (
     <>
@@ -134,13 +136,13 @@ export default function SupplierScorecard() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((x, i) => {
+            {pg.pageRows.map((x, i) => {
               const isOpen = open === x.vendor;
               return (
                 <React.Fragment key={x.vendor + i}>
                   <tr className={`parent ${isOpen ? "isopen" : ""}`} style={{ cursor: "pointer" }} onClick={() => setOpen(isOpen ? null : x.vendor)}>
                     <td style={{ color: "var(--muted)" }}>{isOpen ? "▾" : "▸"}</td>
-                    <td>{i + 1}</td>
+                    <td>{pg.start + i + 1}</td>
                     <td><b>{x.vendor}</b>
                       {x.critical && <span className="chip" style={{ cursor: "default", marginLeft: 6, fontSize: 10,
                         background: x.criticality === "High" ? "#FFE5E5" : "#FFF4DA",
@@ -200,6 +202,7 @@ export default function SupplierScorecard() {
           </tbody>
         </table>
       </div>
+      <Pagination {...pg} />
       <div className="sub" style={{ marginTop: 8 }}>
         Score: <span style={{ color: "#1a7d4f" }}>≥75 strong</span> · <span style={{ color: "#8a6d00" }}>50–75 fair</span> ·
         <span style={{ color: "#a11" }}> &lt;50 weak</span>. Price vs market: <span style={{ color: "#1a7d4f" }}>negative = cheaper than peers</span>.

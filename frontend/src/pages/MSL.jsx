@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import SegTabs from "../components/SegTabs.jsx";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
@@ -30,7 +31,6 @@ export default function MSL() {
   const [sort, setSort] = useState({ key: "avg_qty_per_jc", dir: "desc" });
   const [busy, setBusy] = useState("");
 
-  if (error) return <ErrorBox msg={error} />;
   const meta = data?.meta || {};
   const all = data?.rows || [];
   const st = data?.storage || {};
@@ -45,6 +45,10 @@ export default function MSL() {
       const c = typeof va === "number" ? va - vb : String(va ?? "").localeCompare(String(vb ?? ""));
       return sort.dir === "desc" ? -c : c;
     });
+
+  const pg = usePagination(rows, [tab, ql, sort.key, sort.dir, ref]);
+
+  if (error) return <ErrorBox msg={error} />;
 
   const save = async () => {
     setBusy("save");
@@ -142,7 +146,7 @@ export default function MSL() {
               <SortTh label="On-hand" k="onhand_stock" sort={sort} setSort={setSort} className="num" title="Total on-hand (warehouse + branch)" />
             </tr></thead>
             <tbody>
-              {rows.slice(0, 3000).map((r, i) => {
+              {pg.pageRows.map((r, i) => {
                 const a = ACT_BG[r.activity] || ACT_BG.Other;
                 return (
                   <tr key={(r.item_name || "") + i}>
@@ -166,6 +170,7 @@ export default function MSL() {
               {rows.length === 0 && <tr><td colSpan={11} style={{ color: "var(--muted)" }}>No items match.</td></tr>}
             </tbody>
           </table>
+          <Pagination {...pg} />
         </div>
       )}
       {rows.length > 3000 && <div className="sub" style={{ marginTop: 8 }}>Showing first 3,000 of {fmt.num(rows.length)} — use search or download the full Excel.</div>}

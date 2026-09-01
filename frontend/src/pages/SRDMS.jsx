@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import SegTabs from "../components/SegTabs.jsx";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
@@ -285,6 +286,8 @@ function RequestList({ onOpen, masters, persona, mode, ver }) {
     return true;
   });
   const { sort, toggle, apply } = useSort("sr_no", "desc");
+  const sortedRows = apply(rows);
+  const pg = usePagination(sortedRows, [eff.q, eff.status, eff.plant_id, ver, sort]);
   return (
     <>
       <div className="pagebar" style={{ marginTop: 12 }}>
@@ -315,7 +318,7 @@ function RequestList({ onOpen, masters, persona, mode, ver }) {
           <SortTh label="Disp qty" k="qty_dispatched_total" sort={sort} toggle={toggle} num />
           <SortTh label="Submitted" k="submitted_at" sort={sort} toggle={toggle} /><th></th>
         </tr></thead><tbody>
-          {apply(rows).map((r) => (
+          {pg.pageRows.map((r) => (
             <tr key={r.id}>
               <td><b>{r.sr_no || "(draft)"}</b></td><td>{r.requester_name}</td><td>{r.plant_name}</td>
               <td><Chip v={r.priority} /></td><td>{r.required_by || "—"}</td><td><Chip v={r.status} /></td>
@@ -329,7 +332,8 @@ function RequestList({ onOpen, masters, persona, mode, ver }) {
               : isHeadUser ? "No sample requests are referred to you yet."
               : isReqUser ? "You haven't raised any sample requests yet."
               : "No requests."}</td></tr>}
-        </tbody></table></div>
+        </tbody></table>
+        <Pagination {...pg} /></div>
       )}
     </>
   );

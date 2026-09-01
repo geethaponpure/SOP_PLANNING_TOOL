@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
@@ -16,6 +17,11 @@ export default function ItemReceiptSchedule() {
   const [view, setView] = useState("branch"); // "branch" | "warehouse"
   const { data, loading, error } = useAsync(
     () => api.itemReceiptSchedule(planId || null, region), [planId, region]);
+
+  const ql = q.trim().toLowerCase();
+  const items = ((data && data.items) || []).filter((r) => !ql || (r.item || "").toLowerCase().includes(ql));
+  const pg = usePagination(items, [q, planId, region, view]);
+
   if (loading) return <Loading what="Item Receipt Schedule" />;
   if (error) return <ErrorBox msg={error} />;
 
@@ -27,9 +33,6 @@ export default function ItemReceiptSchedule() {
   const wKey = view === "branch" ? "branch_window" : "warehouse_window";
   const dKey = view === "branch" ? "branch_date" : "warehouse_date";
   const byWindow = view === "branch" ? (s.branch_by_window || {}) : (s.warehouse_by_window || {});
-
-  const ql = q.trim().toLowerCase();
-  const items = (data.items || []).filter((r) => !ql || (r.item || "").toLowerCase().includes(ql));
 
   return (
     <>
@@ -114,7 +117,7 @@ export default function ItemReceiptSchedule() {
                 <th>Window</th>
               </tr></thead>
               <tbody>
-                {items.map((r, i) => (
+                {pg.pageRows.map((r, i) => (
                   <tr key={i}>
                     <td><b>{r.item}</b></td>
                     <td style={{ fontSize: 11, color: "var(--muted)" }}>{r.organization}</td>
@@ -135,6 +138,7 @@ export default function ItemReceiptSchedule() {
                 {items.length === 0 && <tr><td colSpan={view === "branch" ? 8 : 7} style={{ color: "var(--muted)" }}>No items match.</td></tr>}
               </tbody>
             </table>
+            <Pagination {...pg} />
           </div>
         </>
       ) : !data.note && <div className="banner info">No planned items for this plan yet — save/generate a JC plan and its production schedule first.</div>}

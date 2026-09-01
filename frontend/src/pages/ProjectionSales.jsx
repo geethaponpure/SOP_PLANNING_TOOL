@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
@@ -50,6 +51,12 @@ export default function ProjectionSales() {
   const [type, setType] = useState("");
   const [sort, setSort] = useState({ key: "variance", dir: "desc" });
   const [exporting, setExporting] = useState(false);
+  const ql = q.toLowerCase();
+  const rows = (data && !data.note) ? applySort(data.items.filter((i) =>
+    (!q || i.name.toLowerCase().includes(ql)) &&
+    (!seg2 || i.segment2 === seg2) && (!seg3 || i.segment3 === seg3) &&
+    (!flag || i.flag === flag) && (!type || i.make_or_buy === type)), sort) : [];
+  const pg = usePagination(rows, [q, seg2, seg3, flag, type, sort]);
   if (loading) return <Loading what="Projection vs Sales" />;
   if (error) return <ErrorBox msg={error} />;
   if (data.note) return <div className="banner info">{data.note}</div>;
@@ -57,11 +64,6 @@ export default function ProjectionSales() {
   const s = data.summary;
   const seg2opts = [...new Set(data.items.map((i) => i.segment2).filter(Boolean))].sort();
   const seg3opts = [...new Set(data.items.filter((i) => !seg2 || i.segment2 === seg2).map((i) => i.segment3).filter(Boolean))].sort();
-  const ql = q.toLowerCase();
-  const rows = applySort(data.items.filter((i) =>
-    (!q || i.name.toLowerCase().includes(ql)) &&
-    (!seg2 || i.segment2 === seg2) && (!seg3 || i.segment3 === seg3) &&
-    (!flag || i.flag === flag) && (!type || i.make_or_buy === type)), sort);
 
   return (
     <>
@@ -142,7 +144,7 @@ export default function ProjectionSales() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((i, k) => (
+            {pg.pageRows.map((i, k) => (
               <tr key={k}>
                 <td><b>{i.name}</b>{" "}
                   <span className="chip" style={{ cursor: "default", fontSize: 10,
@@ -167,6 +169,7 @@ export default function ProjectionSales() {
           </tbody>
         </table>
       </div>
+      <Pagination {...pg} />
       <div className="sub" style={{ marginTop: 8 }}>
         Variance = projection − avg sales. <span style={{ color: "var(--red)" }}>+ = over-projected</span> ·
         <span style={{ color: "#8a6d00" }}> − = under-projected</span>. <b>{fmt.num(s.manufactured)}</b> manufactured ·

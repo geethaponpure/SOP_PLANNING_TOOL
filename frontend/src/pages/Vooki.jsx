@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 import SegTabs from "../components/SegTabs.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
@@ -45,18 +46,13 @@ export default function Vooki() {
   const [rowBusy, setRowBusy] = useState(null);   // product name being exported
   const [sortP, setSortP] = useState({ key: "name", dir: "asc" });
   const [sortC, setSortC] = useState({ key: "net_to_buy", dir: "desc" });
-  if (loading) return <Loading what="Vooki Planning" />;
-  if (error) return <ErrorBox msg={error} />;
-  if (data.note) return <div className="banner info">{data.note}</div>;
 
-  const s = data.summary;
-  const decode = data.decode_names;
+  const ready = !loading && !error && data && !data.note;
   const ql = q.toLowerCase();
   const bomOf = (p) => p.boms[Math.min(bomIdx[p.name] || 0, p.boms.length - 1)];
   const grossOf = (p, c) => (qty[p.name] || 0) * c.qty_per_unit;
   const netOf = (p, c) => Math.max(0, grossOf(p, c) - c.available);
   const rmToBuy = (p) => (p.has_bom ? bomOf(p).components.reduce((a, c) => a + netOf(p, c), 0) : 0);
-  const plannedCount = data.products.filter((p) => (qty[p.name] || 0) > 0).length;
   // FG qty producible from current RM: min = main stock only; max = main + subs + in-transit
   const minMax = (p) => {
     let mn = Infinity, mx = Infinity;
@@ -66,16 +62,25 @@ export default function Vooki() {
     }
     return { min: isFinite(mn) ? mn : 0, max: isFinite(mx) ? mx : 0 };
   };
+
+  const products = ready ? applySort(
+    data.products
+      .filter((p) => !q || p.name.toLowerCase().includes(ql))
+      .map((p) => { const mm = minMax(p); return { ...p, _rmbuy: rmToBuy(p), _min: mm.min, _max: mm.max }; }),
+    sortP) : [];
+  const pg = usePagination(products, [q, sortP, qty, bomIdx, mode]);
+
+  if (loading) return <Loading what="Vooki Planning" />;
+  if (error) return <ErrorBox msg={error} />;
+  if (data.note) return <div className="banner info">{data.note}</div>;
+
+  const s = data.summary;
+  const decode = data.decode_names;
+  const plannedCount = data.products.filter((p) => (qty[p.name] || 0) > 0).length;
   const downloadOne = async (name) => {
     setRowBusy(name);
     try { await api.vookiPlanningExport(qty, name); } catch (e) { alert(e.message); } finally { setRowBusy(null); }
   };
-
-  const products = applySort(
-    data.products
-      .filter((p) => !q || p.name.toLowerCase().includes(ql))
-      .map((p) => { const mm = minMax(p); return { ...p, _rmbuy: rmToBuy(p), _min: mm.min, _max: mm.max }; }),
-    sortP);
 
   // consolidated RM across all products with a planned quantity
   const consMap = {};
@@ -170,7 +175,7 @@ export default function Vooki() {
               <th style={{ width: 40 }}></th>
             </tr></thead>
             <tbody>
-              {products.map((p, i) => {
+              {pg.pageRows.map((p, i) => {
                 const isOpen = open === p.name;
                 const b = bomOf(p);
                 return (
@@ -263,6 +268,7 @@ export default function Vooki() {
               {products.length === 0 && <tr><td colSpan={11} style={{ color: "var(--muted)" }}>No products.</td></tr>}
             </tbody>
           </table>
+          <Pagination {...pg} />
         </div>
       )}
     </>
