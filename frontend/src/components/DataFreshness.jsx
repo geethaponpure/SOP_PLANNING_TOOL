@@ -59,14 +59,25 @@ export default function DataFreshness() {
   }
 
   return (
-    <span className="pill" title={title}
-      style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />
-      {label}
-      <button onClick={refresh} disabled={syncing} title="Refresh CRM data now"
-        style={{ marginLeft: 4, border: "none", background: "transparent",
-                 cursor: syncing ? "default" : "pointer", fontSize: "1em", lineHeight: 1, padding: 0 }}>
-        {syncing ? "…" : "↻"}
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+      <span className="pill" title={title}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />
+        {label}
+      </span>
+      <button
+        type="button"
+        className={`refresh-btn ${syncing ? "is-syncing" : ""}`}
+        onClick={refresh}
+        disabled={syncing}
+        title="Refresh CRM data now"
+      >
+        <svg className="refresh-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M23 4v6h-6M1 20v-6h6" />
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+        <span className="refresh-label">{syncing ? "Refreshing…" : "Refresh"}</span>
       </button>
     </span>
   );

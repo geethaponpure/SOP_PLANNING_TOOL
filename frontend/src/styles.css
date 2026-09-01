@@ -537,6 +537,23 @@ body {
 .pg-btn:hover:not(:disabled) { background: #f4f7fe; border-color: #cbd5e0; }
 .pg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* ---- Refresh button (top bar Data-freshness) — red pill, icon spins on hover/sync ---- */
+.refresh-btn {
+  display: inline-flex; justify-content: center; align-items: center; gap: 7px;
+  height: 34px; padding: 6px 14px; border: none; border-radius: 20px;
+  background: #16a34a22; cursor: pointer; transition: background 0.15s ease;
+}
+.refresh-btn:hover { background: #16a34a3a; }
+.refresh-btn:disabled { cursor: default; }
+.refresh-label { line-height: 20px; font-size: 13px; font-weight: 600; letter-spacing: 0.5px; color: #16a34a; }
+.refresh-svg-icon { width: 16px; height: 16px; color: #16a34a; flex: none; }
+.refresh-btn:hover .refresh-svg-icon,
+.refresh-btn.is-syncing .refresh-svg-icon { animation: refresh-spin 1s linear infinite; }
+@keyframes refresh-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(-360deg); }
+}
+
 /* ---- IconButton: icon-only action button + tooltip (components/IconButton.jsx) ---- */
 .icon-btn-wrap { position: relative; display: inline-flex; }
 .icon-btn {
@@ -1085,9 +1102,8 @@ td.num b { color: var(--navy); }
 .supply-tool-card select, .supply-tool-card input[type="file"] { min-height: 38px; }
 
 .supply-workspace {
-  position: sticky;
-  top: 10px;
-  z-index: 4;
+  /* scrolls with the page (was position: sticky, which pinned it and hid the
+     filter bar behind it while scrolling) */
   padding: 10px;
   margin: 0 !important;
   background: rgba(246, 249, 252, .94);
