@@ -185,7 +185,7 @@ function RMPlanning() {
       )}
 
       {/* Card 1 — actions */}
-      <div className="supply-workspace supply-actions" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "16px 0 10px" }}>
+      <div className="supply-workspace supply-actions" style={{ display: "flex", alignItems: "center", flexWrap: "nowrap", gap: 8, margin: "16px 0 10px" }}>
         {overrideCount > 0 && (
           <button className="btn" disabled={applying}
             title="Rebuild & save the plan using your chosen BOMs (flows into consolidated RM, Excel & Production Scheduling)"

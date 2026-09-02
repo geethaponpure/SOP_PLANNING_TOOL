@@ -31,6 +31,24 @@
         ],
         "createdAt": "2026-09-01T05:30:46.997Z",
         "reason": "user confirmed: provided this exact glider easing in the pasted glass-radio code and asked to apply it; springy overshoot is the intended effect"
+      },
+      {
+        "rule": "overused-font",
+        "value": "lato",
+        "files": [
+          "frontend/src/styles.css"
+        ],
+        "createdAt": "2026-09-01T10:33:09.867Z",
+        "reason": "user confirmed: Figma employee-management table design specifies Lato; user asked to apply it"
+      },
+      {
+        "rule": "overused-font",
+        "value": "lato",
+        "files": [
+          "frontend/index.html"
+        ],
+        "createdAt": "2026-09-01T10:33:10.055Z",
+        "reason": "user confirmed: Lato is the Figma design font, loaded via Google Fonts for the User Master table"
       }
     ]
   }

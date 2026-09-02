@@ -13,6 +13,7 @@ import Validation from "./pages/Validation.jsx";
 import Forecasting from "./pages/Forecasting.jsx";
 import Segmentation from "./pages/Segmentation.jsx";
 import Supply from "./pages/Supply.jsx";
+import SupplyCards from "./pages/SupplyCards.jsx";
 import MfgStock from "./pages/MfgStock.jsx";
 import Vooki from "./pages/Vooki.jsx";
 import AgedRM from "./pages/AgedRM.jsx";
@@ -113,6 +114,7 @@ export default function App() {
     forecasting: <Forecasting />,
     segmentation: <Segmentation />,
     supply: <Supply />,
+    supplycards: <SupplyCards />,
     mfgstock: <MfgStock />,
     vooki: <Vooki />,
     adhoc: <AdhocPlanning />,

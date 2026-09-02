@@ -20,6 +20,7 @@ export default function UserMaster() {
   const saveApprover = (v) => { setApprover(v); localStorage.setItem("um_approver", v); };
   const [tab, setTab] = useState("approved");   // "approved" | "crm"
   const [pickFor, setPickFor] = useState(null); // user_code whose avatar picker is open
+  const [expanded, setExpanded] = useState(null); // user_code whose detail row is open
 
   const status = useAsync(() => api.userMaster.status(), [ver]);
   const usersA = useAsync(() => api.userMaster.users(), [ver]);
@@ -95,92 +96,125 @@ export default function UserMaster() {
       {usersA.loading && <Loading what="approved users" />}
       {usersA.error && <ErrorBox msg={usersA.error} />}
       {usersA.data && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {approved.map((u) => {
-            const ur = roleMap[u.user_code] || {};
-            const isWhRole = /Warehouse/.test(ur.role || "");
-            const sel = { width: "100%", minWidth: 0, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 13, background: "#fff" };
-            const lbl = { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".3px", color: "var(--muted)", marginBottom: 6, display: "block" };
-            return (
-              <div key={u.user_code} className="card" style={{ padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap", paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
-                  <button className="um-avatar" onClick={() => setPickFor(u.user_code)}
-                    title="Change avatar">
-                    {avatarUrl(u.avatar)
-                      ? <img src={avatarUrl(u.avatar)} alt={`${u.name} avatar`} />
-                      : <span className="um-avatar-ph">👤</span>}
-                    <span className="um-avatar-edit">✎</span>
-                  </button>
-                  <div style={{ flex: 1, minWidth: 200 }}>
-                    <b style={{ fontSize: 14, color: "var(--navy)" }}>{u.name}</b>
-                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8, fontFamily: "ui-monospace, Menlo, monospace" }}>{u.username} · {u.user_code}</span>
-                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                      {[u.department, u.designation, u.email].filter(Boolean).join("  ·  ") || "—"}
-                    </div>
-                  </div>
-                  <button className="chip" style={{ background: u.status === "active" ? "#E6F6EC" : "#FFE5E5", fontWeight: 600 }}
-                    onClick={() => act(() => api.userMaster.setStatus(u.user_code, u.status === "active" ? "disabled" : "active"))}>
-                    {u.status === "active" ? "● Active" : "○ Disabled"}
-                  </button>
-                  <IconButton icon="trash" tooltip="Delete user" color="danger"
-                    onClick={() => { if (confirm(`Remove ${u.name} from the app?`)) act(() => api.userMaster.removeUser(u.user_code)); }} />
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(230px, 300px) 1fr", gap: 18, marginTop: 12 }}>
-                  <div>
-                    <span style={lbl}>SRDMS role (flow)</span>
-                    <select style={sel} value={ur.role || ""}
-                      onChange={(e) => act(() => api.srdms.setUserRole(u.user_code, e.target.value, ur.plant_id || ""))}>
-                      <option value="">— derive from dept —</option>
-                      {srdmsRoles.map((r) => <option key={r}>{r}</option>)}
-                    </select>
-                    {isWhRole && (
-                      <select style={{ ...sel, marginTop: 6 }} value={ur.plant_id || ""}
-                        onChange={(e) => act(() => api.srdms.setUserRole(u.user_code, ur.role, e.target.value))}>
-                        <option value="">All plants</option>
-                        {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
-                    )}
-                    <div style={{ marginTop: 12 }}>
-                      <span style={lbl}>Login password</span>
-                      {st.password_enabled ? (
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          <button className="chip" title="Reset to the default password"
-                            onClick={() => act(async () => { const r = await api.userMaster.resetPassword(u.user_code); alert(`${u.name}'s password reset to: ${r.password}`); })}>🔑 Reset</button>
-                          <button className="chip" title="Set a specific password"
-                            onClick={() => { const p = prompt(`New password for ${u.name} (min 4 chars):`); if (p) act(() => api.userMaster.setPassword(u.user_code, p)); }}>Set…</button>
+        <div className="um-table-wrap">
+          <table className="um-table">
+            <thead>
+              <tr>
+                <th className="um-c-exp" aria-label="expand" />
+                <th>Name</th>
+                <th>Email</th>
+                <th>Department</th>
+                <th>Designation</th>
+                <th>Status</th>
+                <th className="um-c-act" aria-label="actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {approved.map((u) => {
+                const ur = roleMap[u.user_code] || {};
+                const isWhRole = /Warehouse/.test(ur.role || "");
+                const isOpen = expanded === u.user_code;
+                const sel = { width: "100%", minWidth: 0, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 13, background: "#fff" };
+                const lbl = { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".3px", color: "var(--muted)", marginBottom: 6, display: "block" };
+                return (
+                  <React.Fragment key={u.user_code}>
+                    <tr className={`um-row ${isOpen ? "open" : ""}`} onClick={() => setExpanded(isOpen ? null : u.user_code)}>
+                      <td className="um-c-exp"><span className="um-exp">{isOpen ? "▾" : "▸"}</span></td>
+                      <td>
+                        <div className="um-name-cell">
+                          <button className="um-avatar" title="Change avatar"
+                            onClick={(e) => { e.stopPropagation(); setPickFor(u.user_code); }}>
+                            {avatarUrl(u.avatar)
+                              ? <img src={avatarUrl(u.avatar)} alt={`${u.name} avatar`} />
+                              : <span className="um-avatar-ph">👤</span>}
+                            <span className="um-avatar-edit">✎</span>
+                          </button>
+                          <span className="um-name-txt">
+                            <span className="um-name">{u.name}</span>
+                            <span className="um-sub">{u.username} · {u.user_code}</span>
+                          </span>
                         </div>
-                      ) : <span style={{ fontSize: 12, color: "var(--muted)" }}>login not enabled</span>}
-                    </div>
-                  </div>
-
-                  <div>
-                    <span style={lbl}>Module / menu access</span>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                      {(u.menus || []).map((m) => (
-                        <span key={m.id} className="chip" style={{ cursor: "default", fontSize: 11, background: "#EEF6FF" }}>
-                          {label(m.id)} <span style={{ cursor: "pointer", color: "var(--red)", fontWeight: 700 }}
-                            onClick={() => act(() => api.userMaster.removeMenu(u.user_code, m.id))}>×</span>
+                      </td>
+                      <td className="um-gray">{u.email || "—"}</td>
+                      <td className="um-gray">{u.department || "—"}</td>
+                      <td className="um-gray">{u.designation || "—"}</td>
+                      <td>
+                        <button className="chip" style={{ background: u.status === "active" ? "#E6F6EC" : "#FFE5E5", fontWeight: 600 }}
+                          onClick={(e) => { e.stopPropagation(); act(() => api.userMaster.setStatus(u.user_code, u.status === "active" ? "disabled" : "active")); }}>
+                          {u.status === "active" ? "● Active" : "○ Disabled"}
+                        </button>
+                      </td>
+                      <td className="um-c-act">
+                        <span style={{ display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
+                          <IconButton icon="trash" tooltip="Delete user" color="danger"
+                            onClick={() => { if (confirm(`Remove ${u.name} from the app?`)) act(() => api.userMaster.removeUser(u.user_code)); }} />
                         </span>
-                      ))}
-                      {(u.menus || []).length === 0 && <span style={{ fontSize: 12, color: "var(--muted)" }}>no modules granted</span>}
-                      <SelectBox className="searchbox" style={{ maxWidth: 200, fontSize: 12, padding: "6px 8px" }} value=""
-                        onChange={(e) => { if (e.target.value) act(() => api.userMaster.addMenu(u.user_code, e.target.value, label(e.target.value))); }}>
-                        <option value="">+ grant module…</option>
-                        {MODULES.filter((m) => !(u.menus || []).some((x) => x.id === m.id)).map((m) => (
-                          <option key={m.id} value={m.id}>{m.label}</option>
-                        ))}
-                      </SelectBox>
-                      {(u.menus || []).length > 0 &&
-                        <button className="chip" title="Grant all modules"
-                          onClick={() => act(() => api.userMaster.setMenus(u.user_code, MODULES.map((m) => ({ id: m.id, label: m.label }))))}>all</button>}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          {approved.length === 0 && <div className="card" style={{ padding: 16, color: "var(--muted)" }}>No users approved yet — switch to <b>Add CRM users</b> to approve someone.</div>}
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="um-detail-row">
+                        <td />
+                        <td colSpan={6}>
+                          <div className="um-detail">
+                            <div>
+                              <span style={lbl}>SRDMS role (flow)</span>
+                              <select style={sel} value={ur.role || ""}
+                                onChange={(e) => act(() => api.srdms.setUserRole(u.user_code, e.target.value, ur.plant_id || ""))}>
+                                <option value="">— derive from dept —</option>
+                                {srdmsRoles.map((r) => <option key={r}>{r}</option>)}
+                              </select>
+                              {isWhRole && (
+                                <select style={{ ...sel, marginTop: 6 }} value={ur.plant_id || ""}
+                                  onChange={(e) => act(() => api.srdms.setUserRole(u.user_code, ur.role, e.target.value))}>
+                                  <option value="">All plants</option>
+                                  {plants.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                              )}
+                              <div style={{ marginTop: 12 }}>
+                                <span style={lbl}>Login password</span>
+                                {st.password_enabled ? (
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                    <button className="chip" title="Reset to the default password"
+                                      onClick={() => act(async () => { const r = await api.userMaster.resetPassword(u.user_code); alert(`${u.name}'s password reset to: ${r.password}`); })}>🔑 Reset</button>
+                                    <button className="chip" title="Set a specific password"
+                                      onClick={() => { const p = prompt(`New password for ${u.name} (min 4 chars):`); if (p) act(() => api.userMaster.setPassword(u.user_code, p)); }}>Set…</button>
+                                  </div>
+                                ) : <span style={{ fontSize: 12, color: "var(--muted)" }}>login not enabled</span>}
+                              </div>
+                            </div>
+
+                            <div>
+                              <span style={lbl}>Module / menu access</span>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                                {(u.menus || []).map((m) => (
+                                  <span key={m.id} className="chip" style={{ cursor: "default", fontSize: 11, background: "#EEF6FF" }}>
+                                    {label(m.id)} <span style={{ cursor: "pointer", color: "var(--red)", fontWeight: 700 }}
+                                      onClick={() => act(() => api.userMaster.removeMenu(u.user_code, m.id))}>×</span>
+                                  </span>
+                                ))}
+                                {(u.menus || []).length === 0 && <span style={{ fontSize: 12, color: "var(--muted)" }}>no modules granted</span>}
+                                <SelectBox className="searchbox" style={{ maxWidth: 200, fontSize: 12, padding: "6px 8px" }} value=""
+                                  onChange={(e) => { if (e.target.value) act(() => api.userMaster.addMenu(u.user_code, e.target.value, label(e.target.value))); }}>
+                                  <option value="">+ grant module…</option>
+                                  {MODULES.filter((m) => !(u.menus || []).some((x) => x.id === m.id)).map((m) => (
+                                    <option key={m.id} value={m.id}>{m.label}</option>
+                                  ))}
+                                </SelectBox>
+                                {(u.menus || []).length > 0 &&
+                                  <button className="chip" title="Grant all modules"
+                                    onClick={() => act(() => api.userMaster.setMenus(u.user_code, MODULES.map((m) => ({ id: m.id, label: m.label }))))}>all</button>}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+          {approved.length === 0 && <div className="um-empty">No users approved yet — switch to <b>Add CRM users</b> to approve someone.</div>}
         </div>
       )}
       </>}

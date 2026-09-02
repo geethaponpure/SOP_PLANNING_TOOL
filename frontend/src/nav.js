@@ -7,6 +7,7 @@ export const NAV = [
   { id: "forecasting", label: "Forecasting", icon: "📈" },
   { id: "segmentation", label: "Segmentation", icon: "◫" },
   { id: "supply", label: "Supply & RM Plan", icon: "⚙" },
+  { id: "supplycards", label: "Supply Cards (beta)", icon: "🗂" },
   { id: "mfgstock", label: "MFG Org Stock", icon: "🏭" },
   { id: "vooki", label: "Vooki Planning", icon: "🧴" },
   { id: "adhoc", label: "Adhoc Planning", icon: "⚡" },
