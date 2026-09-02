@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { NAV, HIDDEN } from "./nav";
 import { api } from "./api";
 import { useAsync, Loading, useScrollFade } from "./components/ui.jsx";
+import { SupplyPlanProvider } from "./SupplyPlanContext.jsx";
 import DataFreshness from "./components/DataFreshness.jsx";
 import ProfileMenu from "./components/ProfileMenu.jsx";
 import SupplyInfo from "./components/SupplyInfo.jsx";
+import RMDataInfo from "./components/RMDataInfo.jsx";
 import Login from "./pages/Login.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
 import Overview from "./pages/Overview.jsx";
@@ -84,6 +86,19 @@ export default function App() {
   const navItems = NAV.filter((n) => allowed(n.id));
   const navRef = useScrollFade([navItems.length, collapsed]);
 
+  // unsaved BOM overrides (set by SupplyPlanProvider) — used to warn before leaving Supply
+  const dirtyRef = useRef(0);
+  const SUPPLY_PAGES = new Set(["supply", "supplycards"]);
+  const goToPage = (id) => {
+    if (id === page) return;
+    const leavingSupply = SUPPLY_PAGES.has(page) && !SUPPLY_PAGES.has(id);
+    if (leavingSupply && dirtyRef.current > 0 &&
+      !window.confirm(`You have ${dirtyRef.current} unsaved BOM change${dirtyRef.current > 1 ? "s" : ""}. They won't be applied to the plan or exports until you save them.\n\nLeave without saving?`)) {
+      return;
+    }
+    setPage(id);
+  };
+
   const [showChangePw, setShowChangePw] = useState(false);
   const saveSession = (s) => { setSession(s); localStorage.setItem("app_session", JSON.stringify(s)); };
   const doLogin = (s) => {
@@ -141,6 +156,7 @@ export default function App() {
   };
 
   return (
+    <SupplyPlanProvider dirtyRef={dirtyRef}>
     <div className="app">
       <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
         <div className="brand">
@@ -155,7 +171,7 @@ export default function App() {
             <button
               key={n.id}
               className={page === n.id ? "active" : ""}
-              onClick={() => setPage(n.id)}
+              onClick={() => goToPage(n.id)}
               title={collapsed ? n.label : undefined}
             >
               <span className="nav-icon">{n.icon}</span>
@@ -170,6 +186,7 @@ export default function App() {
         <div className="topbar">
           <h2>{NAV.find((n) => n.id === page)?.label}</h2>
           {page === "supply" && <SupplyInfo />}
+          {page === "supplycards" && <RMDataInfo />}
           <div className="cycle-pill">
             <DataFreshness />
             {cycle && (
@@ -206,5 +223,6 @@ export default function App() {
           onCancel={() => setShowChangePw(false)} />
       )}
     </div>
+    </SupplyPlanProvider>
   );
 }

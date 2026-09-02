@@ -38,15 +38,9 @@ export default function UserMaster() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>User Master (admin).</b> Approve <b>CRM users</b> (only supply-chain / planning / manufacturing /
-        warehouse / R&amp;D departments) for the planning tool, and grant each the <b>modules/menus</b> they may access.
-        Everything is add/delete. Stored in the database (<code>sc_app_user</code> / <code>sc_app_user_menu</code>);
-        before the one-time migration is run it persists to a JSON fallback.
-      </div>
 
-      {/* storage status */}
-      {status.data && (
+      {/* storage status — only shown when something needs attention */}
+      {status.data && (!st.db_ready || st.json_users > 0) && (
         <div className={`banner ${st.db_ready ? "info" : "warn"}`} style={{ marginTop: 10 }}>
           Storage backend: <b>{st.backend === "mysql" ? "MySQL database" : "JSON fallback"}</b>.
           {!st.db_ready && <> The DB tables aren’t created yet — run <code>{st.migration}</code> as root, then click Import.
@@ -64,15 +58,6 @@ export default function UserMaster() {
           <b>Login passwords not enabled.</b> Run <code>backend/db/migrate_user_password.sql</code> as root
           (adds the <code>password_hash</code> column), then reload this page. Users can be managed now, but
           can’t sign in until this is done.
-        </div>
-      )}
-      {status.data && st.password_enabled && (
-        <div className="banner info" style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          🔐 <b>Login enabled.</b> New users’ default password is <b>{st.default_password}</b> (stored hashed).
-          <button className="btn secondary" style={{ marginLeft: "auto" }}
-            onClick={() => act(async () => { const r = await api.userMaster.initPasswords(); alert(`Set default password on ${r.updated} user(s) that had none.`); })}>
-            Initialize default passwords
-          </button>
         </div>
       )}
 

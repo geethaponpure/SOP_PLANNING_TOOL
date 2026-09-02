@@ -140,6 +140,16 @@ def status():
     info["user_count"] = len(_um.list_users())      # 0 => app runs open (bootstrap)
     info["default_password"] = _um.DEFAULT_PASSWORD
     info["password_enabled"] = _um.password_enabled()
+    # Auto-backfill: any approved user with no password gets the default (pure@123)
+    # automatically — no manual "Initialize default passwords" step needed. New users
+    # already get it on creation; this catches legacy/imported users on app load.
+    if info["password_enabled"]:
+        try:
+            missing = any(not (u.get("password_hash") or "").strip() for u in _um._raw_users())
+            if missing:
+                _um.init_missing_passwords()
+        except Exception:   # noqa: BLE001 — never block status on a backfill hiccup
+            pass
     return info
 
 
