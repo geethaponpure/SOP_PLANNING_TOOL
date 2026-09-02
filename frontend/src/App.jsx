@@ -7,6 +7,8 @@ import DataFreshness from "./components/DataFreshness.jsx";
 import ProfileMenu from "./components/ProfileMenu.jsx";
 import SupplyInfo from "./components/SupplyInfo.jsx";
 import RMDataInfo from "./components/RMDataInfo.jsx";
+import MfgStockInfo from "./components/MfgStockInfo.jsx";
+import ConfirmModal from "./components/ConfirmModal.jsx";
 import Login from "./pages/Login.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
 import Overview from "./pages/Overview.jsx";
@@ -88,14 +90,12 @@ export default function App() {
 
   // unsaved BOM overrides (set by SupplyPlanProvider) — used to warn before leaving Supply
   const dirtyRef = useRef(0);
+  const [leaveTo, setLeaveTo] = useState(null);   // pending page id awaiting leave-confirm
   const SUPPLY_PAGES = new Set(["supply", "supplycards"]);
   const goToPage = (id) => {
     if (id === page) return;
     const leavingSupply = SUPPLY_PAGES.has(page) && !SUPPLY_PAGES.has(id);
-    if (leavingSupply && dirtyRef.current > 0 &&
-      !window.confirm(`You have ${dirtyRef.current} unsaved BOM change${dirtyRef.current > 1 ? "s" : ""}. They won't be applied to the plan or exports until you save them.\n\nLeave without saving?`)) {
-      return;
-    }
+    if (leavingSupply && dirtyRef.current > 0) { setLeaveTo(id); return; }  // ask via modal
     setPage(id);
   };
 
@@ -157,7 +157,7 @@ export default function App() {
 
   return (
     <SupplyPlanProvider dirtyRef={dirtyRef}>
-    <div className="app">
+    <div className={`app ${collapsed ? "sb-collapsed" : ""}`}>
       <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
         <div className="brand">
           <div className="brand-content">
@@ -187,6 +187,7 @@ export default function App() {
           <h2>{NAV.find((n) => n.id === page)?.label}</h2>
           {page === "supply" && <SupplyInfo />}
           {page === "supplycards" && <RMDataInfo />}
+          {page === "mfgstock" && <MfgStockInfo />}
           <div className="cycle-pill">
             <DataFreshness />
             {cycle && (
@@ -222,6 +223,18 @@ export default function App() {
           onDone={() => { setShowChangePw(false); alert("Password updated."); }}
           onCancel={() => setShowChangePw(false)} />
       )}
+
+      <ConfirmModal
+        open={!!leaveTo}
+        title="Unsaved BOM changes"
+        cancelLabel="Stay on this page"
+        confirmLabel="Leave without saving"
+        onCancel={() => setLeaveTo(null)}
+        onConfirm={() => { const t = leaveTo; setLeaveTo(null); setPage(t); }}
+      >
+        You have <b>{dirtyRef.current} unsaved BOM change{dirtyRef.current > 1 ? "s" : ""}</b>. They won’t be
+        applied to the plan or exports until you save them from the RM Plan — Data page.
+      </ConfirmModal>
     </div>
     </SupplyPlanProvider>
   );

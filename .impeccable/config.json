@@ -49,6 +49,12 @@
         ],
         "createdAt": "2026-09-01T10:33:10.055Z",
         "reason": "user confirmed: Lato is the Figma design font, loaded via Google Fonts for the User Master table"
+      },
+      {
+        "rule": "overused-font",
+        "value": "lato",
+        "createdAt": "2026-09-02T10:51:49.918Z",
+        "reason": "pre-existing project brand font (not introduced this session); app-wide typeface change is out of scope for the current backend/chart/layout work"
       }
     ]
   }

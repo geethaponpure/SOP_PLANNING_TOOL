@@ -15,6 +15,13 @@ const TT = {
 const grad = (c1, c2) => ({ type: "linear", x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: c1 }, { offset: 1, color: c2 }] });
 const gradV = (c) => ({ type: "linear", x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: c + "55" }, { offset: 1, color: c + "05" }] });
 const ANIM = { animationDuration: 650, animationEasing: "cubicOut" };
+// compact axis labels so big KG totals (e.g. 15,000,000) read as "15M" and don't overlap
+const abbr = (v) => {
+  const n = Math.abs(v);
+  if (n >= 1e6) return (v / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M";
+  if (n >= 1e3) return (v / 1e3).toFixed(0) + "K";
+  return fmt.num(v);
+};
 const SHAPE_DIST = [{ id: "donut", label: "Donut" }, { id: "pie", label: "Pie" }, { id: "bar", label: "Bar" }];
 const SHAPE_RANK = [{ id: "bar", label: "Bar" }, { id: "line", label: "Line" }];
 
@@ -39,8 +46,8 @@ function distOption(rows, { shape, unit, center }) {
     return {
       ...ANIM, grid: { left: 8, right: 24, top: 12, bottom: 8, containLabel: true },
       tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" }, formatter: (ps) => `${ps[0].name}<br/><b>${fmt.num(ps[0].value)}</b> ${unit}` },
-      xAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } }, axisLabel: { color: "#90a1ac", fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } },
-      yAxis: { type: "category", data: rows.map((r) => r.name), axisLabel: { color: "#414d55", fontSize: 11 }, axisTick: { show: false }, axisLine: { show: false } },
+      xAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } }, axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true }, axisLine: { show: false }, axisTick: { show: false } },
+      yAxis: { type: "category", data: rows.map((r) => r.name), axisLabel: { color: "#414d55", fontSize: 11, hideOverlap: true }, axisTick: { show: false }, axisLine: { show: false } },
       series: [{ type: "bar", barWidth: "56%", itemStyle: { borderRadius: [0, 6, 6, 0] }, data: rows.map((r) => ({ value: r.value, name: r.name, itemStyle: { color: r.color } })) }],
     };
   }
@@ -67,13 +74,13 @@ function rankedOption(rows, { shape, c1, c2, unit }) {
   const base = { ...ANIM, tooltip: { ...TT, trigger: "axis", axisPointer: { type: shape === "line" ? "line" : "shadow" }, formatter: (ps) => `${ps[0].name}<br/><b>${fmt.num(ps[0].value)}</b> ${unit}` } };
   if (shape === "line") {
     return { ...base, grid: { left: 8, right: 18, top: 16, bottom: 24, containLabel: true },
-      xAxis: { type: "category", data: rows.map((r) => r.name), axisTick: { show: false }, axisLabel: { color: "#414d55", fontSize: 11 } },
-      yAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } }, axisLabel: { color: "#90a1ac", fontSize: 11 } },
+      xAxis: { type: "category", data: rows.map((r) => r.name), axisTick: { show: false }, axisLabel: { color: "#414d55", fontSize: 11, hideOverlap: true } },
+      yAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } }, axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true } },
       series: [{ type: "line", smooth: true, symbol: "circle", symbolSize: 8, lineStyle: { width: 3, color: c2 }, itemStyle: { color: c2 }, areaStyle: { color: gradV(c2) }, data: rows.map((r) => r.value) }] };
   }
   return { ...base, grid: { left: 8, right: 24, top: 12, bottom: 8, containLabel: true },
-    xAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } }, axisLabel: { color: "#90a1ac", fontSize: 11 }, axisLine: { show: false }, axisTick: { show: false } },
-    yAxis: { type: "category", data: rows.map((r) => r.name), axisLabel: { color: "#414d55", fontSize: 11 }, axisTick: { show: false }, axisLine: { show: false } },
+    xAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } }, axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true }, axisLine: { show: false }, axisTick: { show: false } },
+    yAxis: { type: "category", data: rows.map((r) => r.name), axisLabel: { color: "#414d55", fontSize: 11, hideOverlap: true }, axisTick: { show: false }, axisLine: { show: false } },
     series: [{ type: "bar", barWidth: "56%", itemStyle: { borderRadius: [0, 6, 6, 0], color: grad(c1, c2) }, emphasis: { itemStyle: { color: grad(c2, c1) } }, data: rows.map((r) => r.value) }] };
 }
 
@@ -96,7 +103,7 @@ export default function RMDataCharts({ data }) {
   // 2) sales projection status (uses sales_flag) — drop zero / "none"
   const status = useMemo(() => {
     const c = {};
-    products.forEach((p) => { const f = p.sales_flag; if (f && f !== "none") c[f] = (c[f] || 0) + 1; });
+    products.forEach((p) => { const f = p.proj_flag; if (f && f !== "none") c[f] = (c[f] || 0) + 1; });
     return Object.entries(c).map(([k, v]) => ({ key: k, value: v, name: (FLAG[k] || {}).label || k, color: (FLAG[k] || {}).color || "#90a1ac" })).filter((d) => d.value > 0);
   }, [products]);
 

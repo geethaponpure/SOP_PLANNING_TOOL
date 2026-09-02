@@ -25,6 +25,9 @@
 }
 
 * { box-sizing: border-box; }
+/* Reserve the scrollbar gutter so opening an overlay/menu (which can lock body
+   scroll) can't shift the whole page sideways. */
+html { scrollbar-gutter: stable; }
 body {
   margin: 0;
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -33,7 +36,13 @@ body {
   font-size: 14px;
 }
 
-.app { display: flex; min-height: 100vh; }
+/* CSS-grid shell: the sidebar + main are two tracks that resize together, so
+   collapsing reflows the content in lock-step (no flex-item width clipping).
+   We transition grid-template-columns (grid interpolates both tracks smoothly). */
+.app { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100vh;
+  transition: grid-template-columns 0.22s cubic-bezier(0.4, 0, 0.2, 1); }
+.app.sb-collapsed { grid-template-columns: 68px minmax(0, 1fr); }
+@media (prefers-reduced-motion: reduce) { .app { transition: none; } }
 
 /* ---- burger toggle button ---- */
 .burger-btn {
@@ -84,7 +93,9 @@ body {
 
 /* ---- sidebar ---- */
 .sidebar {
-  width: 240px;
+  /* width comes from the .app grid track now — no width animation here */
+  width: 100%;
+  min-width: 0;
   background: #FFFFFF;
   color: #202224;
   display: flex;
@@ -95,7 +106,6 @@ body {
   border-right: 1px solid #E0E0E0;
   box-shadow: 1px 0 6px rgba(0, 0, 0, 0.02);
   z-index: 20;
-  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   overflow-x: hidden;
 }
 .sidebar .brand {
@@ -243,9 +253,8 @@ body {
 }
 
 /* ---- sidebar collapsed state ---- */
-.sidebar.collapsed {
-  width: 68px;
-}
+/* .sidebar.collapsed width is now driven by the .app.sb-collapsed grid track;
+   this class only restyles the sidebar's inner content (icons-only). */
 .sidebar.collapsed .brand {
   padding: 16px 0;
   justify-content: center;
@@ -308,7 +317,7 @@ body {
 }
 
 /* ---- main ---- */
-.main { flex: 1; min-width: 0; }
+.main { min-width: 0; }
 .topbar {
   background: var(--card); border-bottom: 1px solid var(--border);
   padding: 14px 26px; display: flex; align-items: center; gap: 16px;
@@ -581,8 +590,11 @@ body {
 /* small secondary trigger (e.g. "Switch BOM" in the product cards) */
 .dd-trigger.dd-trigger-sm { padding: 5px 10px; font-size: 12px; gap: 6px; border-radius: 7px; }
 .dd-trigger-caret { color: var(--muted); font-size: 10px; line-height: 1; }
-.dd-bom-pop { min-width: 240px; }
+.dd-bom-pop { min-width: 240px; max-width: 340px; max-height: min(320px, var(--visual-viewport-height, 60vh)); overflow-y: auto; overscroll-behavior: contain; }
+.dd-bom-pop .dd-item { white-space: normal; }
 .dd-bom-pop .dd-item.is-selected { background: #eef4fb; font-weight: 600; color: var(--supply-ink); }
+.dd-bom-pop::-webkit-scrollbar { width: 10px; }
+.dd-bom-pop::-webkit-scrollbar-thumb { background: #cbd5e0; border: 3px solid var(--card); border-radius: 99em; }
 .profile-menu-pop { min-width: 200px; }
 
 /* ---- SelectBox: custom <select> on react-aria (see components/SelectBox.jsx) ---- */
@@ -753,11 +765,14 @@ body {
 .content > .page-intro { order: 100; margin: 22px 0 0; }
 
 /* ---- cards / grid ---- */
+/* minmax(0, 1fr) — NOT plain 1fr — so tracks can shrink below their content
+   (wide charts/tables). Without this the grid overflows and the right side of
+   the page gets clipped when the sidebar collapses/expands and .main resizes. */
 .grid { display: grid; gap: 16px; }
-.cols-2 { grid-template-columns: repeat(2, 1fr); }
-.cols-3 { grid-template-columns: repeat(3, 1fr); }
-.cols-4 { grid-template-columns: repeat(4, 1fr); }
-@media (max-width: 1100px) { .cols-3, .cols-4 { grid-template-columns: repeat(2, 1fr); } }
+.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .cols-3, .cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 .card {
   position: relative;
@@ -1171,7 +1186,42 @@ tr.expander > td { background: #f7fafc; }
 .tbl-wrap tbody tr.parent { transition: background .12s; }
 .tbl-wrap tbody tr.parent.isopen { background: #eef5ff; }
 .tbl-wrap tbody tr.parent.isopen td { border-bottom: none; }
-.subtable td, .subtable th { padding: 7px 9px; }
+.subtable td, .subtable th { padding: 7px 10px; }
+
+/* ---- RM detail subtable: keep every column readable in the wide net-to-buy view ---- */
+.subtable {
+  border-collapse: separate; border-spacing: 0;
+  font-size: 12px;   /* .tbl-wrap already clips to its rounded corners */
+}
+.subtable td.num, .subtable th.num { font-variant-numeric: tabular-nums; }
+
+/* stacked, non-overlapping sticky header (group row above the Curr/N1/N2 row) */
+.subtable thead tr:first-child th { top: 0; height: 26px; padding-top: 5px; padding-bottom: 5px; }
+.subtable thead tr:nth-child(2) th { top: 26px; }
+
+/* Seq + RM name stay pinned while the numeric columns scroll sideways */
+.subtable th:nth-child(1), .subtable td:nth-child(1) {
+  position: sticky; left: 0; z-index: 1; width: 40px; min-width: 40px;
+  text-align: center; color: var(--muted); background: #fff; font-variant-numeric: tabular-nums;
+}
+.subtable th:nth-child(2), .subtable td:nth-child(2) {
+  position: sticky; left: 40px; z-index: 1; min-width: 236px; max-width: 320px;
+  background: #fff; border-right: 1px solid #e5eaf1;   /* edge cue: more columns to the right */
+}
+.subtable thead th:nth-child(1), .subtable thead th:nth-child(2) { z-index: 3; background: #fafcff; }
+
+/* readable identity: bold name, wrapping muted code + substitutes line */
+.subtable td:nth-child(2) > b { display: block; color: var(--navy); font-size: 12.5px; line-height: 1.35; }
+.subtable td:nth-child(2) > div { font-size: 11px; line-height: 1.5; margin-top: 2px; white-space: normal; }
+
+/* row hover for tracing a line across all columns — keeps each group's hue */
+.subtable tbody tr:hover td { background: #edf6f5; }
+.subtable tbody tr:hover td.cg-proj { background: #e5f0fb; }
+.subtable tbody tr:hover td.cg-net { background: #ffece0; }
+
+/* the two Total columns read as the anchor of each group */
+.subtable.rm-net tbody td:nth-child(7)  { background: #e4eefb; }   /* gross total  */
+.subtable.rm-net tbody td:nth-child(15) { background: #ffe4d2; }   /* net-to-buy total */
 
 /* section header icon variant */
 .sec .n.tealn { background: var(--teal); }
@@ -1235,6 +1285,106 @@ td.num b { color: var(--navy); }
 .supply-method code { color: #155b78; background: #e6f1f7; }
 
 .supply-notice { background: #fff8e8 !important; border: 1px solid #ead49b !important; border-radius: 12px !important; color: #725616; }
+
+/* ---- BOM "unsaved changes" save bar (SupplyCards) ---- */
+.bom-save-bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin: 4px 0 12px; padding: 14px 16px; border-radius: 14px;
+  background: linear-gradient(180deg, #fffaf0, #fff4dc);
+  border: 1px solid #f0dca8;
+  box-shadow: 0 6px 18px rgba(183, 121, 31, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  animation: bom-bar-in 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+@keyframes bom-bar-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.bom-save-icon {
+  flex: none; width: 40px; height: 40px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center; font-size: 19px;
+  background: #fff; border: 1px solid #f0dca8; box-shadow: 0 2px 6px rgba(183, 121, 31, 0.12);
+}
+.bom-save-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bom-save-text b { font-size: 14px; color: #7a5a12; font-family: var(--font-display); }
+.bom-save-text span { font-size: 12.5px; color: #9a7b3a; }
+.bom-save-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+/* Untitled UI button language: rounded-8, semibold, shadow-xs, focus ring */
+.bom-save-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; cursor: pointer;
+  height: 40px; padding: 0 14px; border-radius: 8px; font-size: 14px; font-weight: 600; line-height: 1;
+  font-family: inherit; border: 1px solid transparent; outline: none;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.bom-save-btn:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+.bom-save-btn .btn-icon { width: 18px; height: 18px; flex: none; }
+/* primary */
+.bom-save-btn.save {
+  color: #fff; background: #2a9d8f; border-color: #2a9d8f;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+.bom-save-btn.save:hover:not(:disabled) { background: #21806b; border-color: #21806b; }
+.bom-save-btn.save:focus-visible { box-shadow: 0 0 0 4px rgba(42, 157, 143, 0.28); }
+/* secondary (neutral) */
+.bom-save-btn.discard {
+  color: #414651; background: #fff; border-color: #d5d7da;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+.bom-save-btn.discard:hover:not(:disabled) { background: #f8f9fb; border-color: #c7cad0; }
+.bom-save-btn.discard:focus-visible { box-shadow: 0 0 0 4px rgba(16, 24, 40, 0.08); }
+.bom-spinner {
+  width: 14px; height: 14px; border-radius: 50%; flex: none;
+  border: 2px solid rgba(255, 255, 255, 0.45); border-top-color: #fff;
+  animation: bom-spin 0.7s linear infinite;
+}
+@keyframes bom-spin { to { transform: rotate(360deg); } }
+
+/* ---- Styled confirm modal (components/ConfirmModal.jsx) ---- */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 200; padding: 20px;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex; align-items: center; justify-content: center;
+  animation: modal-fade 0.15s ease;
+}
+@keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
+.modal-container {
+  width: 100%; max-height: 400px; max-width: 500px; margin: 0 auto;
+  background-color: #fff; border-radius: 16px; overflow: hidden;
+  display: flex; flex-direction: column;
+  box-shadow: 0 15px 30px 0 rgba(0, 0, 0, 0.25);
+  animation: modal-pop 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+@keyframes modal-pop { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+@media (max-width: 600px) { .modal-container { width: 90%; } }
+.modal-container-header {
+  padding: 16px 24px; border-bottom: 1px solid #ddd;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-container-title {
+  display: flex; align-items: center; gap: 10px; line-height: 1.15;
+  font-weight: 700; font-size: 1.05rem; color: #1a202c;
+}
+.modal-container-title svg { width: 28px; height: 28px; color: #750550; flex: none; }
+.modal-container-body { padding: 20px 24px 44px; overflow-y: auto; color: #475569; font-size: 14px; }
+.modal-container .rtf > * + * { margin-top: 1em; }
+.modal-container-footer {
+  padding: 18px 24px; display: flex; align-items: center; justify-content: flex-end;
+  border-top: 1px solid #ddd; gap: 12px; position: relative;
+}
+.modal-container-footer::after {
+  content: ""; position: absolute; top: -44px; left: 24px; right: 24px; height: 44px;
+  background-image: linear-gradient(to top, rgba(255, 255, 255, 0.75), transparent); pointer-events: none;
+}
+.modal-container .button {
+  padding: 11px 18px; border-radius: 8px; background-color: transparent; border: 0;
+  font: inherit; font-weight: 600; cursor: pointer; transition: 0.15s ease;
+}
+.modal-container .button.is-ghost:hover, .modal-container .button.is-ghost:focus { background-color: #efeceb; }
+.modal-container .button.is-primary { background-color: #750550; color: #fff; }
+.modal-container .button.is-primary:hover, .modal-container .button.is-primary:focus { background-color: #4a0433; }
+.modal-container .icon-button {
+  padding: 0; border: 0; background-color: transparent; width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center; line-height: 1; cursor: pointer;
+  border-radius: 8px; color: #64748b; transition: 0.15s ease;
+}
+.modal-container .icon-button svg { width: 22px; height: 22px; }
+.modal-container .icon-button:hover, .modal-container .icon-button:focus { background-color: #efeceb; color: #1a202c; }
 
 .supply-metrics { gap: 12px; }
 .supply-metrics .statcard {
@@ -1439,6 +1589,16 @@ td.num b { color: var(--navy); }
 /* rm section reuses .subtable */
 .sc-rm { margin-top: 16px; }
 
+/* in-card insight charts (components/CardCharts.jsx) */
+.sc-charts { display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px; }
+.sc-chart {
+  background: #fff; border: 1px solid var(--border); border-radius: 12px;
+  padding: 10px 12px 6px; box-shadow: 0 2px 8px rgba(19, 42, 69, .04); min-width: 0;
+}
+.sc-chart.full { grid-column: 1 / -1; }
+.sc-chart-title { font-size: 11.5px; font-weight: 700; color: #45566b; margin-bottom: 2px; }
+@media (max-width: 720px) { .sc-charts { grid-template-columns: 1fr; } }
+
 .supply-workspace {
   /* scrolls with the page (was position: sticky, which pinned it and hid the
      filter bar behind it while scrolling) */
@@ -1501,3 +1661,25 @@ td.num b { color: var(--navy); }
 @media (prefers-reduced-motion: reduce) {
   .supply-page, .supply-metrics .statcard { animation: none; transition: none; }
 }
+
+/* ── MFG Org Stock table — friendlier scannability ─────────────────────────── */
+.mfg-table { font-size: 12.5px; }
+.mfg-table tbody tr:nth-child(even) { background: #fbfcfe; }
+.mfg-table tbody tr:hover { background: #eef5ff; }
+.mfg-table td { vertical-align: middle; }
+.mfg-table .mfg-code { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mfg-table .mfg-desc { display: block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+/* qty magnitude bar under the number, so big vs small stock reads at a glance */
+.mfg-table .mfg-qty { min-width: 96px; }
+.mfg-table .mfg-qbar { display: block; height: 3px; margin-top: 3px; background: #eef1f5; border-radius: 3px; overflow: hidden; }
+.mfg-table .mfg-qbar > i { display: block; height: 100%; background: linear-gradient(90deg, #7aa7ff, #4880ff); border-radius: 3px; }
+/* age emphasis pills (>=90d amber, >=180d red) */
+.mfg-table .mfg-age { display: inline-block; padding: 1px 7px; border-radius: 10px; font-weight: 700; font-size: 11px; }
+.mfg-table .mfg-age.mid { background: #FFF4DA; color: #8a6d00; }
+.mfg-table .mfg-age.old { background: #FFE5E5; color: #a11; }
+
+/* MFG Org Stock filter bar — keep search + all 3 selects on ONE row */
+.mfg-filters { flex-wrap: nowrap; }
+.mfg-filters .smooth-input { flex: 1 1 150px; width: auto; min-width: 110px; }
+.mfg-filters .selectbox { flex: 0 0 auto; }
+.mfg-filters > span { flex: 0 0 auto; white-space: nowrap; }

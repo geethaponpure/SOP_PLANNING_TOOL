@@ -3,6 +3,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
+import MfgStockCharts from "../components/MfgStockCharts.jsx";
 
 function applySort(rows, { key, dir }) {
   if (!key) return rows;
@@ -62,16 +63,10 @@ export default function MfgStock() {
   const cur = Math.min(page, pageCount);
   const start = (cur - 1) * pageSize;
   const pageRows = rows.slice(start, start + pageSize);
+  const maxQty = rows.length ? Math.max(...rows.map((r) => r.qty || 0)) : 1;
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>MFG-Org Stock.</b> On-hand stock at the <b>manufacturing organizations</b> (org names containing “MFG/Mfg”), read from
-        CRM (<code>SPBiStockDetails</code>), aggregated per <b>item × org</b> and tagged with <b>Division</b> &amp; <b>Segment</b>.
-        Restricted to the <b>Performance Chemicals</b> and <b>NPD</b> divisions. Excluded sub-inventories and <b>DM-water</b> codes are
-        removed. Filter by Division / Org / Segment, search, and click any column to sort.
-      </div>
-
       <div className="grid cols-4">
         <div className="card statcard"><div className="ic">📦</div><Stat value={fmt.num(s.items)} label="Distinct items" /></div>
         <div className="card statcard"><div className="ic">🏭</div><Stat value={fmt.num(s.orgs)} label="MFG organizations" /></div>
@@ -79,7 +74,9 @@ export default function MfgStock() {
         <div className="card statcard"><div className="ic">🔎</div><Stat value={fmt.num(shownQty)} label="Shown qty (filtered, KG)" /></div>
       </div>
 
-      <div className="pagebar" style={{ marginTop: 14 }}>
+      <MfgStockCharts rows={rows} />
+
+      <div className="pagebar mfg-filters" style={{ marginTop: 14 }}>
         <SmoothInput className="searchbox" placeholder="Search item code / description…" value={q} onChange={(e) => setQ(e.target.value)} />
         <SelectBox className="searchbox" style={{ maxWidth: 220 }} value={div} onChange={(e) => setDiv(e.target.value)}>
           <option value="">All divisions</option>
@@ -97,7 +94,7 @@ export default function MfgStock() {
       </div>
 
       <div className="tbl-wrap">
-        <table>
+        <table className="mfg-table">
           <thead>
             <tr>
               <SortTh label="Item Code" k="item_code" sort={sort} setSort={setSort} />
@@ -114,15 +111,22 @@ export default function MfgStock() {
           <tbody>
             {pageRows.map((r, k) => (
               <tr key={start + k}>
-                <td style={{ fontSize: 12 }}>{r.item_code}</td>
-                <td><b>{r.item_desc}</b></td>
+                <td className="mfg-code">{r.item_code}</td>
+                <td><span className="mfg-desc" title={r.item_desc}>{r.item_desc}</span></td>
                 <td>{r.division && <span className="chip" style={{ cursor: "default", fontSize: 10, background: /npd/i.test(r.division) ? "#FFF3E8" : "#EEF6FF" }}>{r.division}</span>}</td>
                 <td>{r.segment2 && <span className="chip" style={{ cursor: "default", fontSize: 10, background: /raw material/i.test(r.segment2) ? "#EEF6FF" : "#F3F0E8" }}>{r.segment2}</span>}</td>
                 <td style={{ fontSize: 12, color: "var(--muted)" }}>{r.segment3 || "—"}</td>
                 <td style={{ fontSize: 12 }}>{r.org}</td>
-                <td className="num"><b>{fmt.num(r.qty)}</b></td>
-                <td className="num" style={{ color: r.age_days >= 180 ? "var(--red)" : r.age_days >= 90 ? "#8a6d00" : "var(--muted)" }}>{fmt.num(r.age_days)}</td>
-                <td className="num">{fmt.num(r.lots)}</td>
+                <td className="num mfg-qty">
+                  <b>{fmt.num(r.qty)}</b>
+                  <span className="mfg-qbar"><i style={{ width: `${Math.max(2, Math.round((r.qty / maxQty) * 100))}%` }} /></span>
+                </td>
+                <td className="num">
+                  {r.age_days >= 90
+                    ? <span className={"mfg-age " + (r.age_days >= 180 ? "old" : "mid")}>{fmt.num(r.age_days)}</span>
+                    : <span style={{ color: "var(--muted)" }}>{fmt.num(r.age_days)}</span>}
+                </td>
+                <td className="num" style={{ color: "var(--muted)" }}>{fmt.num(r.lots)}</td>
               </tr>
             ))}
             {total === 0 && <tr><td colSpan={9}>No stock matches the filters.</td></tr>}
@@ -149,10 +153,6 @@ export default function MfgStock() {
         </div>
       )}
 
-      <div className="sub" style={{ marginTop: 8 }}>
-        Qty is summed across sub-inventories &amp; lots per item × org. Age = oldest lot age (days).
-        Stock source: <b>{s.stock_source}</b>.
-      </div>
     </>
   );
 }

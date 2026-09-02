@@ -8,6 +8,8 @@ import { fmt } from "../api";
 import { Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
 import { useSupplyPlan } from "../SupplyPlanContext.jsx";
 import RMDataCharts from "../components/RMDataCharts.jsx";
+import CardCharts from "../components/CardCharts.jsx";
+import ConfirmModal from "../components/ConfirmModal.jsx";
 
 // ── local presentation helpers (kept self-contained so this beta page does not
 // depend on Supply.jsx internals; will be merged in later) ───────────────────
@@ -183,12 +185,18 @@ export function ProductCard({ p, data, pjc, bi = 0, onPickBom }) {
             </div>
           </div>
 
+          {/* insight charts (only when the card is open → no cost when collapsed) */}
+          <div className="sc-rm">
+            <div className="sc-sec-title">📊 Insights</div>
+            <CardCharts p={p} bom={bom} pr={pr} pjc={pjc} wh={wh} br={br} data={data} />
+          </div>
+
           {/* RM components */}
           {bom.components.length > 0 && (
             <div className="sc-rm">
               <div className="sc-sec-title">Raw materials — net to buy</div>
               <div className="tbl-wrap">
-                <table className="subtable">
+                <table className="subtable rm-net">
                   <thead>
                     <tr><th>Seq</th><th>RM (main) + substitutes</th><th className="num">Qty/unit</th>
                       <th className="grp" colSpan={4}>Gross requirement (KG)</th>
@@ -489,14 +497,16 @@ function RealRM({ data, q, pjc }) {
 export default function SupplyCards() {
   const { data, loading, error, uploaded, sel, setSel, applyOverrides, discardOverrides } = useSupplyPlan();
   const [applyingBom, setApplyingBom] = useState(false);
-  const saveBom = async (count) => {
-    if (!window.confirm(`Save & apply ${count} BOM override${count > 1 ? "s" : ""}?\n\nThe plan rebuilds with your chosen BOMs and saves — this flows into the consolidated RM plan, Excel and Production Scheduling. (Rebuild can take ~2 minutes.)`)) return;
+  const [confirm, setConfirm] = useState(null);   // "save" | "discard" | null → drives ConfirmModal
+  const doSave = async () => {
+    setConfirm(null);
     setApplyingBom(true);
     try {
       const r = await applyOverrides();
       alert(`✓ ${r.overrides_applied} BOM override(s) applied · plan #${r.plan_id ?? "—"} saved` + (r.mysql_ok ? "." : " — DB save failed: " + (r.mysql_error || "")));
     } catch (e) { alert(e.message); } finally { setApplyingBom(false); }
   };
+  const doDiscard = () => { setConfirm(null); discardOverrides(); };
   const [mode, setMode] = useState("product");
   const [q, setQ] = useState("");
   const [cls, setCls] = useState("");
@@ -532,15 +542,28 @@ export default function SupplyCards() {
         {uploaded && <span style={{ marginLeft: "auto" }}>📋 <b>Viewing {uploaded.plan_mode === "excel_only" ? "Excel-only" : uploaded.plan_mode === "bom_override" ? "overridden" : "uploaded"} plan #{uploaded.plan_id ?? "—"}</b></span>}
       </div>
       {overrideCount > 0 && (
-        <div className="banner supply-notice" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span>✏️ <b>{overrideCount} BOM override{overrideCount > 1 ? "s" : ""} selected.</b> Save now to rebuild &amp; apply — until you do, these changes won’t affect the plan or exports.</span>
-          <button className="btn" style={{ marginLeft: "auto", whiteSpace: "nowrap" }} disabled={applyingBom} onClick={() => saveBom(overrideCount)}>
-            {applyingBom ? "Saving… (~2 min)" : `💾 Save & apply ${overrideCount} change${overrideCount > 1 ? "s" : ""}`}
-          </button>
-          <button className="btn secondary" style={{ whiteSpace: "nowrap" }} disabled={applyingBom}
-            onClick={() => { if (window.confirm(`Discard ${overrideCount} unsaved BOM change${overrideCount > 1 ? "s" : ""}?`)) discardOverrides(); }}>
-            Discard
-          </button>
+        <div className="bom-save-bar">
+          <span className="bom-save-icon" aria-hidden>✏️</span>
+          <div className="bom-save-text">
+            <b>{overrideCount} BOM override{overrideCount > 1 ? "s" : ""} selected</b>
+            <span>Save to rebuild &amp; apply — until then these changes won’t affect the plan or exports.</span>
+          </div>
+          <div className="bom-save-actions">
+            <button className="bom-save-btn discard" type="button" disabled={applyingBom}
+              onClick={() => setConfirm("discard")}>
+              Discard
+            </button>
+            <button className="bom-save-btn save" type="button" disabled={applyingBom} onClick={() => setConfirm("save")}>
+              {applyingBom ? (
+                <><span className="bom-spinner" aria-hidden />Saving… (~2 min)</>
+              ) : (
+                <>
+                  <svg className="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
+                  Save &amp; apply {overrideCount} change{overrideCount > 1 ? "s" : ""}
+                </>
+              )}
+            </button>
+          </div>
         </div>
       )}
 
@@ -620,6 +643,30 @@ export default function SupplyCards() {
           {s.plan_divisions?.length > 0 && <> {" "}Scope: <b>Division = {s.plan_divisions.join(", ")}</b> only{s.out_of_scope_items > 0 && <> ({fmt.num(s.out_of_scope_items)} projected items in other divisions excluded)</>}.</>}
           {s.with_packing_bom > 0 && <> {s.packing_bom_count} packing BOM(s) across {s.with_packing_bom} products shown separately.</>}</div>
       )}
+
+      <ConfirmModal
+        open={confirm === "discard"}
+        title="Discard BOM changes"
+        cancelLabel="Keep editing"
+        confirmLabel="Discard"
+        onCancel={() => setConfirm(null)}
+        onConfirm={doDiscard}
+      >
+        Discard <b>{overrideCount} unsaved BOM change{overrideCount > 1 ? "s" : ""}</b>? Your selected
+        BOMs will be reset to the preferred recipes — this can’t be undone.
+      </ConfirmModal>
+
+      <ConfirmModal
+        open={confirm === "save"}
+        title="Save & apply BOM overrides"
+        cancelLabel="Cancel"
+        confirmLabel={`Save & apply ${overrideCount} change${overrideCount > 1 ? "s" : ""}`}
+        onCancel={() => setConfirm(null)}
+        onConfirm={doSave}
+      >
+        The plan rebuilds with your chosen BOMs and saves — this flows into the consolidated RM plan,
+        Excel and Production Scheduling. Rebuild can take <b>~2 minutes</b>.
+      </ConfirmModal>
     </section>
   );
 }
