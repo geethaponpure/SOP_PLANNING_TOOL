@@ -35,7 +35,7 @@ export default function DataFreshness() {
 
   const syncing = busy || st.syncing;
   const color = st.any_error ? "#d9534f" : syncing ? "#f0ad4e" : "#5cb85c";
-  const label = syncing ? "Refreshing…" : `Data as of ${relTime(st.last_synced)}`;
+  const label = `Data as of ${relTime(st.last_synced)}`;
   const ctx = st.context || {};
   const title = [
     ctx.plan_jc ? `Planning JC${ctx.plan_jc} · ${ctx.acc_year}` : null,

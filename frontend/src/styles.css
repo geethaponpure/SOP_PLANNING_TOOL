@@ -484,6 +484,22 @@ body {
   .login-form-panel { width: 100%; }
 }
 
+/* ---- Chart kit (components/Chart.jsx, on Recharts) ---- */
+.chart { width: 100%; font-family: "Segoe UI", system-ui, sans-serif; }
+.chart .recharts-cartesian-axis-tick text { fill: var(--muted); font-size: 11px; }
+.chart .recharts-cartesian-grid line { stroke: #eef1f5; }
+.chart .recharts-legend-item-text { color: var(--kit-slate) !important; font-size: 12px; }
+.chart-tooltip {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14); padding: 8px 10px; font-size: 12px;
+  min-width: 120px;
+}
+.chart-tooltip-label { font-weight: 700; color: var(--kit-slate); margin-bottom: 6px; font-family: var(--font-display); }
+.chart-tooltip-row { display: flex; align-items: center; gap: 8px; padding: 1px 0; }
+.chart-tooltip-dot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.chart-tooltip-name { color: var(--muted); }
+.chart-tooltip-val { margin-left: auto; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
+
 /* ---- avatar picker modal ---- */
 .avatar-modal-overlay {
   position: fixed; inset: 0; z-index: 100; padding: 20px;

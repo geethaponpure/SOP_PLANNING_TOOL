@@ -34,9 +34,8 @@ const SalesFlag = ({ f }) => {
 };
 const NetCell = ({ v }) => <span className={v > 0 ? "num-pos" : "num-zero"}>{fmt.num(v)}</span>;
 
-// One line of the demand build-up (label + signed value)
 // One row of the demand build-up table: OP · COMPONENT · QTY
-function BRow({ op, label, value, sub, hint }) {
+export function BRow({ op, label, value, sub, hint }) {
   const tone = op === "+" ? "pos" : op === "−" ? "neg" : op === "=" ? "eq" : "";
   return (
     <div className={"sc-brow" + (sub ? " sub" : "")} title={hint || ""}>
@@ -47,7 +46,7 @@ function BRow({ op, label, value, sub, hint }) {
   );
 }
 
-function ProductCard({ p, data, pjc }) {
+export function ProductCard({ p, data, pjc }) {
   const [open, setOpen] = useState(false);
   const [bi, setBi] = useState(0);
   const [showAlts, setShowAlts] = useState(false);

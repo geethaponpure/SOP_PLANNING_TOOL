@@ -164,29 +164,6 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="foot">
-          {session && (
-            <div className="user-profile-box">
-              <div className="user-info">👤 <b>{session.user?.name || session.user?.username}</b></div>
-              <div className="user-actions">
-                <button onClick={() => setShowChangePw(true)} title="Change password">🔑 {!collapsed && "Password"}</button>
-                <button className="logout-btn" onClick={doLogout} title="Sign out">⏻ {!collapsed && "Logout"}</button>
-              </div>
-            </div>
-          )}
-          <div className="foot-caption">Integrated S&amp;OP / IBP</div>
-          <button
-            className="reset-btn"
-            onClick={async () => {
-              if (confirm("Reset the cycle to its initial synthetic state?")) {
-                await api.reset();
-                bump();
-              }
-            }}
-          >
-            ↺ Reset cycle
-          </button>
-        </div>
       </aside>
 
       <div className="main">

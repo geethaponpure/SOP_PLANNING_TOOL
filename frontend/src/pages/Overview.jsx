@@ -1,5 +1,6 @@
 import React from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Cell } from "recharts";
+import { ChartContainer, ChartTooltip, chartColor } from "../components/Chart.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat, KitStat, Tag } from "../components/ui.jsx";
 
@@ -73,18 +74,18 @@ export default function Overview() {
         <div className="card">
           <h3>Exceptions by type</h3>
           <div className="sub">Section 7.4 — how the validation engine classified this cycle's projections</div>
-          <ResponsiveContainer width="100%" height={230}>
+          <ChartContainer config={{ value: { label: "Exceptions" } }} height={230}>
             <BarChart data={exData} layout="vertical" margin={{ left: 30 }}>
               <XAxis type="number" allowDecimals={false} />
               <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
-              <Tooltip />
+              <ChartTooltip config={{ value: { label: "Exceptions" } }} formatter={fmt.num} />
               <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                 {exData.map((e, i) => (
-                  <Cell key={i} fill={["#c53030", "#b7791f", "#2b6cb0", "#2a9d8f", "#805ad5"][i % 5]} />
+                  <Cell key={i} fill={chartColor(i)} />
                 ))}
               </Bar>
             </BarChart>
-          </ResponsiveContainer>
+          </ChartContainer>
         </div>
 
         <div className="card">
