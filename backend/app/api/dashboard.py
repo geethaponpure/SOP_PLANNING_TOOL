@@ -21,6 +21,11 @@ from __future__ import annotations
 
 from ..integration import msl as _msl
 from ..integration import staging
+from ..integration.planning_filter import _proj_flag   # the plan's ±20% band
+
+# bump when the payload shape changes so stale precomputed admin payloads
+# (computed_plan.dashboard_admin) are rebuilt instead of served
+_PAYLOAD_V = 3
 
 # broadest scope first — a user holding several personas gets the widest view
 _PERSONA_PRIORITY = ["Division Head", "Business Head", "Technical Head",
@@ -111,7 +116,123 @@ def _scope_summary(persona: str, stype: str, mine: list[dict]) -> list[str]:
 def _empty_datasets() -> dict:
     return {"kpis": {"qty": 0, "value": 0, "customers": 0, "items": 0,
                      "last_jc_qty": 0, "prev_jc_qty": 0},
-            "cube": [], "top_items": [], "top_customers": []}
+            "cube": [], "top_items": [], "top_customers": [], "projection": None}
+
+
+def _norm(s) -> str:
+    return str(s or "").strip().upper()
+
+
+def _projection_block(sales3: list[dict], mine: list[dict], stype: str,
+                      admin: bool = False) -> dict | None:
+    """Projection accuracy for the user's scope: the plan-table projection
+    (stg_projection CurrentQ for the planning JC — the same slice the RM plan
+    build reads) vs the scoped 3-JC AVERAGE sales per item, flagged with the
+    plan's own ±20% band (_proj_flag: over / under / ontrack / new). Items with
+    sales but NO projection ('none') are the submission gaps to highlight.
+
+    When the scope names specific collectors, projections come from
+    stg_projection_rows summed over those collectors (same CRM projection data,
+    per-collector slice) so the comparison is apples-to-apples."""
+    ctx = staging.read_context() or {}
+    acc_year, jc = ctx.get("acc_year"), ctx.get("plan_jc")
+    if not acc_year or not jc:
+        return None
+
+    coll_names = {g.get("collector_name") for g in mine if g.get("collector_name")}
+    use_rows = bool(coll_names) and not admin
+    proj: dict = {}          # norm name -> {"proj": kg, "name": display, "s2":, "s3":}
+    if use_rows:
+        wanted = {_norm(c) for c in coll_names}
+        rows = [r for r in staging.read_projection_rows(acc_year, int(jc))
+                if _norm(r.get("Collector")) in wanted]
+    else:
+        rows = staging.read_projection(acc_year, int(jc), approved=True)
+    for r in rows:
+        k = _norm(r.get("ItemName"))
+        if not k:
+            continue
+        p = proj.setdefault(k, {"proj": 0.0, "next1": 0.0, "next2": 0.0,
+                                "name": str(r.get("ItemName")).strip(),
+                                "s2": r.get("Segment2"), "s3": r.get("Segment3")})
+        p["proj"] += float(r.get("CurrentQ") or 0)
+        p["next1"] += float(r.get("Next1Q") or 0)
+        p["next2"] += float(r.get("Next2Q") or 0)
+
+    # scoped items with sales in the last 3 JCs
+    items = []
+    seen = set()
+    for s in sales3:
+        k = _norm(s.get("name"))
+        if not k:
+            continue
+        seen.add(k)
+        avg3 = float(s.get("qty3") or 0) / 3.0
+        pr = proj.get(k) or {}
+        p = pr.get("proj", 0.0)
+        # 'none' = sells but NO projection submitted at all — the gap to
+        # highlight (the plan's _proj_flag would call proj=0 'under')
+        flag = "none" if (p <= 0 and avg3 > 0) else _proj_flag(p, avg3)
+        items.append({"name": str(s.get("name")).strip(), "code": s.get("code"),
+                      "proj": round(p, 1), "avg3": round(avg3, 1), "flag": flag,
+                      "next1": pr.get("next1", 0.0), "next2": pr.get("next2", 0.0)})
+
+    # projected-but-not-selling items ('new') — only where the projection side
+    # is scoped tightly enough to be meaningful for this persona
+    grant_s2 = {g["segment2"] for g in mine if g.get("segment2") and not g.get("segment3")
+                and not g.get("segment4")}
+    grant_s3 = {g["segment3"] for g in mine if g.get("segment3") and not g.get("segment4")}
+    for k, p in proj.items():
+        if k in seen or p["proj"] <= 0:
+            continue
+        # only where the projection slice matches the sales slice exactly:
+        # whole company, whole collector(s), or a segment-filtered division —
+        # narrower scopes (circle / customer / segment+collector) would pull
+        # unrelated projected items in
+        ok = admin or (use_rows and stype == "collector") or \
+            (stype == "segment" and not use_rows
+             and (p.get("s2") in grant_s2 or p.get("s3") in grant_s3))
+        if ok:
+            items.append({"name": p["name"], "code": None, "proj": round(p["proj"], 1),
+                          "avg3": 0.0, "flag": "new",
+                          "next1": p.get("next1", 0.0), "next2": p.get("next2", 0.0)})
+
+    total_avg3 = sum(i["avg3"] for i in items) or 1.0
+    covered = sum(i["avg3"] for i in items if i["proj"] > 0)
+    summary = []
+    for flag in ("ontrack", "over", "under", "none", "new"):
+        sub = [i for i in items if i["flag"] == flag]
+        if sub:
+            summary.append({"flag": flag, "items": len(sub),
+                            "kg": round(sum(i["avg3"] for i in sub))})
+    with_sales = sorted([i for i in items if i["avg3"] > 0], key=lambda i: -i["avg3"])
+    # projection pipeline over this scope's item universe: the planning JC and
+    # the two after it (stg_projection CurrentQ / Next1Q / Next2Q)
+    pipeline = [
+        {"key": "current", "label": f"Current · JC{int(jc)}",
+         "kg": round(sum(i["proj"] for i in items)),
+         "items": sum(1 for i in items if i["proj"] > 0)},
+        {"key": "next1", "label": "Next JC",
+         "kg": round(sum(i["next1"] for i in items)),
+         "items": sum(1 for i in items if i["next1"] > 0)},
+        {"key": "next2", "label": "JC after next",
+         "kg": round(sum(i["next2"] for i in items)),
+         "items": sum(1 for i in items if i["next2"] > 0)},
+    ]
+    for i in items:   # next1/next2 fed the pipeline only — keep the payload lean
+        i.pop("next1", None)
+        i.pop("next2", None)
+    return {
+        "acc_year": acc_year, "jc": int(jc),
+        "basis": "collector" if use_rows else "item",
+        "coverage_pct": round(covered / total_avg3 * 100, 1),
+        "summary": summary,
+        "pipeline": pipeline,
+        "compare": with_sales[:12],
+        "missing": [i for i in with_sales if i["flag"] == "none"][:10],
+        "missing_total": sum(1 for i in items if i["flag"] == "none"),
+        "missing_kg": round(sum(i["avg3"] for i in items if i["flag"] == "none")),
+    }
 
 
 def _assemble(ds: dict, n_jc: int) -> dict:
@@ -210,28 +331,37 @@ def my_dashboard(username: str | None = None, email: str | None = None,
         if not (persona and any(g["persona"] == persona for g in grants)):
             persona = _pick_persona(grants)
 
-    base = {"persona": persona or ("Admin" if admin else None),
+    base = {"v": _PAYLOAD_V, "persona": persona or ("Admin" if admin else None),
             "jcs": jc_labels, "last_sync": staging.last_sync("dispatch_scope")}
+    jc_from = max(0, len(jcs) - 3)   # the projection-accuracy 3-JC sales window
 
     if admin:
         # full-cube aggregates are the heaviest view — the worker precomputes
         # them after each sync (compute_dashboard_admin); recompute + store on
-        # a stale/missing snapshot so the next load is instant either way.
+        # a stale/missing/old-shape snapshot so the next load is instant either way.
         comp = staging.read_computed("dashboard_admin")
-        if comp and (not stamp or (comp.get("last_sync") or {}).get("finished_at") == stamp):
+        if comp and comp.get("v") == _PAYLOAD_V and \
+                (not stamp or (comp.get("last_sync") or {}).get("finished_at") == stamp):
             payload = comp
         else:
+            ds = staging.dashboard_datasets({}, jc_from=jc_from)
             payload = {**base, "scope": _scope_summary("Admin", "", []),
-                       **_assemble(staging.dashboard_datasets({}), len(jcs))}
+                       **_assemble(ds, len(jcs)),
+                       "projection": _projection_block(ds["sales3"], [], "", admin=True)}
             staging.save_computed("dashboard_admin", payload)
         _CACHE[key] = payload
         return payload
     if not persona:
         return {**base, "scope": [], "kpis": None, "cube": [],
-                "top_items": [], "top_customers": []}
+                "top_items": [], "top_customers": [], "projection": None}
 
     stype, mine, flt = _scope_flt(persona, grants)
-    data = _assemble(staging.dashboard_datasets(flt), len(jcs)) if flt else _empty_datasets()
+    if flt:
+        ds = staging.dashboard_datasets(flt, jc_from=jc_from)
+        data = {**_assemble(ds, len(jcs)),
+                "projection": _projection_block(ds["sales3"], mine, stype)}
+    else:
+        data = _empty_datasets()
     payload = {**base, "scope": _scope_summary(persona, stype, mine),
                "user_name": mine[0].get("user_name") if mine else None,
                **data}

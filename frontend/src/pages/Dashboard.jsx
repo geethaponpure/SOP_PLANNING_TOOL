@@ -19,7 +19,6 @@ const ANIM = { animationDuration: 650, animationEasing: "cubicOut" };
 const PAL = ["#2a9d8f", "#4880ff", "#b7791f", "#805ad5", "#2f855a", "#c53030", "#28b5e1", "#90a1ac",
   "#d69e2e", "#3182ce", "#38a169", "#e53e3e", "#718096"];
 const SHAPE_DIST = [{ id: "donut", label: "Donut" }, { id: "pie", label: "Pie" }, { id: "bar", label: "Bar" }];
-const SHAPE_TREND = [{ id: "line", label: "Line" }, { id: "bar", label: "Bar" }];
 const abbr = (v) => {
   const n = Math.abs(v);
   if (n >= 1e7) return (v / 1e7).toFixed(n >= 1e8 ? 0 : 1) + "Cr";
@@ -27,38 +26,21 @@ const abbr = (v) => {
   if (n >= 1e3) return (v / 1e3).toFixed(0) + "K";
   return fmt.num(v);
 };
-const gradV = (c) => ({ type: "linear", x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: c + "55" }, { offset: 1, color: c + "05" }] });
-const grad = (c1, c2) => ({ type: "linear", x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: c1 }, { offset: 1, color: c2 }] });
 
-function trendOption(labels, values, { shape, unit, dates }) {
-  const base = {
-    ...ANIM,
-    grid: { left: 8, right: 18, top: 18, bottom: 8, containLabel: true },
-    tooltip: { ...TT, trigger: "axis", axisPointer: { type: shape === "line" ? "line" : "shadow" },
-      formatter: (ps) => {
-        const i = ps[0].dataIndex;
-        const d = dates[i] ? `<br/><span style="color:#90a1ac;font-size:11px">${dates[i]}</span>` : "";
-        return `${ps[0].name}${d}<br/><b>${fmt.num(ps[0].value)}</b> ${unit}`;
-      } },
-    xAxis: { type: "category", data: labels, axisTick: { show: false },
-      axisLabel: { color: "#414d55", fontSize: 11, hideOverlap: true } },
-    yAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } },
-      axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true } },
-  };
-  if (shape === "bar") {
-    return { ...base, series: [{ type: "bar", barWidth: "55%", data: values,
-      itemStyle: { borderRadius: [6, 6, 0, 0], color: grad("#7aa7ff", "#4880ff") } }] };
-  }
-  return { ...base, series: [{ type: "line", smooth: true, symbol: "circle", symbolSize: 7,
-    lineStyle: { width: 3, color: "#4880ff" }, itemStyle: { color: "#4880ff" },
-    areaStyle: { color: gradV("#4880ff") }, data: values }] };
-}
+// projection-accuracy flags (same ±20% band the RM plan uses)
+const FLAGS = {
+  ontrack: { label: "On-track", color: "#2f855a" },
+  over: { label: "Over-projected", color: "#b7791f" },
+  under: { label: "Under-projected", color: "#3182ce" },
+  none: { label: "No projection", color: "#c53030" },
+  new: { label: "New (no sales yet)", color: "#90a1ac" },
+};
 
 function distOption(rows, { shape, unit, center, selected }) {
   const data = rows.map((r, i) => ({
     value: r.value, name: r.name,
     itemStyle: {
-      color: PAL[i % PAL.length],
+      color: r.color || PAL[i % PAL.length],
       opacity: selected && selected !== r.name ? 0.28 : 1,
     },
   }));
@@ -100,22 +82,62 @@ function distOption(rows, { shape, unit, center, selected }) {
   };
 }
 
-function topOption(rows, { unit, c1, c2 }) {
+// bullet-style comparison: one bar per item = the scoped 3-JC avg sales,
+// coloured by its accuracy flag; a navy ◆ marks the plan-table projection.
+// One glance answers "how much do I sell, what did I project, am I close?"
+function bulletOption(rows) {
   const rev = [...rows].reverse();
+  const tip = (i) => {
+    const r = rev[i];
+    const f = FLAGS[r.flag] || FLAGS.ontrack;
+    const acc = r.avg3 > 0 && r.proj > 0 ? ` (${Math.round((r.proj / r.avg3) * 100)}% of avg sales)` : "";
+    return `<b>${r.name}</b><br/>3-JC avg sales: <b>${fmt.num(r.avg3)}</b> KG` +
+      `<br/>Projection: <b>${fmt.num(r.proj)}</b> KG${acc}` +
+      `<br/><span style="color:${f.color}">● ${f.label}</span>`;
+  };
   return {
-    ...ANIM, grid: { left: 8, right: 24, top: 12, bottom: 8, containLabel: true },
+    ...ANIM, grid: { left: 8, right: 30, top: 34, bottom: 8, containLabel: true },
+    legend: { top: 0, textStyle: { color: "#414d55", fontSize: 11 },
+      data: [{ name: "3-JC avg sales", icon: "roundRect" }, { name: "Projection", icon: "diamond" }] },
     tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
-      formatter: (ps) => `${rev[ps[0].dataIndex].full || ps[0].name}<br/><b>${fmt.num(ps[0].value)}</b> ${unit}` },
+      formatter: (ps) => tip(ps[0].dataIndex) },
     xAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } },
       axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true },
       axisLine: { show: false }, axisTick: { show: false } },
-    yAxis: { type: "category", data: rev.map((d) => d.name),
-      axisLabel: { color: "#414d55", fontSize: 11, width: 130, overflow: "truncate", hideOverlap: true },
+    yAxis: { type: "category", data: rev.map((r) => r.name),
+      axisLabel: { color: "#414d55", fontSize: 11, width: 170, overflow: "truncate", hideOverlap: true },
       axisTick: { show: false }, axisLine: { show: false } },
-    series: [{ type: "bar", barWidth: "56%",
-      itemStyle: { borderRadius: [0, 6, 6, 0], color: grad(c1, c2) },
-      emphasis: { itemStyle: { color: grad(c2, c1) } },
-      data: rev.map((d) => d.value) }],
+    series: [
+      { name: "3-JC avg sales", type: "bar", barWidth: "52%", color: "#94a8bc", z: 1,
+        data: rev.map((r) => ({ value: r.avg3,
+          itemStyle: { color: (FLAGS[r.flag] || {}).color + "CC", borderRadius: [0, 6, 6, 0] } })) },
+      { name: "Projection", type: "scatter", symbol: "diamond", symbolSize: 13, z: 3,
+        itemStyle: { color: "#1f3a5f", borderColor: "#fff", borderWidth: 1.5 },
+        data: rev.map((r) => r.proj) },
+    ],
+  };
+}
+
+// the 3-cycle projection pipeline: current JC + the two after it
+function pipeOption(pipe) {
+  const COLORS = ["#4880ff", "#7aa7ff", "#b9cdfd"];
+  return {
+    ...ANIM, grid: { left: 8, right: 16, top: 34, bottom: 8, containLabel: true },
+    tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
+      formatter: (ps) => {
+        const b = pipe[ps[0].dataIndex] || {};
+        return `${b.label}<br/><b>${fmt.num(b.kg)}</b> KG projected` +
+          `<br/><span style="color:#90a1ac">${fmt.num(b.items)} items with a projection</span>`;
+      } },
+    xAxis: { type: "category", data: pipe.map((b) => b.label), axisTick: { show: false },
+      axisLabel: { color: "#414d55", fontSize: 11 } },
+    yAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } },
+      axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true } },
+    series: [{ type: "bar", barWidth: "48%",
+      label: { show: true, position: "top", fontSize: 12, fontWeight: 600,
+        color: "#1f3a5f", formatter: (o) => abbr(o.value) },
+      data: pipe.map((b, i) => ({ value: b.kg,
+        itemStyle: { color: COLORS[i % 3], borderRadius: [6, 6, 0, 0] } })) }],
   };
 }
 
@@ -141,7 +163,7 @@ export default function Dashboard({ session, isAdmin }) {
   );
 
   const [metric, setMetric] = useState("qty");           // qty (KG) | value (₹)
-  const [shape, setShape] = useState({ trend: "line", coll: "bar", seg: "donut" });
+  const [shape, setShape] = useState({ coll: "bar", seg: "donut", proj: "donut" });
   const setSh = (k) => (v) => setShape((s) => ({ ...s, [k]: v }));
   const [sel, setSel] = useState({ collector: null, segment: null });   // cross-filter
   const toggle = (k) => (name) => setSel((s) => ({ ...s, [k]: s[k] === name ? null : name }));
@@ -174,21 +196,10 @@ export default function Dashboard({ session, isAdmin }) {
   );
 
   const cube = data?.cube || [];
-  const jcs = data?.jcs || [];
   const unit = metric === "qty" ? "KG" : "₹";
 
-  // trend respects BOTH cross-filters; each dist chart respects only the OTHER's
-  // selection (Power BI behaviour: its own selection just highlights).
-  const trendVals = useMemo(() => {
-    const v = Array(jcs.length).fill(0);
-    cube.forEach((r) => {
-      if (sel.collector && r.collector !== sel.collector) return;
-      if (sel.segment && r.segment !== sel.segment) return;
-      if (r.jc >= 0 && r.jc < v.length) v[r.jc] += r[metric];
-    });
-    return v.map((x) => Math.round(x));
-  }, [cube, jcs.length, sel, metric]);
-
+  // each dist chart respects only the OTHER cross-filter's selection
+  // (Power BI behaviour: its own selection just highlights).
   const byColl = useMemo(() => {
     const m = {};
     cube.forEach((r) => {
@@ -212,20 +223,22 @@ export default function Dashboard({ session, isAdmin }) {
   const collEvents = useMemo(() => ({ click: (p) => { if (p.name) toggle("collector")(p.name); } }), []);
   const segEvents = useMemo(() => ({ click: (p) => { if (p.name) toggle("segment")(p.name); } }), []);
 
-  const trendOpt = useMemo(() => trendOption(jcs.map((j) => j.label), trendVals,
-    { shape: shape.trend, unit, dates: jcs.map((j) => (j.from ? `${j.from} → ${j.to}` : "")) }),
-  [jcs, trendVals, shape.trend, unit]);
   const collOpt = useMemo(() => distOption(byColl, { shape: shape.coll, unit, center: unit, selected: sel.collector }),
     [byColl, shape.coll, unit, sel.collector]);
   const segOpt = useMemo(() => distOption(bySeg, { shape: shape.seg, unit, center: unit, selected: sel.segment }),
     [bySeg, shape.seg, unit, sel.segment]);
 
-  const topItems = useMemo(() => (data?.top_items || []).slice(0, 10)
-    .map((d) => ({ name: d.code, full: `${d.code} — ${d.name || ""}`, value: Math.round(d[metric === "qty" ? "qty" : "value"]) })), [data, metric]);
-  const topCust = useMemo(() => (data?.top_customers || []).slice(0, 10)
-    .map((d) => ({ name: d.name, full: d.name, value: Math.round(d[metric === "qty" ? "qty" : "value"]) })), [data, metric]);
-  const itemsOpt = useMemo(() => topOption(topItems, { unit, c1: "#7fd4c8", c2: "#2a9d8f" }), [topItems, unit]);
-  const custOpt = useMemo(() => topOption(topCust, { unit, c1: "#d0b06a", c2: "#b7791f" }), [topCust, unit]);
+  // ── projection accuracy (plan-table projection vs scoped 3-JC avg sales) ──
+  const p = data?.projection;
+  const bulletOpt = useMemo(() => bulletOption(p?.compare || []), [p]);
+  const pipeOpt = useMemo(() => pipeOption(p?.pipeline || []), [p]);
+  const statusRows = useMemo(() => (p?.summary || []).map((s) => ({
+    name: FLAGS[s.flag]?.label || s.flag, value: s.items, color: FLAGS[s.flag]?.color })), [p]);
+  const statusOpt = useMemo(() => distOption(statusRows, { shape: shape.proj, unit: "items", center: "items" }),
+    [statusRows, shape.proj]);
+  const missRows = useMemo(() => (p?.missing || []).map((m) => ({
+    name: m.name, value: m.avg3, color: "#c53030" })), [p]);
+  const missOpt = useMemo(() => distOption(missRows, { shape: "bar", unit: "KG avg / JC" }), [missRows]);
 
   if (loading && !data) return <Loading what="your dashboard" />;
   if (error) return <>{switcher}<ErrorBox msg={error} /></>;
@@ -245,7 +258,6 @@ export default function Dashboard({ session, isAdmin }) {
     );
   }
 
-  const delta = k.prev_jc_qty ? ((k.last_jc_qty - k.prev_jc_qty) / k.prev_jc_qty) * 100 : null;
   const syncedAt = data.last_sync?.finished_at ? String(data.last_sync.finished_at).slice(0, 16) : null;
 
   return (
@@ -295,22 +307,6 @@ export default function Dashboard({ session, isAdmin }) {
       )}
 
       <div className="grid cols-2" style={{ marginTop: 14 }}>
-        <div className="card" style={{ gridColumn: "1 / -1" }}>
-          <div className="supply-dash-cardhead">
-            <div><h3>Dispatch trend by JC{sel.collector ? ` · ${sel.collector}` : ""}{sel.segment ? ` · ${sel.segment}` : ""}</h3>
-              <div className="sub">
-                {unit} per job cycle
-                {delta != null && (
-                  <span style={{ marginLeft: 8, color: delta >= 0 ? "#2f855a" : "#c53030", fontWeight: 600 }}>
-                    {delta >= 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}% vs previous JC
-                  </span>
-                )}
-              </div></div>
-            <SegTabs size="sm" value={shape.trend} onChange={setSh("trend")} tabs={SHAPE_TREND} />
-          </div>
-          <EChart option={trendOpt} height={260} />
-        </div>
-
         {byColl.length > 1 && (
           <div className="card">
             <div className="supply-dash-cardhead">
@@ -333,24 +329,62 @@ export default function Dashboard({ session, isAdmin }) {
           </div>
         )}
 
-        {topItems.length > 0 && (
-          <div className="card">
-            <div className="supply-dash-cardhead">
-              <div><h3>Top items</h3><div className="sub">by dispatched {unit} · whole scope</div></div>
-            </div>
-            <EChart option={itemsOpt} height={280} />
-          </div>
-        )}
-
-        {topCust.length > 0 && (
-          <div className="card">
-            <div className="supply-dash-cardhead">
-              <div><h3>Top customers</h3><div className="sub">by dispatched {unit} · whole scope</div></div>
-            </div>
-            <EChart option={custOpt} height={280} />
-          </div>
-        )}
       </div>
+
+      {p && (
+        <div className="grid cols-2" style={{ marginTop: 14 }}>
+          <div className="card" style={{ gridColumn: "1 / -1" }}>
+            <div className="supply-dash-cardhead">
+              <div><h3>🎯 Projection vs 3-JC avg sales</h3>
+                <div className="sub">
+                  bar = your 3-JC average sales (coloured by status) · <b style={{ color: "#1f3a5f" }}>◆</b> = JC{p.jc} {p.acc_year} projection
+                  ({p.basis === "collector" ? "your collectors" : "per item, company-wide"}) ·
+                  ±20% band · <b>{p.coverage_pct}%</b> of your sales volume has a projection
+                </div></div>
+            </div>
+            <EChart option={bulletOpt} height={330} />
+          </div>
+
+          <div className="card">
+            <div className="supply-dash-cardhead">
+              <div><h3>📅 Projection pipeline</h3>
+                <div className="sub">projected KG for the current and the next two job cycles · your scope</div></div>
+            </div>
+            <EChart option={pipeOpt} height={260} />
+          </div>
+
+          <div className="card">
+            <div className="supply-dash-cardhead">
+              <div><h3>Projection status</h3>
+                <div className="sub">items by flag · same ±20% band as the RM plan</div></div>
+              <SegTabs size="sm" value={shape.proj} onChange={setSh("proj")} tabs={SHAPE_DIST} />
+            </div>
+            <EChart option={statusOpt} height={260} />
+          </div>
+
+          <div className="card" style={{ gridColumn: "1 / -1",
+            ...(p.missing_total > 0 ? { borderColor: "#f0b9b9", background: "#FFFBFA" } : {}) }}>
+            <div className="supply-dash-cardhead">
+              <div><h3>⚠️ Missing projections</h3>
+                <div className="sub">
+                  high-selling items with <b>no JC{p.jc} projection</b>
+                  {p.missing_total > 0 && (
+                    <span style={{ color: "#c53030", fontWeight: 600 }}>
+                      {" "}· {p.missing_total} item{p.missing_total > 1 ? "s" : ""} · {abbr(p.missing_kg)} KG/JC unprojected
+                    </span>
+                  )}
+                </div></div>
+            </div>
+            {missRows.length > 0 ? (
+              <EChart option={missOpt} height={240} />
+            ) : (
+              <div style={{ padding: "48px 0", textAlign: "center", color: "#2f855a", fontSize: 13 }}>
+                ✅ Every high-selling item in your scope has a projection for JC{p.jc}.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       </div>
     </>
   );

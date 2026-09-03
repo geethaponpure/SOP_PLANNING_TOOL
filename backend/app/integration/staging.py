@@ -651,10 +651,12 @@ def replace_dispatch_scope(crm_rows: list[dict], n_jc: int) -> int:
 _SEG_LEVELS = {"segment2", "segment3", "segment4"}
 
 
-def dashboard_datasets(flt: dict) -> dict:
-    """All My-Dashboard aggregates in FOUR indexed SQL queries. Aggregation
+def dashboard_datasets(flt: dict, jc_from: int | None = None) -> dict:
+    """All My-Dashboard aggregates in FIVE indexed SQL queries. Aggregation
     stays in MySQL — never haul the 134k-row cube into Python per request
-    (that melted the API under concurrent page loads).
+    (that melted the API under concurrent page loads). ``jc_from`` adds a
+    per-item sales total over jc_index >= jc_from (the projection-accuracy
+    3-JC window) as ``sales3``.
 
     ``flt`` is one of:
       {}                          -> whole company (Admin)
@@ -711,12 +713,19 @@ def dashboard_datasets(flt: dict) -> dict:
                             f"{base}{w_cust} GROUP BY d.customer_id "
                             "ORDER BY SUM(d.qty) DESC LIMIT 15", tuple(params))
                 top_customers = cur.fetchall()
-                return {"cube": cube, "totals": totals,
-                        "top_items": top_items, "top_customers": top_customers}
+                sales3 = []
+                if jc_from is not None:
+                    w3 = w + (" AND " if w else " WHERE ") + "d.jc_index >= %s"
+                    cur.execute("SELECT d.item_name AS name, MAX(d.item_code) AS code, "
+                                f"SUM(d.qty) AS qty3 {base}{w3} GROUP BY d.item_name",
+                                tuple(params) + (int(jc_from),))
+                    sales3 = cur.fetchall()
+                return {"cube": cube, "totals": totals, "top_items": top_items,
+                        "top_customers": top_customers, "sales3": sales3}
         finally:
             conn.close()
     except Exception:   # noqa: BLE001
-        return {"cube": [], "totals": {}, "top_items": [], "top_customers": []}
+        return {"cube": [], "totals": {}, "top_items": [], "top_customers": [], "sales3": []}
 
 
 # ── "Refresh now" queue (used by the worker's poller in Phase 4) ───────────────
