@@ -93,7 +93,7 @@ export default function MfgStock() {
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>{total} rows</span>
       </div>
 
-      <div className="tbl-wrap">
+      <div className="tbl-wrap mfg-tbl-wrap">
         <table className="mfg-table">
           <thead>
             <tr>
@@ -115,8 +115,8 @@ export default function MfgStock() {
                 <td><span className="mfg-desc" title={r.item_desc}>{r.item_desc}</span></td>
                 <td>{r.division && <span className="chip" style={{ cursor: "default", fontSize: 10, background: /npd/i.test(r.division) ? "#FFF3E8" : "#EEF6FF" }}>{r.division}</span>}</td>
                 <td>{r.segment2 && <span className="chip" style={{ cursor: "default", fontSize: 10, background: /raw material/i.test(r.segment2) ? "#EEF6FF" : "#F3F0E8" }}>{r.segment2}</span>}</td>
-                <td style={{ fontSize: 12, color: "var(--muted)" }}>{r.segment3 || "—"}</td>
-                <td style={{ fontSize: 12 }}>{r.org}</td>
+                <td style={{ fontSize: 12, color: "var(--muted)" }} title={r.segment3 || ""}>{r.segment3 || "—"}</td>
+                <td style={{ fontSize: 12 }} title={r.org}>{r.org}</td>
                 <td className="num mfg-qty">
                   <b>{fmt.num(r.qty)}</b>
                   <span className="mfg-qbar"><i style={{ width: `${Math.max(2, Math.round((r.qty / maxQty) * 100))}%` }} /></span>
@@ -135,21 +135,21 @@ export default function MfgStock() {
       </div>
 
       {total > 0 && (
-        <div className="pagebar" style={{ marginTop: 10, alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "var(--muted)" }}>
-            Showing {start + 1}–{Math.min(start + pageSize, total)} of {total}
-          </span>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+        <div className="pagebar" style={{ marginTop: 12, flexDirection: "column", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
             <SelectBox className="searchbox" style={{ maxWidth: 130 }} value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}>
               {[50, 100, 200, 500].map((n) => <option key={n} value={n}>{n} / page</option>)}
             </SelectBox>
-            <button className="btn" disabled={cur <= 1} onClick={() => setPage(1)} title="First">«</button>
-            <button className="btn" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>‹ Prev</button>
+            <button className="btn secondary" disabled={cur <= 1} onClick={() => setPage(1)} title="First">«</button>
+            <button className="btn secondary" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>‹ Prev</button>
             <span style={{ fontSize: 12, minWidth: 90, textAlign: "center" }}>Page {cur} / {pageCount}</span>
-            <button className="btn" disabled={cur >= pageCount} onClick={() => setPage(cur + 1)}>Next ›</button>
-            <button className="btn" disabled={cur >= pageCount} onClick={() => setPage(pageCount)} title="Last">»</button>
+            <button className="btn secondary" disabled={cur >= pageCount} onClick={() => setPage(cur + 1)}>Next ›</button>
+            <button className="btn secondary" disabled={cur >= pageCount} onClick={() => setPage(pageCount)} title="Last">»</button>
           </div>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>
+            Showing {start + 1}–{Math.min(start + pageSize, total)} of {total}
+          </span>
         </div>
       )}
 

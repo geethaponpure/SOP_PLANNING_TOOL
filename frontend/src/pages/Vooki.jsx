@@ -4,6 +4,7 @@ import SegTabs from "../components/SegTabs.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
+import VookiCharts from "../components/VookiCharts.jsx";
 
 const NetCell = ({ v }) => <span className={v > 0 ? "num-pos" : "num-zero"}>{fmt.num(v)}</span>;
 
@@ -14,6 +15,21 @@ const LeadCell = ({ v }) => (
     {v == null ? "—" : `${fmt.num(v, 1)}d`}
   </span>
 );
+
+const PILL = { padding: "2px 9px", borderRadius: 12, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" };
+function Badge({ map, k }) {
+  const [bg, fg, txt] = map[k] || map._default;
+  return <span style={{ ...PILL, background: bg, color: fg }}>{txt}</span>;
+}
+const URG = {
+  "order-now": ["#fdecec", "#b23b3b", "🛒 Order now"], "order-soon": ["#fff6e6", "#8a6d00", "Order soon"],
+  routine: ["#eef4fb", "#1768c4", "Routine"], covered: ["#e6f4ea", "#1a7d4f", "✓ Covered"], _default: ["#eef1f5", "#5b6675", "Plan"],
+};
+const READY = {
+  ready: ["#e6f4ea", "#1a7d4f", "✓ Ready"], partial: ["#fff6e6", "#8a6d00", "Partial"],
+  blocked: ["#fdecec", "#b23b3b", "Blocked"], _default: ["#eef1f5", "#5b6675", "—"],
+};
+const urgencyOf = (net, lead) => (net <= 0 ? "covered" : lead == null ? "_default" : lead >= LEAD_RED ? "order-now" : lead >= LEAD_AMBER ? "order-soon" : "routine");
 
 function applySort(rows, { key, dir }) {
   if (!key) return rows;
@@ -100,27 +116,88 @@ export default function Vooki() {
     .filter((a) => !q || a.rm_code.toLowerCase().includes(ql) || (a.rm_desc || "").toLowerCase().includes(ql)),
     sortC);
 
+  // ── per-RM index across ALL products (lead time + planned buy), for the added tables
+  const rmMap = {};
+  for (const p of data.products) {
+    if (!p.has_bom) continue;
+    const planned = (qty[p.name] || 0) > 0;
+    for (const c of bomOf(p).components) {
+      const key = (c.rm_desc || c.rm_code).toUpperCase();
+      const a = rmMap[key] || (rmMap[key] = {
+        rm_code: c.rm_code, rm_desc: c.rm_desc, available: c.available, lead: null, gross: 0, fgs: new Set() });
+      a.available = Math.max(a.available, c.available);
+      if (c.lead_time != null) a.lead = a.lead == null ? c.lead_time : Math.max(a.lead, c.lead_time);
+      if (planned) { a.gross += grossOf(p, c); a.fgs.add(p.name); }
+    }
+  }
+  const rmMatch = (a) => !q || a.rm_code.toLowerCase().includes(ql) || (a.rm_desc || "").toLowerCase().includes(ql);
+  const rmRows = Object.values(rmMap).map((a) => ({
+    ...a, fg_count: a.fgs.size, net_to_buy: Math.max(0, a.gross - a.available),
+  }));
+
+  // 1. Purchase priority — RMs to buy this plan, most urgent (long lead) first
+  const purchase = rmRows.filter((a) => a.net_to_buy > 0 && rmMatch(a))
+    .sort((a, b) => (b.lead ?? -1) - (a.lead ?? -1) || b.net_to_buy - a.net_to_buy);
+
+  // 2. Production bottlenecks — the limiting RM per FG, grouped (independent of qty)
+  const blkMap = {};
+  for (const p of data.products) {
+    if (!p.has_bom || !p.limiting_rm) continue;
+    const a = blkMap[p.limiting_rm] || (blkMap[p.limiting_rm] = { rm: p.limiting_rm, available: p.limiting_rm_available ?? 0, fgs: [] });
+    a.fgs.push(p.name);
+  }
+  const bottlenecks = Object.values(blkMap)
+    .map((a) => ({ ...a, fg_count: a.fgs.length }))
+    .filter((a) => !q || a.rm.toLowerCase().includes(ql) || a.fgs.some((n) => n.toLowerCase().includes(ql)))
+    .sort((a, b) => b.fg_count - a.fg_count || a.available - b.available);
+
+  // 3. Production readiness — plan qty vs producible-now (needs a plan qty)
+  const readyRank = { blocked: 0, partial: 1, ready: 2 };
+  const readiness = data.products
+    .filter((p) => p.has_bom && (qty[p.name] || 0) > 0 && (!q || p.name.toLowerCase().includes(ql)))
+    .map((p) => {
+      const plan = qty[p.name] || 0, prod = p.producible_now || 0;
+      const status = prod >= plan ? "ready" : prod > 0 ? "partial" : "blocked";
+      return { name: p.name, plan, prod, shortfall: Math.max(0, plan - prod), status, limiting: p.limiting_rm, avail: p.limiting_rm_available };
+    })
+    .sort((a, b) => readyRank[a.status] - readyRank[b.status] || b.shortfall - a.shortfall);
+
+  // 4. Lead-time watchlist — long-lead RMs (early-order alerts)
+  const leadtime = rmRows.filter((a) => a.lead != null && a.lead >= LEAD_AMBER && rmMatch(a))
+    .sort((a, b) => b.lead - a.lead || b.net_to_buy - a.net_to_buy);
+
+  // unfiltered rollups for the overview charts (independent of the search box)
+  const buyAll = rmRows.filter((a) => a.net_to_buy > 0);
+  const bottleAll = Object.values(blkMap).map((a) => ({ ...a, fg_count: a.fgs.length })).sort((a, b) => b.fg_count - a.fg_count);
+  const readyCounts = data.products.reduce((acc, p) => {
+    if (!p.has_bom || (qty[p.name] || 0) <= 0) return acc;
+    const plan = qty[p.name] || 0, prod = p.producible_now || 0;
+    acc[prod >= plan ? "ready" : prod > 0 ? "partial" : "blocked"]++; acc.total++;
+    return acc;
+  }, { ready: 0, partial: 0, blocked: 0, total: 0 });
+
+  const modeCount = { product: `${products.length} products`, consolidated: `${cons.length} RMs to plan`,
+    purchase: `${purchase.length} RMs to buy`, bottlenecks: `${bottlenecks.length} limiting RMs`,
+    readiness: `${readiness.length} planned products`, leadtime: `${leadtime.length} long-lead RMs` }[mode];
+  const rmName = (r) => (<><b>{decode ? r.rm_desc : r.rm_code}</b><div style={{ fontSize: 11, color: "var(--muted)" }}>{decode ? r.rm_code : r.rm_desc}</div></>);
+  const planHint = "Enter a plan quantity against a product (By product tab) to build this list.";
+
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Vooki Planning.</b> Enter a <b>quantity to plan</b> for each Vooki finished good — the RM requirement
-        explodes instantly through the selected BOM (preference <b>PMO → BULK/HDLK → newest → Primary</b>; use
-        <b> More</b> to override), nets main RM + substitutes against live CRM stock (<code>SPBiStockDetails</code>,
-        Business = <b>{data.rules?.fg_business}</b> for FG · <b>{data.rules?.rm_business}</b> + intermediates for RM),
-        and against PO received / in-transit. FG stock is unpacked from packaged SKUs (via the item master) into
-        units & KG/Lit. Packing BOMs plan separately for packing material.
-      </div>
-
       <div className="grid cols-4">
         <div className="card statcard"><div className="ic">🧴</div><Stat value={fmt.num(s.products)} label="Vooki products (with BOM)" /></div>
         <div className="card statcard blue"><div className="ic">📝</div><Stat value={fmt.num(plannedCount)} label="Products planned (qty entered)" /></div>
         <div className="card statcard"><div className="ic">🏭</div><Stat value={fmt.num(s.rm_items_in_stock)} label="RM items in stock (Business = RM)" /></div>
-        <div className="card statcard amber"><div className="ic">📦</div><Stat value={`${fmt.num(s.fg_stock_units)} u · ${fmt.num(s.fg_stock_volume_l)} L`} label="FG stock (units · KG/Lit)" /></div>
+        <div className="card statcard amber"><div className="ic">📦</div><Stat value={<span style={{ fontSize: 18, lineHeight: 1.2, wordBreak: "break-word" }}>{fmt.num(s.fg_stock_units)} u · {fmt.num(s.fg_stock_volume_l)} L</span>} label="FG stock (units · KG/Lit)" /></div>
       </div>
+
+      <VookiCharts buy={buyAll} bottlenecks={bottleAll} readyCounts={readyCounts} plannedCount={plannedCount} decode={decode} />
 
       <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, margin: "16px 0 8px" }}>
         <SegTabs value={mode} onChange={(m) => { setMode(m); setQ(""); }}
-          tabs={[{ id: "product", label: "By product" }, { id: "consolidated", label: "Consolidated RM purchase" }]} />
+          tabs={[{ id: "product", label: "By product" }, { id: "consolidated", label: "Consolidated RM" },
+            { id: "purchase", label: "Purchase priority" }, { id: "bottlenecks", label: "Bottlenecks" },
+            { id: "readiness", label: "Production readiness" }, { id: "leadtime", label: "Lead-time watchlist" }]} />
         <button className="btn" style={{ marginLeft: "auto" }} disabled={exporting}
           onClick={async () => { setExporting(true); try { await api.vookiPlanningExport(qty); } catch (e) { alert(e.message); } finally { setExporting(false); } }}>
           {exporting ? "Exporting…" : "⤓ Download report (Excel)"}
@@ -128,10 +205,8 @@ export default function Vooki() {
       </div>
 
       <div className="pagebar">
-        <SmoothInput className="searchbox" placeholder={mode === "product" ? "Search Vooki product…" : "Search RM…"} value={q} onChange={(e) => setQ(e.target.value)} />
-        <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
-          {mode === "product" ? `${products.length} products` : `${cons.length} RMs to plan`}
-        </span>
+        <SmoothInput className="searchbox" placeholder={mode === "product" || mode === "readiness" ? "Search product…" : "Search RM…"} value={q} onChange={(e) => setQ(e.target.value)} />
+        <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>{modeCount}</span>
       </div>
 
       {mode === "consolidated" ? (
@@ -154,7 +229,95 @@ export default function Vooki() {
                   <td className="num"><b><NetCell v={r.net_to_buy} /></b></td>
                 </tr>
               ))}
-              {cons.length === 0 && <tr><td colSpan={5} style={{ color: "var(--muted)" }}>Enter a plan quantity against a product to build the consolidated RM list.</td></tr>}
+              {cons.length === 0 && <tr><td colSpan={5} style={{ color: "var(--muted)" }}>{planHint}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      ) : mode === "purchase" ? (
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Raw material</th><th className="num">#FG</th><th className="num">Gross</th>
+              <th className="num">Available</th><th className="num">Net to buy</th>
+              <th className="num">Lead time</th><th>Action</th>
+            </tr></thead>
+            <tbody>
+              {purchase.map((r, i) => (
+                <tr key={i}>
+                  <td>{rmName(r)}</td>
+                  <td className="num">{r.fg_count}</td>
+                  <td className="num">{fmt.num(r.gross)}</td>
+                  <td className="num">{fmt.num(r.available)}</td>
+                  <td className="num"><b><NetCell v={r.net_to_buy} /></b></td>
+                  <td className="num"><LeadCell v={r.lead} /></td>
+                  <td><Badge map={URG} k={urgencyOf(r.net_to_buy, r.lead)} /></td>
+                </tr>
+              ))}
+              {purchase.length === 0 && <tr><td colSpan={7} style={{ color: "var(--muted)" }}>{planHint}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      ) : mode === "bottlenecks" ? (
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Limiting raw material</th><th className="num">FGs blocked</th>
+              <th className="num">RM available</th><th>Products it constrains</th>
+            </tr></thead>
+            <tbody>
+              {bottlenecks.map((r, i) => (
+                <tr key={i}>
+                  <td><b>{r.rm}</b></td>
+                  <td className="num"><b>{r.fg_count}</b></td>
+                  <td className="num">{fmt.num(r.available)}</td>
+                  <td style={{ fontSize: 12, color: "var(--muted)" }}>{r.fgs.slice(0, 4).join(", ")}{r.fgs.length > 4 ? ` +${r.fgs.length - 4} more` : ""}</td>
+                </tr>
+              ))}
+              {bottlenecks.length === 0 && <tr><td colSpan={4} style={{ color: "var(--muted)" }}>No limiting raw materials found.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      ) : mode === "readiness" ? (
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Vooki product</th><th className="num">Plan qty</th><th className="num">Producible now</th>
+              <th className="num">Shortfall</th><th>Status</th><th>Limiting RM</th>
+            </tr></thead>
+            <tbody>
+              {readiness.map((r, i) => (
+                <tr key={i}>
+                  <td><b>{r.name}</b></td>
+                  <td className="num">{fmt.num(r.plan)}</td>
+                  <td className="num" style={{ color: "#7b2d8e", fontWeight: 600 }}>{fmt.num(r.prod)}</td>
+                  <td className="num"><NetCell v={r.shortfall} /></td>
+                  <td><Badge map={READY} k={r.status} /></td>
+                  <td style={{ fontSize: 12, color: "var(--muted)" }}>{r.limiting ? `${r.limiting} (avail ${fmt.num(r.avail)})` : "—"}</td>
+                </tr>
+              ))}
+              {readiness.length === 0 && <tr><td colSpan={6} style={{ color: "var(--muted)" }}>{planHint}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      ) : mode === "leadtime" ? (
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Raw material</th><th className="num">Lead time</th><th className="num">#FG</th>
+              <th className="num">Available</th><th className="num">Net to buy</th><th>Action</th>
+            </tr></thead>
+            <tbody>
+              {leadtime.map((r, i) => (
+                <tr key={i}>
+                  <td>{rmName(r)}</td>
+                  <td className="num"><LeadCell v={r.lead} /></td>
+                  <td className="num">{r.fg_count}</td>
+                  <td className="num">{fmt.num(r.available)}</td>
+                  <td className="num"><b><NetCell v={r.net_to_buy} /></b></td>
+                  <td><Badge map={URG} k={urgencyOf(r.net_to_buy, r.lead)} /></td>
+                </tr>
+              ))}
+              {leadtime.length === 0 && <tr><td colSpan={6} style={{ color: "var(--muted)" }}>No raw materials with a lead time ≥ {LEAD_AMBER} days.</td></tr>}
             </tbody>
           </table>
         </div>

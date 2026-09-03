@@ -8,6 +8,7 @@ import ProfileMenu from "./components/ProfileMenu.jsx";
 import SupplyInfo from "./components/SupplyInfo.jsx";
 import RMDataInfo from "./components/RMDataInfo.jsx";
 import MfgStockInfo from "./components/MfgStockInfo.jsx";
+import VookiInfo from "./components/VookiInfo.jsx";
 import ConfirmModal from "./components/ConfirmModal.jsx";
 import Login from "./pages/Login.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
@@ -188,6 +189,7 @@ export default function App() {
           {page === "supply" && <SupplyInfo />}
           {page === "supplycards" && <RMDataInfo />}
           {page === "mfgstock" && <MfgStockInfo />}
+          {page === "vooki" && <VookiInfo />}
           <div className="cycle-pill">
             <DataFreshness />
             {cycle && (

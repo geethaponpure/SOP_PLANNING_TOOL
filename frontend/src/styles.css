@@ -1599,6 +1599,13 @@ td.num b { color: var(--navy); }
 .sc-chart-title { font-size: 11.5px; font-weight: 700; color: #45566b; margin-bottom: 2px; }
 @media (max-width: 720px) { .sc-charts { grid-template-columns: 1fr; } }
 
+/* Vooki overview chart strip (components/VookiCharts.jsx) */
+.vk-charts { display: grid; grid-template-columns: 0.85fr 1.1fr 1.1fr; gap: 12px; margin: 16px 0 4px; }
+.vk-chart { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px 6px; box-shadow: 0 2px 8px rgba(19, 42, 69, .04); min-width: 0; }
+.vk-chart-title { font-size: 11.5px; font-weight: 700; color: #45566b; margin-bottom: 2px; }
+.vk-chart .empty { display: flex; align-items: center; justify-content: center; height: 190px; color: var(--muted); font-size: 12px; text-align: center; padding: 0 12px; }
+@media (max-width: 900px) { .vk-charts { grid-template-columns: 1fr; } }
+
 .supply-workspace {
   /* scrolls with the page (was position: sticky, which pinned it and hid the
      filter bar behind it while scrolling) */
@@ -1663,12 +1670,24 @@ td.num b { color: var(--navy); }
 }
 
 /* ── MFG Org Stock table — friendlier scannability ─────────────────────────── */
-.mfg-table { font-size: 12.5px; }
+.mfg-table { font-size: 12.5px; table-layout: fixed; width: 100%; }
 .mfg-table tbody tr:nth-child(even) { background: #fbfcfe; }
 .mfg-table tbody tr:hover { background: #eef5ff; }
 .mfg-table td { vertical-align: middle; }
-.mfg-table .mfg-code { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.mfg-table .mfg-desc { display: block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+/* fixed layout + per-column widths + ellipsis → the table always fits the page
+   width, so there is no horizontal scrollbar; long text truncates (full on hover). */
+.mfg-table th, .mfg-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mfg-table th:nth-child(1), .mfg-table td:nth-child(1) { width: 8%; }
+.mfg-table th:nth-child(2), .mfg-table td:nth-child(2) { width: 20%; }
+.mfg-table th:nth-child(3), .mfg-table td:nth-child(3) { width: 13%; }
+.mfg-table th:nth-child(4), .mfg-table td:nth-child(4) { width: 13%; }
+.mfg-table th:nth-child(5), .mfg-table td:nth-child(5) { width: 10%; }
+.mfg-table th:nth-child(6), .mfg-table td:nth-child(6) { width: 14%; }
+.mfg-table th:nth-child(7), .mfg-table td:nth-child(7) { width: 9%; }
+.mfg-table th:nth-child(8), .mfg-table td:nth-child(8) { width: 7%; }
+.mfg-table th:nth-child(9), .mfg-table td:nth-child(9) { width: 6%; }
+.mfg-table .mfg-code { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.mfg-table .mfg-desc { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 /* qty magnitude bar under the number, so big vs small stock reads at a glance */
 .mfg-table .mfg-qty { min-width: 96px; }
 .mfg-table .mfg-qbar { display: block; height: 3px; margin-top: 3px; background: #eef1f5; border-radius: 3px; overflow: hidden; }
@@ -1683,3 +1702,6 @@ td.num b { color: var(--navy); }
 .mfg-filters .smooth-input { flex: 1 1 150px; width: auto; min-width: 110px; }
 .mfg-filters .selectbox { flex: 0 0 auto; }
 .mfg-filters > span { flex: 0 0 auto; white-space: nowrap; }
+
+/* MFG Org Stock table — no inner scrollbar; the page scrolls (paginated anyway) */
+.mfg-tbl-wrap { overflow: visible; max-height: none; }
