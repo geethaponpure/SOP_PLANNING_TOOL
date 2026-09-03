@@ -1,6 +1,7 @@
 // Shared navigation model (imported by App and by the User Master admin page,
 // where each nav entry is a grantable module/menu).
 export const NAV = [
+  { id: "mydash", label: "My Dashboard", icon: "📊" },
   { id: "overview", label: "S&OP Cockpit", icon: "▤" },
   { id: "dq", label: "Data-Quality Gate", icon: "🛡" },
   { id: "validation", label: "Demand Validation", icon: "✓" },

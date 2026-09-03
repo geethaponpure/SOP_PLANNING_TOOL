@@ -2,9 +2,11 @@
 from . import (
     demand, supply, mfg_stock, msl, vooki, adhoc, aged_rm, projection,
     scheduling, procurement, admin, sync, srdms, user_master, roles,
+    dashboard,
 )
 
 all_routers = [
+    dashboard.router,
     demand.router,
     supply.router,
     mfg_stock.router,

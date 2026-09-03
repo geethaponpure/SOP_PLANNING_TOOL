@@ -301,7 +301,8 @@ SELECT im.item_code AS ItemCode,
        MAX(im.item_description) AS ItemName,
        MAX(CASE WHEN ic.segment1 IN ('Performance Chemicals','NPD') THEN ic.segment1 END) AS DivisionTarget,
        MAX(ic.segment1) AS Segment1,
-       MAX(ic.segment2) AS Segment2, MAX(ic.segment3) AS Segment3
+       MAX(ic.segment2) AS Segment2, MAX(ic.segment3) AS Segment3,
+       MAX(ic.segment4) AS Segment4
 FROM ItemCategories ic
 JOIN itemmasters im ON im.item_id = ic.item_id
 WHERE ic.segment2 IS NOT NULL
@@ -310,7 +311,8 @@ GROUP BY im.item_code
 
 
 def item_segments() -> list[dict]:
-    """Per item code: Segment1 (Division), Segment2 (Business) and Segment3 (sub-category).
+    """Per item code: Segment1 (Division), Segment2 (Business), Segment3 (sub-category)
+    and Segment4 (product family — the level Technical Head/Manager scopes use).
     DivisionTarget surfaces 'Performance Chemicals'/'NPD' even when the item also carries
     a non-target category (an item may sit under several divisions)."""
     return db.crm_query(ITEM_SEGMENTS_SQL)
@@ -488,6 +490,33 @@ def dispatch_by_jc(jcs: list[dict]) -> list[dict]:
     return db.crm_query(sql, tuple(params))
 
 
+def dispatch_scope(jcs: list[dict]) -> list[dict]:
+    """Dispatch qty + value per item x customer x collector x market-circle,
+    split across the given JCs (SUM-CASE, same shape as dispatch_by_jc). This is
+    the permission-dashboard cube: every dimension a persona scope filters on
+    (mc_code / collector / customer; item -> segment via item_segments)."""
+    if not jcs:
+        return []
+    cases, params = [], []
+    for i, jc in enumerate(jcs):
+        cases.append(f"SUM(CASE WHEN trx_date BETWEEN ? AND ? "
+                     f"THEN sale_quantity ELSE 0 END) AS jc{i}")
+        cases.append(f"SUM(CASE WHEN trx_date BETWEEN ? AND ? "
+                     f"THEN total_value ELSE 0 END) AS val{i}")
+        params += [jc["from"], jc["to"], jc["from"], jc["to"]]
+    params += [jcs[0]["from"], jcs[-1]["to"]]
+    sql = f"""
+        SELECT Itemcode AS ItemCode, MAX(ItemName) AS ItemName,
+               customer_id AS CustomerId, MAX(CustomerName) AS CustomerName,
+               collector_id AS CollectorId, MAX(Collector) AS Collector,
+               mc_code AS McCode, {', '.join(cases)}
+        FROM FnDespatchDetails()
+        WHERE trx_date BETWEEN ? AND ?
+        GROUP BY Itemcode, customer_id, collector_id, mc_code
+    """
+    return db.crm_query(sql, tuple(params))
+
+
 # Open SOC demand per item -- read-only replication of SP_SOCDetailReport.
 SOC_DETAIL_SQL = """
 SELECT im.item_code AS ItemCode, MAX(im.item_description) AS ItemName,
@@ -515,6 +544,104 @@ def soc_detail(from_date) -> list[dict]:
     (the planning freeze date) — the Adhoc candidates. ``from_date`` is a date
     or ISO string."""
     return db.crm_query(SOC_DETAIL_SQL, (str(from_date),))
+
+
+# ── user data-scope ("the ultimate table" for the permission dashboard) ───────
+# One UNION over the six CRM mapping sources; each branch yields user + persona +
+# the raw grant. Collector lists stay CSV here ('1042,34085', '0'/NULL = all) —
+# the staging layer explodes them into one row per collector.
+#
+# Persona -> source (validated against live data, see migrate_user_scope.sql):
+#   Sales Executive     UserMarketCircleMappings -> MarketCircles (mc_code)
+#   Branch Manager      CollectorMailMappings.bm_user_id (1-4 collectors)
+#   Regional Manager    CollectorMailMappings.rm_user_id (multiple collectors)
+#   Technical Executive UserCustomerMappings -> CustomerMasters (customer)
+#   Technical Head/Mgr  TechnicalUserSegmentMappings (segment4 + collector CSV)
+#   Business Head       SpAlertSegmentWorkflowDtls.receiver_id, only receivers
+#                       holding the 'Business Head' role (segment3 + collector CSV)
+#   Division Head       SpAlertSegmentWorkflowHdrs.divition_head_id (segment2)
+USER_SCOPE_SQL = """
+SELECT u.line_id AS UserId, u.name AS UserName, u.username AS Username, u.email AS Email,
+       'Sales Executive' AS Persona, 'market_circle' AS ScopeType,
+       mc.mc_code AS McCode, mc.region AS Region,
+       CAST(mc.collector_id AS nvarchar(400)) AS CollectorIds,
+       CAST(NULL AS bigint) AS CustomerId, CAST(NULL AS nvarchar(255)) AS CustomerName,
+       CAST(NULL AS nvarchar(64)) AS Segment2, CAST(NULL AS nvarchar(64)) AS Segment3,
+       CAST(NULL AS nvarchar(64)) AS Segment4,
+       'UserMarketCircleMappings' AS Src
+FROM UserMarketCircleMappings m
+JOIN Users u ON u.line_id = m.user_id AND u.is_active = 1
+JOIN MarketCircles mc ON mc.header_id = m.market_circle_id AND mc.is_active = 1
+WHERE m.valid_to IS NULL OR m.valid_to >= GETDATE()
+
+UNION ALL
+SELECT u.line_id, u.name, u.username, u.email,
+       'Branch Manager', 'collector', NULL, NULL,
+       CAST(cm.collector_id AS nvarchar(400)),
+       NULL, NULL, NULL, NULL, NULL, 'CollectorMailMappings.bm'
+FROM CollectorMailMappings cm
+JOIN Users u ON u.line_id = cm.bm_user_id AND u.is_active = 1
+
+UNION ALL
+SELECT u.line_id, u.name, u.username, u.email,
+       'Regional Manager', 'collector', NULL, NULL,
+       CAST(cm.collector_id AS nvarchar(400)),
+       NULL, NULL, NULL, NULL, NULL, 'CollectorMailMappings.rm'
+FROM CollectorMailMappings cm
+JOIN Users u ON u.line_id = cm.rm_user_id AND u.is_active = 1
+
+UNION ALL
+SELECT u.line_id, u.name, u.username, u.email,
+       'Technical Executive', 'customer', NULL, NULL, NULL,
+       c.customer_id, c.customer_name, NULL, NULL, NULL, 'UserCustomerMappings'
+FROM UserCustomerMappings ucm
+JOIN Users u ON u.line_id = ucm.user_id AND u.is_active = 1
+JOIN CustomerMasters c ON c.header_id = ucm.customer_hdr_id
+WHERE (ucm.valid_to IS NULL OR ucm.valid_to >= GETDATE())
+  AND (ucm.valid_from IS NULL OR ucm.valid_from <= GETDATE())
+
+UNION ALL
+SELECT u.line_id, u.name, u.username, u.email,
+       r.name, 'segment', NULL, NULL,
+       t.collector_id,
+       NULL, NULL, NULLIF(t.segment2, ''), NULLIF(t.segment3, ''), NULLIF(t.segment4, ''),
+       'TechnicalUserSegmentMappings'
+FROM TechnicalUserSegmentMappings t
+JOIN Users u ON u.line_id = t.user_id AND u.is_active = 1
+JOIN Roles r ON r.line_id = t.role_id AND r.name IN ('Technical Head', 'Technical Manager')
+WHERE t.valid_to IS NULL OR t.valid_to >= GETDATE()
+
+UNION ALL
+SELECT u.line_id, u.name, u.username, u.email,
+       'Business Head', 'segment', NULL, NULL,
+       d.collector_id,
+       NULL, NULL, NULLIF(h.segment2, ''), NULLIF(d.segment3, ''), NULLIF(d.segment4, ''),
+       'SpAlertSegmentWorkflowDtls'
+FROM SpAlertSegmentWorkflowDtls d
+JOIN SpAlertSegmentWorkflowHdrs h ON h.header_id = d.header_id
+JOIN Users u ON u.line_id = d.receiver_id AND u.is_active = 1
+WHERE d.receiver_id IS NOT NULL AND d.receiver_id <> 0
+  AND EXISTS (SELECT 1 FROM UserRoles ur JOIN Roles r2 ON r2.line_id = ur.role_id
+              WHERE ur.user_id = u.line_id AND r2.name = 'Business Head')
+
+UNION ALL
+SELECT u.line_id, u.name, u.username, u.email,
+       'Division Head', 'segment', NULL, NULL, NULL,
+       NULL, NULL, NULLIF(h.segment2, ''), NULL, NULL, 'SpAlertSegmentWorkflowHdrs'
+FROM SpAlertSegmentWorkflowHdrs h
+JOIN Users u ON u.line_id = h.divition_head_id AND u.is_active = 1
+"""
+
+
+def user_scope() -> dict:
+    """The raw user->data-grant rows plus the collector id->name map the staging
+    layer needs to explode CSV collector lists. Returns
+    ``{"grants": [...], "collectors": {id: name}}``."""
+    grants = db.crm_query(USER_SCOPE_SQL)
+    collectors = {int(r["collector_id"]): r["name"]
+                  for r in db.crm_query("SELECT collector_id, name FROM Collectors")
+                  if r.get("collector_id") is not None}
+    return {"grants": grants, "collectors": collectors}
 
 
 SOURCES = {

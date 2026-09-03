@@ -78,6 +78,20 @@ def sync_soc_schedule() -> int:
     return _sync("soc_schedule", crm.soc_schedule, staging.replace_soc_schedule)
 
 
+def sync_user_scope() -> int:
+    """User -> data-grant table for the permission dashboard (8 personas,
+    6 CRM mapping sources — see migrate_user_scope.sql)."""
+    return _sync("user_scope", crm.user_scope, staging.replace_user_scope)
+
+
+def sync_dispatch_scope() -> int:
+    """Permission-dashboard cube: dispatch per JC x item x customer x collector
+    x market-circle over the MSL 13-JC window (see migrate_dashboard.sql)."""
+    jcs = _msl.jc_window()
+    return _sync("dispatch_scope", lambda: crm.dispatch_scope(jcs),
+                 lambda rows: staging.replace_dispatch_scope(rows, len(jcs)))
+
+
 def sync_dispatch() -> int:
     """Dispatch for the last 3 JCs (dispatch average) and last 13 (MSL)."""
     today = date.today()
@@ -91,7 +105,8 @@ def sync_dispatch() -> int:
 
 SYNCS = [sync_item_segments, sync_stock_lots, sync_stock_details,
          sync_item_business, sync_pto_pts,
-         sync_stock_aged, sync_vooki_items, sync_soc_schedule, sync_dispatch]
+         sync_stock_aged, sync_vooki_items, sync_soc_schedule, sync_dispatch,
+         sync_user_scope, sync_dispatch_scope]
 
 
 # ── context-keyed sources (content depends on today's planning context) ───────
@@ -193,6 +208,26 @@ def compute_rm_planning() -> int:
         return -1
 
 
+def compute_dashboard_admin() -> int:
+    """Precompute the Admin 'My Dashboard' payload (full-cube aggregates, the
+    heaviest view) right after each sync, so the admin page opens instantly."""
+    from app.api.dashboard import my_dashboard
+    run_id = staging.start_run("compute_dashboard")
+    t0 = time.time()
+    try:
+        # the fresh sync stamp makes my_dashboard recompute + save_computed
+        p = my_dashboard(admin=True)
+        n = len(p.get("cube") or [])
+        staging.finish_run(run_id, "ok", n)
+        print(f"[compute] dashboard_admin: {n} cube rows in {time.time() - t0:.1f}s")
+        return n
+    except Exception as e:   # noqa: BLE001
+        msg = f"{type(e).__name__}: {str(e).splitlines()[0]}"
+        staging.finish_run(run_id, "error", None, msg)
+        print(f"[compute] dashboard_admin FAILED: {msg[:160]}")
+        return -1
+
+
 def run_all() -> None:
     print("[worker] full sync starting…")
     for fn in SYNCS:
@@ -204,6 +239,7 @@ def run_all() -> None:
     for fn in CONTEXT_SYNCS:
         fn(ctx)
     compute_rm_planning()   # Phase 3: precompute the RM plan from the fresh staging
+    compute_dashboard_admin()
     print("[worker] full sync done.")
 
 

@@ -40,14 +40,11 @@ export default function RoleMaster() {
         Roles are stored in the database (<code>sc_app_role</code>); until the one-time migration is run they persist to a JSON fallback.
       </div>
 
-      {data && (
-        <div className={`banner ${st.db_ready ? "info" : "warn"}`} style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          Storage backend: <b>{st.backend === "mysql" ? "MySQL database" : "JSON fallback"}</b>.
-          {!st.db_ready && <> The <code>sc_app_role</code> table isn’t created yet — run <code>{st.migration}</code> as root, then Import.</>}
-          {st.db_ready && st.json_roles > 0 &&
-            <button className="btn secondary" style={{ marginLeft: 8 }}
-              onClick={() => act(async () => { const r = await api.roles.importJson(); alert(`Imported ${r.imported} role(s) into MySQL.`); })}>
-              Import {st.json_roles} JSON role(s) → DB</button>}
+      {data && st.db_ready && st.json_roles > 0 && (
+        <div className="banner info" style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <button className="btn secondary"
+            onClick={() => act(async () => { const r = await api.roles.importJson(); alert(`Imported ${r.imported} role(s) into MySQL.`); })}>
+            Import {st.json_roles} JSON role(s) → DB</button>
         </div>
       )}
 

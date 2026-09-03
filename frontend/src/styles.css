@@ -773,6 +773,9 @@ body {
 .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 1100px) { .cols-3, .cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Vooki stat row: 3 narrower number cards + a wider FG-stock card (fits "u · L" on one line) */
+.vk-stats { grid-template-columns: 1fr 1fr 1fr 1.5fr; }
+@media (max-width: 1100px) { .vk-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 .card {
   position: relative;
@@ -1196,23 +1199,23 @@ tr.expander > td { background: #f7fafc; }
 .subtable td.num, .subtable th.num { font-variant-numeric: tabular-nums; }
 
 /* stacked, non-overlapping sticky header (group row above the Curr/N1/N2 row) */
-.subtable thead tr:first-child th { top: 0; height: 26px; padding-top: 5px; padding-bottom: 5px; }
-.subtable thead tr:nth-child(2) th { top: 26px; }
+.subtable.rm-net thead tr:first-child th { top: 0; height: 26px; padding-top: 5px; padding-bottom: 5px; }
+.subtable.rm-net thead tr:nth-child(2) th { top: 26px; }
 
-/* Seq + RM name stay pinned while the numeric columns scroll sideways */
-.subtable th:nth-child(1), .subtable td:nth-child(1) {
+/* Seq + RM name stay pinned while the numeric columns scroll sideways (rm-net layout only) */
+.subtable.rm-net th:nth-child(1), .subtable.rm-net td:nth-child(1) {
   position: sticky; left: 0; z-index: 1; width: 40px; min-width: 40px;
   text-align: center; color: var(--muted); background: #fff; font-variant-numeric: tabular-nums;
 }
-.subtable th:nth-child(2), .subtable td:nth-child(2) {
+.subtable.rm-net th:nth-child(2), .subtable.rm-net td:nth-child(2) {
   position: sticky; left: 40px; z-index: 1; min-width: 236px; max-width: 320px;
   background: #fff; border-right: 1px solid #e5eaf1;   /* edge cue: more columns to the right */
 }
-.subtable thead th:nth-child(1), .subtable thead th:nth-child(2) { z-index: 3; background: #fafcff; }
+.subtable.rm-net thead th:nth-child(1), .subtable.rm-net thead th:nth-child(2) { z-index: 3; background: #fafcff; }
 
 /* readable identity: bold name, wrapping muted code + substitutes line */
-.subtable td:nth-child(2) > b { display: block; color: var(--navy); font-size: 12.5px; line-height: 1.35; }
-.subtable td:nth-child(2) > div { font-size: 11px; line-height: 1.5; margin-top: 2px; white-space: normal; }
+.subtable.rm-net td:nth-child(2) > b { display: block; color: var(--navy); font-size: 12.5px; line-height: 1.35; }
+.subtable.rm-net td:nth-child(2) > div { font-size: 11px; line-height: 1.5; margin-top: 2px; white-space: normal; }
 
 /* row hover for tracing a line across all columns — keeps each group's hue */
 .subtable tbody tr:hover td { background: #edf6f5; }
@@ -1519,6 +1522,16 @@ td.num b { color: var(--navy); }
 .sc-metric .l { font-size: 10px; text-transform: uppercase; letter-spacing: .3px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
 .sc-metric .v { font-size: 14px; font-weight: 600; color: var(--supply-ink); line-height: 1.15; display: flex; align-items: baseline; justify-content: center; gap: 6px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 .sc-metric .v .sc-muted { font-size: 12px; font-weight: 400; color: var(--muted); }
+
+/* Vooki product cards: 5-metric strip with an inline Plan-Qty input */
+.vk-metrics { grid-template-columns: repeat(5, 1fr); }
+.vk-metrics .sc-metric { padding: 9px 12px; }
+.vk-qty { width: 100%; max-width: 108px; text-align: center; padding: 5px 8px; font-size: 14px; font-weight: 600; }
+.vk-card .sc-body .subtable { font-size: 11.5px; }
+@media (max-width: 680px) {
+  .vk-metrics { grid-template-columns: repeat(3, 1fr); }
+  .vk-metrics .sc-metric { border-bottom: 1px solid var(--supply-line); }
+}
 
 /* coverage badge */
 .sc-badge { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 4px; align-self: center; }

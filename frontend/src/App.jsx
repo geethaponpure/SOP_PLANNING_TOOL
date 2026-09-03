@@ -12,6 +12,7 @@ import VookiInfo from "./components/VookiInfo.jsx";
 import ConfirmModal from "./components/ConfirmModal.jsx";
 import Login from "./pages/Login.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
 import Overview from "./pages/Overview.jsx";
 import DataQuality from "./pages/DataQuality.jsx";
 import Validation from "./pages/Validation.jsx";
@@ -124,6 +125,7 @@ export default function App() {
   }
 
   const pages = {
+    mydash: <Dashboard session={session} isAdmin={isAdmin} />,
     overview: <Overview onChange={bump} />,
     dq: <DataQuality />,
     validation: <Validation onChange={bump} />,

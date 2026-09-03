@@ -160,7 +160,8 @@ def read_stock_lots() -> list[dict]:
 
 # ── item_segments ─────────────────────────────────────────────────────────────
 
-_SEG_COLS = ["item_code", "item_name", "division_target", "segment1", "segment2", "segment3"]
+_SEG_COLS = ["item_code", "item_name", "division_target", "segment1", "segment2", "segment3",
+             "segment4"]
 
 
 def replace_item_segments(crm_rows: list[dict]) -> int:
@@ -169,6 +170,7 @@ def replace_item_segments(crm_rows: list[dict]) -> int:
         str(r.get("ItemCode") or "")[:64], str(r.get("ItemName") or "")[:255],
         str(r.get("DivisionTarget") or "")[:64] or None, str(r.get("Segment1") or "")[:64] or None,
         str(r.get("Segment2") or "")[:64] or None, str(r.get("Segment3") or "")[:64] or None,
+        str(r.get("Segment4") or "")[:64] or None,
     ) for r in crm_rows if r.get("ItemCode")]
     # item_code is the PK; de-dupe keeping the last occurrence just in case.
     seen: dict = {}
@@ -183,11 +185,12 @@ def read_item_segments() -> list[dict]:
         conn = mysql_db._connect()
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT item_code, item_name, division_target, segment1, segment2, segment3 "
-                            "FROM stg_item_segments")
+                cur.execute("SELECT item_code, item_name, division_target, segment1, segment2, segment3, "
+                            "segment4 FROM stg_item_segments")
                 return [{"ItemCode": r["item_code"], "ItemName": r["item_name"],
                          "DivisionTarget": r["division_target"], "Segment1": r["segment1"],
-                         "Segment2": r["segment2"], "Segment3": r["segment3"]}
+                         "Segment2": r["segment2"], "Segment3": r["segment3"],
+                         "Segment4": r["segment4"]}
                         for r in cur.fetchall()]
         finally:
             conn.close()
@@ -613,6 +616,109 @@ def read_dispatch(variant: str, n_jc: int) -> list[dict]:
         return []
 
 
+# ── dispatch_scope (permission-dashboard cube, see migrate_dashboard.sql) ─────
+
+_DISP_SCOPE_COLS = ["jc_index", "item_code", "item_name", "customer_id", "customer_name",
+                    "collector_id", "collector", "mc_code", "qty", "value_",
+                    "segment2", "segment3", "segment4"]
+
+
+def replace_dispatch_scope(crm_rows: list[dict], n_jc: int) -> int:
+    """Explode each wide dispatch_scope row (jc0/val0..jc{n-1}/val{n-1}) into
+    LONG rows; keep JCs with any qty or value. Item segments are denormalized
+    in from stg_item_segments here (sync time) so dashboard queries stay
+    single-table and indexed — sync item_segments before this source."""
+    segs = {s["ItemCode"]: s for s in read_item_segments()}
+    data = []
+    for r in (crm_rows or []):
+        code = str(r.get("ItemCode") or "")[:64]
+        name = str(r.get("ItemName") or "")[:255]
+        cust = _int_or_none(r.get("CustomerId"))
+        cname = str(r.get("CustomerName") or "")[:255] or None
+        cid = _int_or_none(r.get("CollectorId"))
+        coll = str(r.get("Collector") or "")[:120] or None
+        mc = str(r.get("McCode") or "")[:32] or None
+        s = segs.get(code) or {}
+        s2, s3, s4 = s.get("Segment2") or None, s.get("Segment3") or None, s.get("Segment4") or None
+        for i in range(n_jc):
+            q, v = _num(r.get(f"jc{i}")), _num(r.get(f"val{i}"))
+            if q or v:
+                data.append((i, code, name, cust, cname, cid, coll, mc,
+                             round(q, 3), round(v, 2), s2, s3, s4))
+    return _replace("stg_dispatch_scope", _DISP_SCOPE_COLS, data)
+
+
+_SEG_LEVELS = {"segment2", "segment3", "segment4"}
+
+
+def dashboard_datasets(flt: dict) -> dict:
+    """All My-Dashboard aggregates in FOUR indexed SQL queries. Aggregation
+    stays in MySQL — never haul the 134k-row cube into Python per request
+    (that melted the API under concurrent page loads).
+
+    ``flt`` is one of:
+      {}                          -> whole company (Admin)
+      {"mc_codes": [...]}         -> Sales Executive (market circles)
+      {"collector_ids": [...]}    -> Branch / Regional Manager
+      {"customer_ids": [...]}     -> Technical Executive
+      {"segment_grants": [{"level": "segment4", "value": v,
+                           "collector_ids": [...] | None}, ...]}
+                                  -> segment personas (deepest grant level)
+    """
+    where, params = [], []
+    if flt.get("mc_codes"):
+        where.append("d.mc_code IN (" + ",".join(["%s"] * len(flt["mc_codes"])) + ")")
+        params += list(flt["mc_codes"])
+    if flt.get("collector_ids"):
+        where.append("d.collector_id IN (" + ",".join(["%s"] * len(flt["collector_ids"])) + ")")
+        params += [int(c) for c in flt["collector_ids"]]
+    if flt.get("customer_ids"):
+        where.append("d.customer_id IN (" + ",".join(["%s"] * len(flt["customer_ids"])) + ")")
+        params += [int(c) for c in flt["customer_ids"]]
+    if flt.get("segment_grants"):
+        ors = []
+        for g in flt["segment_grants"]:
+            level = g["level"] if g["level"] in _SEG_LEVELS else "segment2"
+            cond = f"d.{level} = %s"
+            params.append(g["value"])
+            if g.get("collector_ids"):
+                cond += " AND d.collector_id IN (" + ",".join(["%s"] * len(g["collector_ids"])) + ")"
+                params += [int(c) for c in g["collector_ids"]]
+            ors.append(f"({cond})")
+        where.append("(" + " OR ".join(ors) + ")")
+    w = (" WHERE " + " AND ".join(where)) if where else ""
+    w_cust = w + (" AND " if w else " WHERE ") + "d.customer_id IS NOT NULL"
+    base = "FROM stg_dispatch_scope d"
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT d.jc_index AS jc, COALESCE(d.collector, '—') AS collector, "
+                            "COALESCE(d.segment3, d.segment2, '—') AS segment, "
+                            "SUM(d.qty) AS qty, SUM(d.value_) AS value_ "
+                            f"{base}{w} GROUP BY jc, collector, segment", tuple(params))
+                cube = cur.fetchall()
+                cur.execute("SELECT COUNT(DISTINCT d.customer_id) AS customers, "
+                            f"COUNT(DISTINCT d.item_code) AS items {base}{w}", tuple(params))
+                totals = cur.fetchone() or {}
+                cur.execute("SELECT d.item_code AS code, MAX(d.item_name) AS name, "
+                            "SUM(d.qty) AS qty, SUM(d.value_) AS value_ "
+                            f"{base}{w} GROUP BY d.item_code ORDER BY SUM(d.qty) DESC LIMIT 15",
+                            tuple(params))
+                top_items = cur.fetchall()
+                cur.execute("SELECT MAX(d.customer_name) AS name, "
+                            "SUM(d.qty) AS qty, SUM(d.value_) AS value_ "
+                            f"{base}{w_cust} GROUP BY d.customer_id "
+                            "ORDER BY SUM(d.qty) DESC LIMIT 15", tuple(params))
+                top_customers = cur.fetchall()
+                return {"cube": cube, "totals": totals,
+                        "top_items": top_items, "top_customers": top_customers}
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return {"cube": [], "totals": {}, "top_items": [], "top_customers": []}
+
+
 # ── "Refresh now" queue (used by the worker's poller in Phase 4) ───────────────
 
 def request_refresh(source: str = "all") -> bool:
@@ -695,13 +801,107 @@ def computed_meta(plan_key: str) -> dict | None:
         return None
 
 
+# ── user data-scope (permission dashboard, see migrate_user_scope.sql) ────────
+
+_USER_SCOPE_COLS = ["user_id", "user_name", "username", "email", "persona",
+                    "scope_type", "mc_code", "region", "collector_id",
+                    "collector_name", "customer_id", "customer_name",
+                    "segment2", "segment3", "segment4", "src"]
+
+
+def replace_user_scope(payload: dict) -> int:
+    """Replace stg_user_scope from ``crm_sources.user_scope()`` output.
+
+    Explodes CSV collector lists ('1042,34085') into one row per collector and
+    resolves collector names; '0' / '' / NULL collector = all collectors (one
+    row with collector_id NULL). De-dupes identical grants."""
+    grants = (payload or {}).get("grants") or []
+    names = (payload or {}).get("collectors") or {}
+    seen, data = set(), []
+    for g in grants:
+        uid = _int_or_none(g.get("UserId"))
+        if not uid:
+            continue
+        csv = str(g.get("CollectorIds") or "").strip()
+        ids = [c for c in (t.strip() for t in csv.split(",")) if c and c != "0"] or [None]
+        for cid in ids:
+            cid = _int_or_none(cid)
+            row = (uid, str(g.get("UserName") or "")[:160] or None,
+                   str(g.get("Username") or "")[:80] or None,
+                   str(g.get("Email") or "")[:160] or None,
+                   str(g.get("Persona") or "")[:32],
+                   str(g.get("ScopeType") or "")[:16],
+                   str(g.get("McCode") or "")[:32] or None,
+                   str(g.get("Region") or "")[:32] or None,
+                   cid, (names.get(cid) or None) if cid else None,
+                   _int_or_none(g.get("CustomerId")),
+                   str(g.get("CustomerName") or "")[:255] or None,
+                   str(g.get("Segment2") or "")[:64] or None,
+                   str(g.get("Segment3") or "")[:64] or None,
+                   str(g.get("Segment4") or "")[:64] or None,
+                   str(g.get("Src") or "")[:48])
+            key = row[:1] + row[4:9] + row[10:11] + row[12:16]
+            if key in seen:
+                continue
+            seen.add(key)
+            data.append(row)
+    return _replace("stg_user_scope", _USER_SCOPE_COLS, data)
+
+
+def read_user_scope(user_id: int | None = None, email: str | None = None,
+                    username: str | None = None) -> list[dict]:
+    """Grant rows for one user (by CRM user_id, email or username) — or all rows
+    when no filter is given. Shape mirrors stg_user_scope columns."""
+    where, params = [], []
+    if user_id is not None:
+        where.append("user_id = %s")
+        params.append(int(user_id))
+    if email:
+        where.append("LOWER(email) = LOWER(%s)")
+        params.append(email.strip())
+    if username:
+        where.append("LOWER(username) = LOWER(%s)")
+        params.append(username.strip())
+    sql = "SELECT " + ", ".join(_USER_SCOPE_COLS) + " FROM stg_user_scope"
+    if where:
+        sql += " WHERE " + " OR ".join(where)
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, tuple(params))
+                return cur.fetchall()
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+def read_scope_users() -> list[dict]:
+    """One row per (persona, user) in stg_user_scope with their grant count —
+    feeds the admin 'View as' switcher on the My Dashboard page."""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT persona, username, MAX(user_name) AS user_name, "
+                            "COUNT(*) AS n_grants FROM stg_user_scope "
+                            "WHERE username IS NOT NULL AND username <> '' "
+                            "GROUP BY persona, username ORDER BY persona, user_name")
+                return cur.fetchall()
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
 # ── freshness for the UI (data-as-of banner + Refresh now) ────────────────────
 
 SYNC_SOURCES = [
     "item_segments", "stock_lots", "stock_details", "item_business", "pto_pts",
     "stock_aged", "vooki_items", "soc_schedule", "projection", "soc_pending",
     "soc_detail", "intransit", "dispatch_jc3", "dispatch_jc13",
-    "projection_rows", "projection_accuracy",
+    "projection_rows", "projection_accuracy", "user_scope", "dispatch_scope",
 ]
 
 
