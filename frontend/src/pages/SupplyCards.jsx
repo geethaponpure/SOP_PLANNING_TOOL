@@ -7,6 +7,7 @@ import { Dropdown } from "../components/Dropdown.jsx";
 import { fmt } from "../api";
 import { Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
 import { useSupplyPlan } from "../SupplyPlanContext.jsx";
+import { Package, ShoppingCart, CircleCheck, FlaskConical, Scale, TriangleAlert, Flag, Globe } from "lucide-react";
 import RMDataCharts from "../components/RMDataCharts.jsx";
 import CardCharts from "../components/CardCharts.jsx";
 import ConfirmModal from "../components/ConfirmModal.jsx";
@@ -239,7 +240,7 @@ export function ProductCard({ p, data, pjc, bi = 0, onPickBom }) {
           {/* packing BOMs */}
           {p.packing_boms && p.packing_boms.length > 0 && (
             <div className="sc-rm">
-              <div className="sc-sec-title">📦 Packing BOMs ({p.packing_boms.length})</div>
+              <div className="sc-sec-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><Package size={14} /> Packing BOMs ({p.packing_boms.length})</div>
               {p.packing_boms.map((pb, pk) => (
                 <div key={pk} style={{ marginBottom: 8 }}>
                   <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>
@@ -282,10 +283,10 @@ function RmPlanChip({ r, pjc }) {
   // Available (RM on hand for the lead-time horizon → no purchase) vs Buy-in-JCs.
   const lbl = (k) => k === "current" ? `JC${pjc}` : k === "next1" ? `JC${pjc + 1}` : `JC${pjc + 2}`;
   if (!r.to_buy) {
-    return <span className="chip" title="Raw material available — no purchase needed this cycle" style={{ marginLeft: 6, cursor: "default", fontSize: 10, fontWeight: 700, background: "#E6F4EA", color: "#1a7d4f", borderColor: "transparent" }}>✓ Available</span>;
+    return <span className="chip" title="Raw material available — no purchase needed this cycle" style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 6, cursor: "default", fontSize: 10, fontWeight: 700, background: "#E6F4EA", color: "#1a7d4f", borderColor: "transparent" }}><CircleCheck size={12} /> Available</span>;
   }
   const jcs = (r.buy_jcs && r.buy_jcs.length ? r.buy_jcs : r.planned_jcs || []).map(lbl).join(", ");
-  return <span className="chip" title="Not available — plan the shortfall by lead time (≤30d: current · 31–60d: +next · >60d: all 3)" style={{ marginLeft: 6, cursor: "default", fontSize: 10, fontWeight: 700, background: "#FDECEC", color: "#b23b3b", borderColor: "transparent" }}>🛒 Buy {jcs}</span>;
+  return <span className="chip" title="Not available — plan the shortfall by lead time (≤30d: current · 31–60d: +next · >60d: all 3)" style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 6, cursor: "default", fontSize: 10, fontWeight: 700, background: "#FDECEC", color: "#b23b3b", borderColor: "transparent" }}><ShoppingCart size={12} /> Buy {jcs}</span>;
 }
 
 function RmActivityChip({ a }) {
@@ -307,7 +308,7 @@ function UnmatchedIntransit({ items }) {
   return (
     <div className="banner" style={{ marginBottom: 14, background: "#FFF7E6", border: "1px solid #F0D8A0" }}>
       <div style={{ cursor: "pointer" }} onClick={() => setOpen(!open)}>
-        ⚠️ <b>{items.length} item(s) with open-PO in-transit ({fmt.num(total)} KG) are NOT matched to any planned BOM RM.</b>{" "}
+        <TriangleAlert size={14} style={{ verticalAlign: "-2px" }} /> <b>{items.length} item(s) with open-PO in-transit ({fmt.num(total)} KG) are NOT matched to any planned BOM RM.</b>{" "}
         These are bought/in-transit but absent from every recipe in scope, or a code/description mismatch (also in the report's <b>“In-transit Unmatched”</b> sheet). <button className="link">{open ? "hide" : "show"}</button>
       </div>
       {open && (
@@ -341,7 +342,7 @@ function RmCard({ r, pjc }) {
   const metaBits = [];
   if (r.avg_lead_time_days != null) metaBits.push(`⏱ lead ${fmt.num(r.avg_lead_time_days)}d (+7 = ${fmt.num(r.lead_total_days)}d)`);
   else if (r.lead_total_days != null) metaBits.push(`⏱ ${fmt.num(r.lead_total_days)}d`);
-  if (r.trade) metaBits.push(r.trade === "Import" ? "🌐 Import" : "Domestic");
+  if (r.trade) metaBits.push(r.trade === "Import" ? "Import" : "Domestic");
   if (r.currencies && r.currencies.length) metaBits.push(r.currencies.join(", "));
 
   return (
@@ -358,9 +359,9 @@ function RmCard({ r, pjc }) {
             <RmActivityChip a={r.activity} />
             <RmPlanChip r={r} pjc={pjc} />
             {r.business && <span className="chip" style={{ cursor: "default", fontSize: 10, background: /raw material/i.test(r.business) ? "#EEF6FF" : "#FFF4DA", borderColor: /raw material/i.test(r.business) ? "#CFE4FB" : "#F0D8A0" }}>{r.business}</span>}
-            {r.unresolved && <span className="chip" style={{ cursor: "default", fontSize: 10, fontWeight: 700, background: "#FDE9CF", color: "#a15c00", borderColor: "#F0D8A0" }} title="Encoded intermediate with a circular BOM — could not be exploded to raw materials.">⚠ Unresolved</span>}
+            {r.unresolved && <span className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 4, cursor: "default", fontSize: 10, fontWeight: 700, background: "#FDE9CF", color: "#a15c00", borderColor: "#F0D8A0" }} title="Encoded intermediate with a circular BOM — could not be exploded to raw materials."><TriangleAlert size={12} /> Unresolved</span>}
             {r.via_intermediate && <span className="chip" style={{ cursor: "default", fontSize: 10, background: "#FFF4DA", borderColor: "#F0D8A0" }} title={`Exploded from intermediate(s): ${(r.from_intermediates || []).join(", ")}`}>via {(r.from_intermediates || [])[0]}{(r.from_intermediates || []).length > 1 ? ` +${r.from_intermediates.length - 1}` : ""}</span>}
-            {r.has_encoded_stock && <span className="chip" style={{ cursor: "default", fontSize: 10, fontWeight: 700, background: "#EDE7F6", color: "#5b3fa0", borderColor: "#D6C8F0" }} title={`${fmt.num(r.encoded_stock)} KG held under encoded name ${r.encoded_names || "?"}, merged into Stock.`}>⚑ encoded stock</span>}
+            {r.has_encoded_stock && <span className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 4, cursor: "default", fontSize: 10, fontWeight: 700, background: "#EDE7F6", color: "#5b3fa0", borderColor: "#D6C8F0" }} title={`${fmt.num(r.encoded_stock)} KG held under encoded name ${r.encoded_names || "?"}, merged into Stock.`}><Flag size={12} /> encoded stock</span>}
           </div>
           <div className="sc-meta">
             <span>{codeLine}</span>
@@ -447,9 +448,9 @@ function ConsolidatedRM({ data, q, rmCls = "manufacturing", pjc = 4 }) {
   return (
     <>
       <div className="grid cols-3" style={{ marginBottom: 14 }}>
-        <div className="card statcard"><div className="ic">⚗️</div><Stat value={fmt.num(cs.distinct_rms)} label="Distinct RMs required" /></div>
-        <div className="card statcard red"><div className="ic">🛒</div><Stat value={fmt.num(cs.rms_to_buy)} label="RMs to purchase (net &gt; 0)" /></div>
-        <div className="card statcard amber"><div className="ic">⚖️</div><Stat value={fmt.num(cs.total_buy_qty)} label="Total buy quantity (KG)" /></div>
+        <div className="card statcard"><div className="ic"><FlaskConical size={22} /></div><Stat value={fmt.num(cs.distinct_rms)} label="Distinct RMs required" /></div>
+        <div className="card statcard red"><div className="ic"><ShoppingCart size={22} /></div><Stat value={fmt.num(cs.rms_to_buy)} label="RMs to purchase (net &gt; 0)" /></div>
+        <div className="card statcard amber"><div className="ic"><Scale size={22} /></div><Stat value={fmt.num(cs.total_buy_qty)} label="Total buy quantity (KG)" /></div>
       </div>
       <UnmatchedIntransit items={data.intransit_unmatched} />
       {rows.length === 0
@@ -473,15 +474,15 @@ function RealRM({ data, q, pjc }) {
     <>
       {cs.unresolved_intermediates > 0 && (
         <div className="banner" style={{ marginBottom: 14, background: "#FFF7E6", border: "1px solid #F0D8A0" }}>
-          ⚠️ <b>{fmt.num(cs.unresolved_intermediates)} item(s) ({fmt.num(cs.unresolved_qty)} KG) could not be fully exploded</b> — their encoded BOMs are
+          <TriangleAlert size={14} style={{ verticalAlign: "-2px" }} /> <b>{fmt.num(cs.unresolved_intermediates)} item(s) ({fmt.num(cs.unresolved_qty)} KG) could not be fully exploded</b> — their encoded BOMs are
           <b> circular / self-referential</b> (an intermediate whose recipe loops back to itself via another code). They stay listed as the intermediate
           (tagged <b>⚠ Unresolved</b> below and “Unresolved intermediate” in the report). Fix the BOM master to resolve them to raw materials.
         </div>)}
       <div className="grid cols-4" style={{ marginBottom: 14 }}>
-        <div className="card statcard"><div className="ic">🧪</div><Stat value={fmt.num(cs.distinct_rms)} label="Distinct leaf RMs" /></div>
-        <div className="card statcard red"><div className="ic">🛒</div><Stat value={fmt.num(cs.rms_to_buy)} label="RMs to purchase (net &gt; 0)" /></div>
-        <div className="card statcard amber"><div className="ic">⚖️</div><Stat value={fmt.num(cs.total_buy_qty)} label="Total buy quantity (KG)" /></div>
-        <div className="card statcard"><div className="ic">⚠️</div><Stat value={fmt.num(cs.unresolved_intermediates)} label="Unresolved (circular BOM)" /></div>
+        <div className="card statcard"><div className="ic"><FlaskConical size={22} /></div><Stat value={fmt.num(cs.distinct_rms)} label="Distinct leaf RMs" /></div>
+        <div className="card statcard red"><div className="ic"><ShoppingCart size={22} /></div><Stat value={fmt.num(cs.rms_to_buy)} label="RMs to purchase (net &gt; 0)" /></div>
+        <div className="card statcard amber"><div className="ic"><Scale size={22} /></div><Stat value={fmt.num(cs.total_buy_qty)} label="Total buy quantity (KG)" /></div>
+        <div className="card statcard"><div className="ic"><TriangleAlert size={22} /></div><Stat value={fmt.num(cs.unresolved_intermediates)} label="Unresolved (circular BOM)" /></div>
       </div>
       {rows.length === 0
         ? <div className="banner info">No leaf raw materials match the current filter.</div>

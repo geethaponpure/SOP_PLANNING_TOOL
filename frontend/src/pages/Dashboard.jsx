@@ -6,6 +6,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
+import { Truck, Wallet, Handshake, Package, Target, ClipboardList, BarChart3, TriangleAlert } from "lucide-react";
 
 // My Dashboard — permission-scoped dispatch view. The backend resolves the
 // user's CRM data grants (stg_user_scope) and returns a compact cube
@@ -611,10 +612,10 @@ export default function Dashboard({ session, isAdmin }) {
       </div>
 
       <div className="grid cols-4">
-        <div className="card statcard"><div className="ic">🚚</div><Stat value={fmt.num(k.qty)} label="Dispatched (KG, 13 JCs)" /></div>
-        <div className="card statcard amber"><div className="ic">💰</div><Stat value={`₹${abbr(k.value)}`} label="Dispatch value (13 JCs)" /></div>
-        <div className="card statcard"><div className="ic">🤝</div><Stat value={fmt.num(k.customers)} label="Customers served" /></div>
-        <div className="card statcard"><div className="ic">📦</div><Stat value={fmt.num(k.items)} label="Items shipped" /></div>
+        <div className="card statcard"><div className="ic"><Truck size={22} /></div><Stat value={fmt.num(k.qty)} label="Dispatched (KG, 13 JCs)" /></div>
+        <div className="card statcard amber"><div className="ic"><Wallet size={22} /></div><Stat value={`₹${abbr(k.value)}`} label="Dispatch value (13 JCs)" /></div>
+        <div className="card statcard"><div className="ic"><Handshake size={22} /></div><Stat value={fmt.num(k.customers)} label="Customers served" /></div>
+        <div className="card statcard"><div className="ic"><Package size={22} /></div><Stat value={fmt.num(k.items)} label="Items shipped" /></div>
       </div>
 
       {(sel.collector || sel.segment) && (
@@ -661,15 +662,15 @@ export default function Dashboard({ session, isAdmin }) {
       {p && (
         <>
           <div className="grid cols-4" style={{ marginTop: 14 }}>
-            <div className="card statcard"><div className="ic">🎯</div>
+            <div className="card statcard"><div className="ic"><Target size={22} /></div>
               <Stat value={p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}
                 label="Accuracy on projected items" /></div>
-            <div className="card statcard"><div className="ic">📝</div>
+            <div className="card statcard"><div className="ic"><ClipboardList size={22} /></div>
               <Stat value={fmt.num(p.items_projected)}
                 label={`Items projected · JC${p.jc}`} /></div>
-            <div className="card statcard amber"><div className="ic">📊</div>
+            <div className="card statcard amber"><div className="ic"><BarChart3 size={22} /></div>
               <Stat value={`${p.coverage_pct}%`} label="Sales volume projected" /></div>
-            <div className="card statcard"><div className="ic">⚠️</div>
+            <div className="card statcard"><div className="ic"><TriangleAlert size={22} /></div>
               <Stat value={fmt.num(p.missing_total)} label="Items with no projection" /></div>
           </div>
 

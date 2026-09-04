@@ -5,6 +5,7 @@ import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
 import VookiCharts from "../components/VookiCharts.jsx";
+import { SprayCan, ClipboardList, Factory, Package, Download } from "lucide-react";
 
 const NetCell = ({ v }) => <span className={v > 0 ? "num-pos" : "num-zero"}>{fmt.num(v)}</span>;
 
@@ -143,7 +144,7 @@ function VookiProductCard({ p, decode, qty, setQty, bomIdx, setBomIdx, open, set
           </div>
           {p.packing_boms.length > 0 && (
             <div className="sc-rm">
-              <div className="sc-sec-title">📦 Packing BOMs (packing material)</div>
+              <div className="sc-sec-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><Package size={14} /> Packing BOMs (packing material)</div>
               {p.packing_boms.map((pb, k) => (
                 <div className="tbl-wrap" key={k} style={{ marginBottom: 6 }}>
                   <table className="subtable">
@@ -167,7 +168,7 @@ function VookiProductCard({ p, decode, qty, setQty, bomIdx, setBomIdx, open, set
           )}
           <div style={{ marginTop: 12, textAlign: "right" }}>
             <button className="btn" disabled={rowBusy === p.name} onClick={() => downloadOne(p.name)}>
-              {rowBusy === p.name ? "Exporting…" : "⤓ Download this FG (Excel)"}
+              {rowBusy === p.name ? "Exporting…" : <><Download size={15} /> Download this FG (Excel)</>}
             </button>
           </div>
         </div>
@@ -310,10 +311,10 @@ export default function Vooki() {
   return (
     <>
       <div className="grid cols-4 vk-stats">
-        <div className="card statcard"><div className="ic">🧴</div><Stat value={fmt.num(s.products)} label="Vooki products (with BOM)" /></div>
-        <div className="card statcard blue"><div className="ic">📝</div><Stat value={fmt.num(plannedCount)} label="Products planned (qty entered)" /></div>
-        <div className="card statcard"><div className="ic">🏭</div><Stat value={fmt.num(s.rm_items_in_stock)} label="RM items in stock (Business = RM)" /></div>
-        <div className="card statcard amber"><div className="ic">📦</div><Stat value={<span style={{ fontSize: 22, whiteSpace: "nowrap" }}>{fmt.num(s.fg_stock_units)} u · {fmt.num(s.fg_stock_volume_l)} L</span>} label="FG stock (units · KG/Lit)" /></div>
+        <div className="card statcard"><div className="ic"><SprayCan size={22} /></div><Stat value={fmt.num(s.products)} label="Vooki products (with BOM)" /></div>
+        <div className="card statcard blue"><div className="ic"><ClipboardList size={22} /></div><Stat value={fmt.num(plannedCount)} label="Products planned (qty entered)" /></div>
+        <div className="card statcard"><div className="ic"><Factory size={22} /></div><Stat value={fmt.num(s.rm_items_in_stock)} label="RM items in stock (Business = RM)" /></div>
+        <div className="card statcard amber"><div className="ic"><Package size={22} /></div><Stat value={<span style={{ fontSize: 22, whiteSpace: "nowrap" }}>{fmt.num(s.fg_stock_units)} u · {fmt.num(s.fg_stock_volume_l)} L</span>} label="FG stock (units · KG/Lit)" /></div>
       </div>
 
       <VookiCharts buy={buyAll} bottlenecks={bottleAll} readyCounts={readyCounts} plannedCount={plannedCount} decode={decode} />
@@ -325,7 +326,7 @@ export default function Vooki() {
             { id: "readiness", label: "Production readiness" }, { id: "leadtime", label: "Lead-time watchlist" }]} />
         <button className="btn" style={{ marginLeft: "auto" }} disabled={exporting}
           onClick={async () => { setExporting(true); try { await api.vookiPlanningExport(qty); } catch (e) { alert(e.message); } finally { setExporting(false); } }}>
-          {exporting ? "Exporting…" : "⤓ Download report (Excel)"}
+          {exporting ? "Exporting…" : <><Download size={15} /> Download report (Excel)</>}
         </button>
       </div>
 

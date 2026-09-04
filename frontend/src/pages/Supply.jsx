@@ -5,6 +5,7 @@ import SupplyDashboard from "../components/SupplyDashboard.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 import { useSupplyPlan } from "../SupplyPlanContext.jsx";
+import { Package, Factory, Tags, Truck, FileSpreadsheet, Download, Upload, Play, RotateCcw, Check, Save, Share2, Boxes } from "lucide-react";
 
 function TemplateBar() {
   const { data } = useAsync(api.templateSegments);
@@ -15,7 +16,7 @@ function TemplateBar() {
   const seg3opts = segments.find((x) => x.segment2 === seg2)?.segment3 || [];
   return (
     <div className="card supply-tool-card" style={{ display: "flex", flexWrap: "nowrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
-      <span style={{ flexShrink: 0 }}><b>📄 Plan-input template</b> <span style={{ fontSize: 12, color: "var(--muted)" }}>· Segment 1 = Performance Chemicals</span></span>
+      <span style={{ flexShrink: 0 }}><b style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><FileSpreadsheet size={15} /> Plan-input template</b> <span style={{ fontSize: 12, color: "var(--muted)" }}>· Segment 1 = Performance Chemicals</span></span>
       <SelectBox className="searchbox" style={{ maxWidth: 210 }} value={seg2} onChange={(e) => { setSeg2(e.target.value); setSeg3(""); }}>
         <option value="">All Segment 2</option>
         {segments.map((x) => <option key={x.segment2} value={x.segment2}>{x.segment2}</option>)}
@@ -27,7 +28,7 @@ function TemplateBar() {
       <button className="btn" style={{ marginLeft: "auto", flexShrink: 0, whiteSpace: "nowrap" }} disabled={busy}
         title="Excel template (S.No, Item Description [dropdown], Qty, Current JC, Next JC1, Next JC2)"
         onClick={async () => { setBusy(true); try { await api.templateDownload(seg2, seg3); } catch (e) { alert(e.message); } finally { setBusy(false); } }}>
-        {busy ? "Preparing…" : "⤓ Download Template"}
+        {busy ? "Preparing…" : <><Download size={15} /> Download Template</>}
       </button>
     </div>
   );
@@ -50,7 +51,7 @@ function UploadBar({ onPlan, active, onClear }) {
   };
   return (
     <div className="card supply-tool-card" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 14 }}>
-      <span><b>⬆️ Generate plan</b></span>
+      <span><b style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Upload size={15} /> Generate plan</b></span>
       <SegTabs
         value={mode}
         onChange={setMode}
@@ -72,8 +73,8 @@ function UploadBar({ onPlan, active, onClear }) {
           <span className="drop-title">{file ? file.name : "Choose file"}<small>{file ? "Click to replace" : "Upload filled template (.xlsx)"}</small></span>
         </label>
       )}
-      <button className="btn" style={{ marginLeft: mode === "crm" ? "auto" : 0 }} disabled={busy} onClick={go}>{busy ? "Planning…" : "▶ Generate Plan"}</button>
-      {active && <button className="btn secondary" onClick={onClear}>↺ Back to CRM plan</button>}
+      <button className="btn" style={{ marginLeft: mode === "crm" ? "auto" : 0 }} disabled={busy} onClick={go}>{busy ? "Planning…" : <><Play size={15} /> Generate Plan</>}</button>
+      {active && <button className="btn secondary" onClick={onClear}><RotateCcw size={14} /> Back to CRM plan</button>}
     </div>
   );
 }
@@ -129,10 +130,10 @@ function RMPlanning() {
       )}
 
       <div className="grid cols-4 supply-metrics">
-        <div className="card statcard"><div className="ic">📦</div><Stat value={fmt.num(s.projected_products)} label="Projected products (3-JC ≠ 0)" /></div>
-        <div className="card statcard blue"><div className="ic">🏭</div><Stat value={fmt.num(s.manufacturing)} label="Manufacturing (make)" /></div>
-        <div className="card statcard"><div className="ic">🏷️</div><Stat value={fmt.num(s.repack_relabel)} label="Repack / Relabel" /></div>
-        <div className="card statcard amber"><div className="ic">🚚</div><Stat value={fmt.num(s.po_pending_items)} label="Items with PO pending" /></div>
+        <div className="card statcard"><div className="ic"><Package size={22} /></div><Stat value={fmt.num(s.projected_products)} label="Projected products (3-JC ≠ 0)" /></div>
+        <div className="card statcard blue"><div className="ic"><Factory size={22} /></div><Stat value={fmt.num(s.manufacturing)} label="Manufacturing (make)" /></div>
+        <div className="card statcard"><div className="ic"><Tags size={22} /></div><Stat value={fmt.num(s.repack_relabel)} label="Repack / Relabel" /></div>
+        <div className="card statcard amber"><div className="ic"><Truck size={22} /></div><Stat value={fmt.num(s.po_pending_items)} label="Items with PO pending" /></div>
       </div>
 
       <SupplyDashboard data={data} />
@@ -154,7 +155,7 @@ function RMPlanning() {
           <button className="btn" disabled={applying}
             title="Rebuild & save the plan using your chosen BOMs (flows into consolidated RM, Excel & Production Scheduling)"
             onClick={applyOverrides}>
-            {applying ? "Applying… (~2 min)" : `✓ Apply ${overrideCount} BOM override${overrideCount > 1 ? "s" : ""}`}
+            {applying ? "Applying… (~2 min)" : <><Check size={15} /> Apply {overrideCount} BOM override{overrideCount > 1 ? "s" : ""}</>}
           </button>
         )}
         <button className="btn secondary" disabled={savingPlan}
@@ -164,21 +165,21 @@ function RMPlanning() {
             try { const r = await api.saveJcPlan(); alert(`✓ JC Plan saved — Plan ID ${r.plan_id}. Adhoc planning can now deduct this plan's RM allocation.`); }
             catch (e) { alert("Save failed: " + e.message); } finally { setSavingPlan(false); }
           }}>
-          {savingPlan ? "Saving…" : "💾 Save JC Plan"}
+          {savingPlan ? "Saving…" : <><Save size={15} /> Save JC Plan</>}
         </button>
         <button className="btn" disabled={exporting}
           onClick={async () => { setExporting(true); try { await (uploaded?.plan_id ? api.planExport(uploaded.plan_id) : api.rmPlanningExport()); } catch (e) { alert(e.message); } finally { setExporting(false); } }}>
-          {exporting ? "Exporting…" : (uploaded ? "⤓ Download uploaded plan (Excel)" : "⤓ Download report (Excel)")}
+          {exporting ? "Exporting…" : <><Download size={15} /> {uploaded ? "Download uploaded plan (Excel)" : "Download report (Excel)"}</>}
         </button>
         <button className="btn secondary" disabled={segExporting}
           title="A ZIP with a separate Excel file per Segment 2 (each split Manufacturing / Others) to share with the Business Units — each file includes a Reference sheet (understanding note + organization matrix)"
           onClick={async () => { setSegExporting(true); try { await api.rmSegmentExport(uploaded?.plan_id || null); } catch (e) { alert(e.message); } finally { setSegExporting(false); } }}>
-          {segExporting ? "Zipping…" : "⤓ Projection Confirmation to Share BU"}
+          {segExporting ? "Zipping…" : <><Share2 size={15} /> Projection Confirmation to Share BU</>}
         </button>
         <button className="btn secondary" disabled={packExporting}
           title="Separate workbook: Packing Material (consolidated) + Packing BOMs (per-FG packing components) — split out of the RM plan"
           onClick={async () => { setPackExporting(true); try { await api.packingExport(uploaded?.plan_id || null); } catch (e) { alert(e.message); } finally { setPackExporting(false); } }}>
-          {packExporting ? "Exporting…" : "⤓ Packing plan (Excel)"}
+          {packExporting ? "Exporting…" : <><Boxes size={15} /> Packing plan (Excel)</>}
         </button>
       </div>
 
