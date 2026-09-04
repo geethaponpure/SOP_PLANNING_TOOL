@@ -72,6 +72,10 @@ export const api = {
   myDashboard: ({ username = "", email = "", admin = 0, persona = "" } = {}) =>
     req(`/my-dashboard?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}`),
   myDashboardPersonas: () => req("/my-dashboard/personas"),
+  myDashboardItem: ({ item = "", code = "", username = "", email = "", admin = 0, persona = "" } = {}) =>
+    req(`/my-dashboard/item?item=${encodeURIComponent(item)}&code=${encodeURIComponent(code)}` +
+      `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}`),
   rmPlanningExport: () => downloadFile("/rm-planning/export", "Supply_RM_Planning.xlsx"),
   packingExport: (planId) => downloadFile(
     `/rm-planning/export-packing${planId ? `?plan_id=${planId}` : ""}`, "Supply_Packing_Plan.xlsx"),

@@ -25,7 +25,7 @@ from ..integration.planning_filter import _proj_flag   # the plan's ±20% band
 
 # bump when the payload shape changes so stale precomputed admin payloads
 # (computed_plan.dashboard_admin) are rebuilt instead of served
-_PAYLOAD_V = 3
+_PAYLOAD_V = 4
 
 # broadest scope first — a user holding several personas gets the widest view
 _PERSONA_PRIORITY = ["Division Head", "Business Head", "Technical Head",
@@ -123,6 +123,32 @@ def _norm(s) -> str:
     return str(s or "").strip().upper()
 
 
+def _proj_map(mine: list[dict], admin: bool, acc_year: str, jc: int):
+    """(projection map, use_rows): norm item name -> current/next1/next2 KG.
+    Collector-named scopes read the per-collector projection rows; everyone
+    else reads the item-level plan table (approved slice)."""
+    coll_names = {g.get("collector_name") for g in mine if g.get("collector_name")}
+    use_rows = bool(coll_names) and not admin
+    if use_rows:
+        wanted = {_norm(c) for c in coll_names}
+        rows = [r for r in staging.read_projection_rows(acc_year, jc)
+                if _norm(r.get("Collector")) in wanted]
+    else:
+        rows = staging.read_projection(acc_year, jc, approved=True)
+    proj: dict = {}
+    for r in rows:
+        k = _norm(r.get("ItemName"))
+        if not k:
+            continue
+        p = proj.setdefault(k, {"proj": 0.0, "next1": 0.0, "next2": 0.0,
+                                "name": str(r.get("ItemName")).strip(),
+                                "s2": r.get("Segment2"), "s3": r.get("Segment3")})
+        p["proj"] += float(r.get("CurrentQ") or 0)
+        p["next1"] += float(r.get("Next1Q") or 0)
+        p["next2"] += float(r.get("Next2Q") or 0)
+    return proj, use_rows
+
+
 def _projection_block(sales3: list[dict], mine: list[dict], stype: str,
                       admin: bool = False) -> dict | None:
     """Projection accuracy for the user's scope: the plan-table projection
@@ -139,25 +165,7 @@ def _projection_block(sales3: list[dict], mine: list[dict], stype: str,
     if not acc_year or not jc:
         return None
 
-    coll_names = {g.get("collector_name") for g in mine if g.get("collector_name")}
-    use_rows = bool(coll_names) and not admin
-    proj: dict = {}          # norm name -> {"proj": kg, "name": display, "s2":, "s3":}
-    if use_rows:
-        wanted = {_norm(c) for c in coll_names}
-        rows = [r for r in staging.read_projection_rows(acc_year, int(jc))
-                if _norm(r.get("Collector")) in wanted]
-    else:
-        rows = staging.read_projection(acc_year, int(jc), approved=True)
-    for r in rows:
-        k = _norm(r.get("ItemName"))
-        if not k:
-            continue
-        p = proj.setdefault(k, {"proj": 0.0, "next1": 0.0, "next2": 0.0,
-                                "name": str(r.get("ItemName")).strip(),
-                                "s2": r.get("Segment2"), "s3": r.get("Segment3")})
-        p["proj"] += float(r.get("CurrentQ") or 0)
-        p["next1"] += float(r.get("Next1Q") or 0)
-        p["next2"] += float(r.get("Next2Q") or 0)
+    proj, use_rows = _proj_map(mine, admin, acc_year, int(jc))
 
     # scoped items with sales in the last 3 JCs
     items = []
@@ -219,6 +227,16 @@ def _projection_block(sales3: list[dict], mine: list[dict], stype: str,
          "kg": round(sum(i["next2"] for i in items)),
          "items": sum(1 for i in items if i["next2"] > 0)},
     ]
+    # row-by-row product detail for the pipeline table: top items by projected
+    # volume (then by sales) — capped so huge scopes don't bloat the payload
+    pipeline_rows = sorted(
+        (i for i in items if i["proj"] or i["next1"] or i["next2"] or i["avg3"]),
+        key=lambda i: (-(i["proj"] + i["next1"] + i["next2"]), -i["avg3"]))[:200]
+    pipeline_rows = [{"code": i.get("code"), "name": i["name"], "avg3": i["avg3"],
+                      "proj": round(i["proj"], 1), "next1": round(i["next1"], 1),
+                      "next2": round(i["next2"], 1), "flag": i["flag"]}
+                     for i in pipeline_rows]
+
     for i in items:   # next1/next2 fed the pipeline only — keep the payload lean
         i.pop("next1", None)
         i.pop("next2", None)
@@ -228,6 +246,7 @@ def _projection_block(sales3: list[dict], mine: list[dict], stype: str,
         "coverage_pct": round(covered / total_avg3 * 100, 1),
         "summary": summary,
         "pipeline": pipeline,
+        "pipeline_rows": pipeline_rows,
         "compare": with_sales[:12],
         "missing": [i for i in with_sales if i["flag"] == "none"][:10],
         "missing_total": sum(1 for i in items if i["flag"] == "none"),
@@ -284,6 +303,56 @@ def _assemble(ds: dict, n_jc: int) -> dict:
         "top_items": tops["top_items"],
         "top_customers": tops["top_customers"],
     }
+
+
+def item_detail(username: str | None = None, email: str | None = None,
+                admin: bool = False, persona: str | None = None,
+                item: str = "", code: str | None = None) -> dict:
+    """One item's JC-by-JC dispatch within the caller's scope + its projection
+    (current/next/next-next) — the click-to-drill popup on My Dashboard."""
+    jcs = _msl.jc_window()
+    jc_labels = [{"label": f"JC{j.get('jc')}", "from": str(j.get("from") or ""),
+                  "to": str(j.get("to") or "")} for j in jcs]
+
+    grants = []
+    if not admin:
+        grants = staging.read_user_scope(email=email or None, username=username or None) \
+            if (email or username) else []
+        if not (persona and any(g["persona"] == persona for g in grants)):
+            persona = _pick_persona(grants)
+
+    if admin:
+        mine, flt = [], {}
+    elif persona:
+        _stype, mine, flt = _scope_flt(persona, grants)
+    else:
+        mine, flt = [], None
+
+    qty = [0.0] * len(jcs)
+    if flt is not None and (item or code):
+        for r in staging.dashboard_item_series(flt, item_code=code or None,
+                                               item_name=item or None):
+            i = int(r["jc"])
+            if 0 <= i < len(jcs):
+                qty[i] = round(float(r["qty"] or 0), 1)
+    avg3 = round(sum(qty[-3:]) / 3.0, 1) if len(qty) >= 3 else 0.0
+
+    proj_v = n1 = n2 = 0.0
+    basis, plan_jc, acc_year = "item", None, None
+    ctx = staging.read_context() or {}
+    if ctx.get("acc_year") and ctx.get("plan_jc"):
+        acc_year, plan_jc = ctx["acc_year"], int(ctx["plan_jc"])
+        pm, use_rows = _proj_map(mine, admin, acc_year, plan_jc)
+        e = pm.get(_norm(item)) or {}
+        proj_v = round(e.get("proj", 0.0), 1)
+        n1 = round(e.get("next1", 0.0), 1)
+        n2 = round(e.get("next2", 0.0), 1)
+        basis = "collector" if use_rows else "item"
+
+    flag = "none" if (proj_v <= 0 and avg3 > 0) else _proj_flag(proj_v, avg3)
+    return {"item": item, "code": code, "jcs": jc_labels, "qty": qty,
+            "avg3": avg3, "proj": proj_v, "next1": n1, "next2": n2,
+            "flag": flag, "basis": basis, "plan_jc": plan_jc, "acc_year": acc_year}
 
 
 def persona_users() -> dict:

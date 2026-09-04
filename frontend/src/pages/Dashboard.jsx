@@ -1,7 +1,9 @@
 import React, { useMemo, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import EChart from "../components/EChart.jsx";
 import SegTabs from "../components/SegTabs.jsx";
 import SelectBox from "../components/SelectBox.jsx";
+import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 
@@ -82,40 +84,169 @@ function distOption(rows, { shape, unit, center, selected }) {
   };
 }
 
-// bullet-style comparison: one bar per item = the scoped 3-JC avg sales,
-// coloured by its accuracy flag; a navy ◆ marks the plan-table projection.
-// One glance answers "how much do I sell, what did I project, am I close?"
-function bulletOption(rows) {
-  const rev = [...rows].reverse();
-  const tip = (i) => {
-    const r = rev[i];
-    const f = FLAGS[r.flag] || FLAGS.ontrack;
-    const acc = r.avg3 > 0 && r.proj > 0 ? ` (${Math.round((r.proj / r.avg3) * 100)}% of avg sales)` : "";
-    return `<b>${r.name}</b><br/>3-JC avg sales: <b>${fmt.num(r.avg3)}</b> KG` +
-      `<br/>Projection: <b>${fmt.num(r.proj)}</b> KG${acc}` +
-      `<br/><span style="color:${f.color}">● ${f.label}</span>`;
-  };
-  return {
-    ...ANIM, grid: { left: 8, right: 30, top: 34, bottom: 8, containLabel: true },
-    legend: { top: 0, textStyle: { color: "#414d55", fontSize: 11 },
-      data: [{ name: "3-JC avg sales", icon: "roundRect" }, { name: "Projection", icon: "diamond" }] },
-    tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
-      formatter: (ps) => tip(ps[0].dataIndex) },
-    xAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } },
-      axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true },
-      axisLine: { show: false }, axisTick: { show: false } },
-    yAxis: { type: "category", data: rev.map((r) => r.name),
-      axisLabel: { color: "#414d55", fontSize: 11, width: 170, overflow: "truncate", hideOverlap: true },
-      axisTick: { show: false }, axisLine: { show: false } },
-    series: [
-      { name: "3-JC avg sales", type: "bar", barWidth: "52%", color: "#94a8bc", z: 1,
-        data: rev.map((r) => ({ value: r.avg3,
-          itemStyle: { color: (FLAGS[r.flag] || {}).color + "CC", borderRadius: [0, 6, 6, 0] } })) },
-      { name: "Projection", type: "scatter", symbol: "diamond", symbolSize: 13, z: 3,
-        itemStyle: { color: "#1f3a5f", borderColor: "#fff", borderWidth: 1.5 },
-        data: rev.map((r) => r.proj) },
-    ],
-  };
+// Projection-vs-sales as a bordered GRID: every data point in its own cell,
+// mini bars kept for the visual ratio. Rows click through to the item's
+// JC-wise trend popup.
+const CELL = { border: "1px solid var(--border)", padding: "8px 10px", verticalAlign: "middle" };
+const HCELL = { ...CELL, background: "#f7fafc", fontSize: 12, color: "#414d55",
+  fontWeight: 600, whiteSpace: "nowrap" };
+
+function MiniBar({ label, value, max, color }) {
+  const pct = Math.max(value > 0 ? 3 : 0, Math.round((value / (max || 1)) * 100));
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span style={{ fontSize: 10, color: "var(--muted)", width: 32, flex: "none" }}>{label}</span>
+      <div style={{ flex: 1, height: 7, background: "#eef2f7", borderRadius: 4, overflow: "hidden" }}>
+        <i style={{ display: "block", height: "100%", width: "100%", background: color,
+          borderRadius: 4, transform: `scaleX(${pct / 100})`, transformOrigin: "left",
+          transition: "transform .45s cubic-bezier(.2,.7,.3,1)" }} />
+      </div>
+    </div>
+  );
+}
+
+function ProjCompareTable({ rows, onItem }) {
+  return (
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+      <thead>
+        <tr>
+          <th style={{ ...HCELL, textAlign: "left" }}>Item</th>
+          <th style={{ ...HCELL, textAlign: "left", width: "22%" }}>Sales vs Projection</th>
+          <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales (KG)</th>
+          <th style={{ ...HCELL, textAlign: "right" }}>Projection (KG)</th>
+          <th style={{ ...HCELL, textAlign: "right" }}>Projected %</th>
+          <th style={{ ...HCELL, textAlign: "center" }}>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => {
+          const f = FLAGS[r.flag] || FLAGS.ontrack;
+          const max = Math.max(r.avg3, r.proj);
+          const acc = r.avg3 > 0 ? Math.round((r.proj / r.avg3) * 100) : null;
+          return (
+            <tr key={i} onClick={() => onItem(r)} style={{ cursor: "pointer" }}
+              title="Click to see this item's JC-wise graph">
+              <td style={{ ...CELL, maxWidth: 280 }}>
+                <div title={r.name} style={{ fontWeight: 600, color: "#1f3a5f", whiteSpace: "nowrap",
+                  overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+                <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{r.code || "—"}</div>
+              </td>
+              <td style={CELL}>
+                <div style={{ display: "grid", gap: 5 }}>
+                  <MiniBar label="Sales" value={r.avg3} max={max} color="#2a9d8f" />
+                  <MiniBar label="Proj" value={r.proj} max={max} color="#4880ff" />
+                </div>
+              </td>
+              <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(r.avg3)}</td>
+              <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(r.proj)}</td>
+              <td style={{ ...CELL, textAlign: "right", fontWeight: 600,
+                color: acc == null ? "var(--muted)" : f.color }}>
+                {acc == null ? "—" : `${acc}%`}
+              </td>
+              <td style={{ ...CELL, textAlign: "center" }}>
+                <span style={{ display: "inline-block", fontSize: 11, fontWeight: 600, color: f.color,
+                  background: f.color + "16", padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap" }}>
+                  {f.label}
+                </span>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+// popup: one item's dispatched KG per JC (scoped) + projection reference lines
+function ItemGraphModal({ target, idParams, onClose }) {
+  const { data, loading, error } = useAsync(
+    () => (target ? api.myDashboardItem({ ...idParams, item: target.name, code: target.code || "" })
+      : Promise.resolve(null)),
+    [target && target.name, target && target.code]
+  );
+  useEffect(() => {
+    if (!target) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [target, onClose]);
+
+  const opt = useMemo(() => {
+    if (!data) return null;
+    const marks = [];
+    if (data.proj > 0) marks.push({ yAxis: data.proj, lineStyle: { color: "#4880ff" },
+      label: { formatter: `Projection ${abbr(data.proj)}`, color: "#4880ff", fontSize: 11 } });
+    if (data.avg3 > 0) marks.push({ yAxis: data.avg3, lineStyle: { color: "#2a9d8f" },
+      label: { formatter: `3-JC avg ${abbr(data.avg3)}`, color: "#2a9d8f", fontSize: 11 } });
+    return {
+      ...ANIM, grid: { left: 8, right: 90, top: 24, bottom: 8, containLabel: true },
+      tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
+        formatter: (ps) => {
+          const j = (data.jcs || [])[ps[0].dataIndex] || {};
+          const d = j.from ? `<br/><span style="color:#90a1ac;font-size:11px">${j.from} → ${j.to}</span>` : "";
+          return `${ps[0].name}${d}<br/><b>${fmt.num(ps[0].value)}</b> KG despatched`;
+        } },
+      xAxis: { type: "category", data: (data.jcs || []).map((j) => j.label),
+        axisTick: { show: false }, axisLabel: { color: "#414d55", fontSize: 11, hideOverlap: true } },
+      yAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } },
+        axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true } },
+      series: [{ type: "bar", barWidth: "55%", data: data.qty || [],
+        itemStyle: { borderRadius: [5, 5, 0, 0], color: "#7aa7ff" },
+        markLine: marks.length ? { symbol: "none", lineStyle: { type: "dashed", width: 1.6 },
+          data: marks } : undefined }],
+    };
+  }, [data]);
+
+  if (!target) return null;
+  const f = data ? (FLAGS[data.flag] || FLAGS.ontrack) : null;
+  return createPortal(
+    <div className="modal-overlay" onMouseDown={onClose}>
+      <div className="modal-container" role="dialog" aria-modal="true"
+        style={{ maxWidth: 780, width: "94vw" }} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-container-header">
+          <div className="modal-container-title" style={{ minWidth: 0 }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              📈 {target.name}
+            </span>
+          </div>
+          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="modal-container-body">
+          {loading && <Loading what="item trend" />}
+          {error && <ErrorBox msg={error} />}
+          {data && !loading && (
+            <>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center",
+                marginBottom: 10, fontSize: 12 }}>
+                {f && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: f.color,
+                    background: f.color + "16", padding: "3px 9px", borderRadius: 999 }}>{f.label}</span>
+                )}
+                <span style={{ color: "var(--muted)" }}>
+                  Projection JC{data.plan_jc}: <b style={{ color: "#1f3a5f" }}>{fmt.num(data.proj)}</b> ·
+                  Next JC: <b style={{ color: "#1f3a5f" }}>{fmt.num(data.next1)}</b> ·
+                  JC after next: <b style={{ color: "#1f3a5f" }}>{fmt.num(data.next2)}</b> ·
+                  3-JC avg sales: <b style={{ color: "#1f3a5f" }}>{fmt.num(data.avg3)}</b> KG
+                  {data.basis === "collector" ? " · projections for your collectors" : ""}
+                </span>
+              </div>
+              <EChart option={opt} height={300} />
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
+                Despatched KG per job cycle within your scope · dashed lines mark the JC{data.plan_jc}
+                projection and your 3-JC sales average.
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
 }
 
 // the 3-cycle projection pipeline: current JC + the two after it
@@ -230,8 +361,29 @@ export default function Dashboard({ session, isAdmin }) {
 
   // ── projection accuracy (plan-table projection vs scoped 3-JC avg sales) ──
   const p = data?.projection;
-  const bulletOpt = useMemo(() => bulletOption(p?.compare || []), [p]);
   const pipeOpt = useMemo(() => pipeOption(p?.pipeline || []), [p]);
+
+  // click-to-drill: which item's JC graph is open, and the identity the popup
+  // fetch must use (respects the admin View-as impersonation)
+  const [itemPop, setItemPop] = useState(null);
+
+  // pipeline detail table (row per product) with a chart/table toggle + search
+  const [pipeView, setPipeView] = useState("chart");
+  const [pipeQ, setPipeQ] = useState("");
+  useEffect(() => { setPipeView("chart"); setPipeQ(""); setItemPop(null); }, [viewAs.username, viewAs.persona]);
+
+  const idParams = useMemo(() => (viewAs.username
+    ? { username: viewAs.username, persona: viewAs.persona }
+    : { username: u.username || u.user_code || "", email: u.email || "", admin: isAdmin ? 1 : 0 }),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [viewAs.username, viewAs.persona, isAdmin]);
+  const pipeRows = useMemo(() => {
+    const src = p?.pipeline_rows || [];
+    const q = pipeQ.trim().toLowerCase();
+    if (!q) return src;
+    return src.filter((r) => (r.name || "").toLowerCase().includes(q) ||
+      (r.code || "").toLowerCase().includes(q));
+  }, [p, pipeQ]);
   const statusRows = useMemo(() => (p?.summary || []).map((s) => ({
     name: FLAGS[s.flag]?.label || s.flag, value: s.items, color: FLAGS[s.flag]?.color })), [p]);
   const statusOpt = useMemo(() => distOption(statusRows, { shape: shape.proj, unit: "items", center: "items" }),
@@ -337,20 +489,73 @@ export default function Dashboard({ session, isAdmin }) {
             <div className="supply-dash-cardhead">
               <div><h3>🎯 Projection vs 3-JC avg sales</h3>
                 <div className="sub">
-                  bar = your 3-JC average sales (coloured by status) · <b style={{ color: "#1f3a5f" }}>◆</b> = JC{p.jc} {p.acc_year} projection
-                  ({p.basis === "collector" ? "your collectors" : "per item, company-wide"}) ·
+                  top items by sales · JC{p.jc} {p.acc_year} projection
+                  ({p.basis === "collector" ? "your collectors" : "per item, company-wide"}) vs 3-JC average sales ·
                   ±20% band · <b>{p.coverage_pct}%</b> of your sales volume has a projection
                 </div></div>
             </div>
-            <EChart option={bulletOpt} height={330} />
+            <ProjCompareTable rows={p.compare || []}
+              onItem={(r) => setItemPop({ name: r.name, code: r.code })} />
           </div>
 
-          <div className="card">
+          <div className="card" style={pipeView === "table" ? { gridColumn: "1 / -1" } : undefined}>
             <div className="supply-dash-cardhead">
               <div><h3>📅 Projection pipeline</h3>
                 <div className="sub">projected KG for the current and the next two job cycles · your scope</div></div>
+              <SegTabs size="sm" value={pipeView} onChange={setPipeView}
+                tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
             </div>
-            <EChart option={pipeOpt} height={260} />
+            {pipeView === "chart" ? (
+              <EChart option={pipeOpt} height={260} />
+            ) : (
+              <>
+                <div className="pagebar" style={{ marginBottom: 10 }}>
+                  <SmoothInput className="searchbox" placeholder="Search item code / name…"
+                    value={pipeQ} onChange={(e) => setPipeQ(e.target.value)} />
+                  <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
+                    {pipeRows.length} of {(p.pipeline_rows || []).length} products
+                    {(p.pipeline_rows || []).length >= 200 ? " (top 200 by projected volume)" : ""}
+                  </span>
+                </div>
+                <div className="tbl-wrap" style={{ maxHeight: 380 }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Item Code</th>
+                        <th>Item Name</th>
+                        <th className="num">3-JC avg sales</th>
+                        <th className="num">Current · JC{p.jc}</th>
+                        <th className="num">Next JC</th>
+                        <th className="num">JC after next</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pipeRows.map((r, i) => (
+                        <tr key={i} onClick={() => setItemPop({ name: r.name, code: r.code })}
+                          style={{ cursor: "pointer" }} title="Click to see this item's JC-wise graph">
+                          <td style={{ fontSize: 12, whiteSpace: "nowrap" }}>{r.code || "—"}</td>
+                          <td title={r.name} style={{ maxWidth: 340, overflow: "hidden",
+                            textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</td>
+                          <td className="num">{fmt.num(r.avg3)}</td>
+                          <td className="num"><b>{fmt.num(r.proj)}</b></td>
+                          <td className="num">{fmt.num(r.next1)}</td>
+                          <td className="num">{fmt.num(r.next2)}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <span style={{ color: (FLAGS[r.flag] || {}).color, fontSize: 12, fontWeight: 600 }}>
+                              ● {(FLAGS[r.flag] || {}).label || r.flag}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {pipeRows.length === 0 && (
+                        <tr><td colSpan={7}>No products match the search.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="card">
@@ -386,6 +591,8 @@ export default function Dashboard({ session, isAdmin }) {
         </div>
       )}
       </div>
+
+      <ItemGraphModal target={itemPop} idParams={idParams} onClose={() => setItemPop(null)} />
     </>
   );
 }

@@ -651,22 +651,9 @@ def replace_dispatch_scope(crm_rows: list[dict], n_jc: int) -> int:
 _SEG_LEVELS = {"segment2", "segment3", "segment4"}
 
 
-def dashboard_datasets(flt: dict, jc_from: int | None = None) -> dict:
-    """All My-Dashboard aggregates in FIVE indexed SQL queries. Aggregation
-    stays in MySQL — never haul the 134k-row cube into Python per request
-    (that melted the API under concurrent page loads). ``jc_from`` adds a
-    per-item sales total over jc_index >= jc_from (the projection-accuracy
-    3-JC window) as ``sales3``.
-
-    ``flt`` is one of:
-      {}                          -> whole company (Admin)
-      {"mc_codes": [...]}         -> Sales Executive (market circles)
-      {"collector_ids": [...]}    -> Branch / Regional Manager
-      {"customer_ids": [...]}     -> Technical Executive
-      {"segment_grants": [{"level": "segment4", "value": v,
-                           "collector_ids": [...] | None}, ...]}
-                                  -> segment personas (deepest grant level)
-    """
+def _dash_where(flt: dict) -> tuple[list[str], list]:
+    """WHERE conditions + params for a persona scope filter over stg_dispatch_scope
+    (see dashboard_datasets for the ``flt`` shapes)."""
     where, params = [], []
     if flt.get("mc_codes"):
         where.append("d.mc_code IN (" + ",".join(["%s"] * len(flt["mc_codes"])) + ")")
@@ -688,6 +675,55 @@ def dashboard_datasets(flt: dict, jc_from: int | None = None) -> dict:
                 params += [int(c) for c in g["collector_ids"]]
             ors.append(f"({cond})")
         where.append("(" + " OR ".join(ors) + ")")
+    return where, params
+
+
+def dashboard_item_series(flt: dict, item_code: str | None = None,
+                          item_name: str | None = None) -> list[dict]:
+    """One item's dispatched qty per JC within the persona scope (the click-to-
+    drill graph on My Dashboard). Matches by NAME first: the dashboard tables
+    group by item_name (an item may carry several codes), so the popup must
+    aggregate the same way; code is only the fallback."""
+    where, params = _dash_where(flt or {})
+    if item_name:
+        where.append("UPPER(TRIM(d.item_name)) = %s")
+        params.append(str(item_name).strip().upper())
+    elif item_code:
+        where.append("d.item_code = %s")
+        params.append(str(item_code))
+    else:
+        return []
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT d.jc_index AS jc, SUM(d.qty) AS qty, SUM(d.value_) AS value_ "
+                            "FROM stg_dispatch_scope d WHERE " + " AND ".join(where) +
+                            " GROUP BY d.jc_index ORDER BY d.jc_index", tuple(params))
+                return cur.fetchall()
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+def dashboard_datasets(flt: dict, jc_from: int | None = None) -> dict:
+    """All My-Dashboard aggregates in FIVE indexed SQL queries. Aggregation
+    stays in MySQL — never haul the 134k-row cube into Python per request
+    (that melted the API under concurrent page loads). ``jc_from`` adds a
+    per-item sales total over jc_index >= jc_from (the projection-accuracy
+    3-JC window) as ``sales3``.
+
+    ``flt`` is one of:
+      {}                          -> whole company (Admin)
+      {"mc_codes": [...]}         -> Sales Executive (market circles)
+      {"collector_ids": [...]}    -> Branch / Regional Manager
+      {"customer_ids": [...]}     -> Technical Executive
+      {"segment_grants": [{"level": "segment4", "value": v,
+                           "collector_ids": [...] | None}, ...]}
+                                  -> segment personas (deepest grant level)
+    """
+    where, params = _dash_where(flt)
     w = (" WHERE " + " AND ".join(where)) if where else ""
     w_cust = w + (" AND " if w else " WHERE ") + "d.customer_id IS NOT NULL"
     base = "FROM stg_dispatch_scope d"
