@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { api } from "../api";
 import SmoothInput from "../components/SmoothInput.jsx";
+import { TriangleAlert } from "lucide-react";
 
 // forced=true -> full-screen, no cancel (first-login password change).
 // forced=false -> modal overlay with a Cancel button (self-service).
@@ -31,7 +32,7 @@ export default function ChangePassword({ login, forced = false, onDone, onCancel
       <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>
         {forced ? "You’re signing in with the default password — please set your own to continue." : `Signed in as ${login}`}
       </div>
-      {err && <div className="banner err" style={{ marginBottom: 12 }}>⚠ {err}</div>}
+      {err && <div className="banner err" style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 7 }}><TriangleAlert size={16} style={{ flex: "none" }} /> {err}</div>}
       <label style={{ fontSize: 12, color: "#475569" }}>Current password</label>
       <SmoothInput className="searchbox" style={{ width: "100%", margin: "4px 0 12px" }} type="password" autoFocus
         value={cur} onChange={(e) => setCur(e.target.value)} placeholder={forced ? "pure@123" : "Current password"} />

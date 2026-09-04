@@ -1666,7 +1666,8 @@ td.num b { color: var(--navy); }
   background: rgba(246, 249, 252, .94);
   border: 1px solid var(--supply-line);
   border-radius: 13px;
-  backdrop-filter: blur(12px);
+  /* no backdrop-filter: the background is 94% opaque so the blur was invisible,
+     but it forced an expensive backdrop re-sample on every sidebar-animation frame */
   box-shadow: 0 8px 20px rgba(19, 42, 69, .07);
 }
 .supply-workspace button.btn { border-radius: 8px; min-height: 34px; }
@@ -1757,3 +1758,33 @@ td.num b { color: var(--navy); }
 
 /* MFG Org Stock table — no inner scrollbar; the page scrolls (paginated anyway) */
 .mfg-tbl-wrap { overflow: visible; max-height: none; }
+
+/* ── draggable / resizable dashboard grid (components/DashGrid.jsx) ────────── */
+.dash-grid-bar {
+  display: flex; align-items: center; gap: 10px;
+  margin: 14px 0 10px; font-size: 12px; color: var(--muted);
+}
+.dash-grid-bar button { margin-left: auto; padding: 5px 12px; font-size: 12px; }
+
+/* the grid item is the positioned box; the card fills it edge to edge */
+.dash-item { display: flex; }
+.dash-item > .card {
+  flex: 1 1 auto; min-width: 0; height: 100%; margin: 0;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+/* the lift-on-hover would fight the grid's own transform — drop it in here */
+.dash-item > .card:hover { transform: none; }
+.dash-item .supply-dash-cardhead { cursor: move; flex: none; }
+/* everything under the header takes the leftover height so charts fill the card */
+.dash-item .dash-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.dash-item .dash-body > .tbl-wrap { flex: 1 1 auto; min-height: 0; max-height: none; }
+.dash-item .dash-body > table { display: block; overflow: auto; }
+
+.react-grid-item.react-grid-placeholder {
+  background: var(--navy, #1f3a5f); opacity: 0.12; border-radius: var(--kit-radius, 14px);
+}
+.react-grid-item.react-draggable-dragging { z-index: 5; }
+.react-grid-item.react-draggable-dragging > .card { box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22); }
+/* make the resize corner findable without being loud */
+.dash-item > .react-resizable-handle { padding: 0 4px 4px 0; opacity: 0.35; transition: opacity 0.15s ease; }
+.dash-item:hover > .react-resizable-handle { opacity: 0.9; }

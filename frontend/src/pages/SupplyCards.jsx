@@ -7,7 +7,7 @@ import { Dropdown } from "../components/Dropdown.jsx";
 import { fmt } from "../api";
 import { Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
 import { useSupplyPlan } from "../SupplyPlanContext.jsx";
-import { Package, ShoppingCart, CircleCheck, FlaskConical, Scale, TriangleAlert, Flag, Globe, BarChart3, CalendarDays, Receipt, Truck, ClipboardList, Pencil } from "lucide-react";
+import { Package, ShoppingCart, CircleCheck, FlaskConical, Scale, TriangleAlert, Flag, Globe, BarChart3, CalendarDays, Receipt, Truck, ClipboardList, Pencil, Timer } from "lucide-react";
 import RMDataCharts from "../components/RMDataCharts.jsx";
 import CardCharts from "../components/CardCharts.jsx";
 import ConfirmModal from "../components/ConfirmModal.jsx";
@@ -340,8 +340,8 @@ function RmCard({ r, pjc }) {
     ? `${r.code_count} item codes · ${(r.rm_codes || []).slice(0, 4).join(", ")}${r.code_count > 4 ? "…" : ""}`
     : r.rm_code;
   const metaBits = [];
-  if (r.avg_lead_time_days != null) metaBits.push(`⏱ lead ${fmt.num(r.avg_lead_time_days)}d (+7 = ${fmt.num(r.lead_total_days)}d)`);
-  else if (r.lead_total_days != null) metaBits.push(`⏱ ${fmt.num(r.lead_total_days)}d`);
+  if (r.avg_lead_time_days != null) metaBits.push(<><Timer size={11} style={{ verticalAlign: "-1px" }} /> lead {fmt.num(r.avg_lead_time_days)}d (+7 = {fmt.num(r.lead_total_days)}d)</>);
+  else if (r.lead_total_days != null) metaBits.push(<><Timer size={11} style={{ verticalAlign: "-1px" }} /> {fmt.num(r.lead_total_days)}d</>);
   if (r.trade) metaBits.push(r.trade === "Import" ? "Import" : "Domestic");
   if (r.currencies && r.currencies.length) metaBits.push(r.currencies.join(", "));
 

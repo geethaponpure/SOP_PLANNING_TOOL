@@ -13,9 +13,23 @@ export default function EChart({ option, height = 300, className, onEvents, notM
   useEffect(() => {
     const chart = echarts.init(elRef.current, null, { renderer: "canvas" });
     chartRef.current = chart;
-    const ro = new ResizeObserver(() => chart.resize());
+
+    // The container width changes on EVERY frame of the sidebar collapse animation,
+    // which would re-render the whole canvas ~13x in 220ms (the main cause of the
+    // lag). Coalesce those bursts into a single resize once the width settles.
+    let timer = 0, raf = 0;
+    const ro = new ResizeObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => chartRef.current && chartRef.current.resize());
+      }, 140);
+    });
     ro.observe(elRef.current);
-    return () => { ro.disconnect(); chart.dispose(); chartRef.current = null; };
+    return () => {
+      clearTimeout(timer); cancelAnimationFrame(raf);
+      ro.disconnect(); chart.dispose(); chartRef.current = null;
+    };
   }, []);
 
   useEffect(() => {

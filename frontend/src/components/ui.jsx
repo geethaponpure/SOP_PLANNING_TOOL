@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { TriangleAlert } from "lucide-react";
 
 // Small data-fetching hook with refresh support.
 export function useAsync(fn, deps = []) {
@@ -24,18 +25,25 @@ export function useScrollFade(deps = []) {
     const el = ref.current;
     if (!el) return;
     const FADE = 24; // px of fade at each active edge
-    const update = () => {
+    // The nav resizes on every frame of the sidebar collapse animation. Reading
+    // scroll metrics + writing custom props inline would thrash layout (and repaint
+    // the mask) each frame, so batch into one rAF and only write on a real change.
+    let raf = 0, lastTop = null, lastBottom = null;
+    const apply = () => {
+      raf = 0;
       const top = el.scrollTop > 2 ? FADE : 0;
       const bottom =
         el.scrollHeight - el.clientHeight - el.scrollTop > 2 ? FADE : 0;
-      el.style.setProperty("--fade-top", `${top}px`);
-      el.style.setProperty("--fade-bottom", `${bottom}px`);
+      if (top !== lastTop) { el.style.setProperty("--fade-top", `${top}px`); lastTop = top; }
+      if (bottom !== lastBottom) { el.style.setProperty("--fade-bottom", `${bottom}px`); lastBottom = bottom; }
     };
-    update();
+    const update = () => { if (!raf) raf = requestAnimationFrame(apply); };
+    apply();
     el.addEventListener("scroll", update, { passive: true });
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => {
+      cancelAnimationFrame(raf);
       el.removeEventListener("scroll", update);
       ro.disconnect();
     };
@@ -95,7 +103,7 @@ export function Loading({ what = "data" }) {
 }
 
 export function ErrorBox({ msg }) {
-  return <div className="banner err">⚠ {msg}</div>;
+  return <div className="banner err" style={{ display: "flex", alignItems: "center", gap: 7 }}><TriangleAlert size={16} style={{ flex: "none" }} /> {msg}</div>;
 }
 
 export function Tag({ kind, children }) {

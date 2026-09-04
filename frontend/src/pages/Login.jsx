@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { api } from "../api";
 import SmoothInput from "../components/SmoothInput.jsx";
+import { TriangleAlert } from "lucide-react";
 import loginIllustration from "../assets/login-illustration.svg";
 
 // Two-column login modeled on the Figma "SAAS Dashboard" login: white form panel
@@ -29,7 +30,7 @@ export default function Login({ onLogin }) {
           <div className="login-brand">Supply Chain · Planning Tool</div>
           <h1 className="login-title">Log in</h1>
 
-          {err && <div className="banner err login-err">⚠ {err}</div>}
+          {err && <div className="banner err login-err" style={{ display: "flex", alignItems: "center", gap: 7 }}><TriangleAlert size={16} style={{ flex: "none" }} /> {err}</div>}
 
           <label className="login-label" htmlFor="login-user">Username or user code</label>
           <SmoothInput
