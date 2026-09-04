@@ -7,6 +7,7 @@ import {
 } from "recharts";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag } from "../components/ui.jsx";
+import { LockOpen, Lock, Search } from "lucide-react";
 
 const SALES_FLAG = {
   over: { label: "Over", bg: "#FFE5E5", color: "#a11" },
@@ -118,9 +119,9 @@ export default function Validation({ onChange }) {
         {statusF && <button className="link" onClick={() => setStatusF("")}>clear filter</button>}
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           {data.locked ? (
-            <button className="btn secondary" onClick={doUnlock}>🔓 Unlock for re-approval</button>
+            <button className="btn secondary" onClick={doUnlock}><LockOpen size={15} /> Unlock for re-approval</button>
           ) : (
-            <button className="btn" onClick={doLock}>🔒 Lock consensus demand</button>
+            <button className="btn" onClick={doLock}><Lock size={15} /> Lock consensus demand</button>
           )}
         </div>
       </div>
@@ -185,7 +186,7 @@ export default function Validation({ onChange }) {
                       : <span style={{ color: "var(--amber)" }}>● open</span>}
                   </td>
                   <td><button className="btn secondary" style={{ padding: "4px 12px", fontSize: 12, whiteSpace: "nowrap" }}
-                    onClick={() => setActive(r.sku)}>🔍 Review</button></td>
+                    onClick={() => setActive(r.sku)}><Search size={15} /> Review</button></td>
                 </tr>
               );
             })}

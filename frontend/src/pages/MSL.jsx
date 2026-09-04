@@ -5,6 +5,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
+import { Package, Factory, Repeat, TrendingDown, CalendarDays, Tag, Save } from "lucide-react";
 
 function SortTh({ label, k, sort, setSort, className, title }) {
   const active = sort.key === k;
@@ -73,8 +74,8 @@ export default function MSL() {
       </div>
 
       <div className="banner" style={{ background: "#EAF4FF", border: "1px solid #BBD9F5", display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", fontSize: 13 }}>
-        <span>📅 <b>{meta.jc_label || "—"}</b> · {meta.n_jcs || 13}-JC window <b>{meta.jc_from} → {meta.jc_to}</b> · FY {meta.fy}</span>
-        <span>🏷 <b>Reference:</b> <code>{meta.reference}</code></span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><CalendarDays size={14} /> <b>{meta.jc_label || "—"}</b> · {meta.n_jcs || 13}-JC window <b>{meta.jc_from} → {meta.jc_to}</b> · FY {meta.fy}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Tag size={14} /> <b>Reference:</b> <code>{meta.reference}</code></span>
         {ref && <span style={{ color: "#8a6d00" }}>viewing saved snapshot</span>}
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
           Storage: <b>{st.backend === "mysql" ? "MySQL" : "JSON fallback"}</b>
@@ -83,10 +84,10 @@ export default function MSL() {
       </div>
 
       <div className="grid cols-4">
-        <div className="card statcard"><div className="ic">📦</div><Stat value={fmt.num(meta.summary?.items)} label="Finished products (moved)" /></div>
-        <div className="card statcard blue"><div className="ic">🏭</div><Stat value={fmt.num(byAct.Manufacturing || 0)} label="Manufacturing items" /></div>
-        <div className="card statcard"><div className="ic">🔁</div><Stat value={`${fmt.num(byAct.Trading || 0)} / ${fmt.num(byAct["Repack/Relabel"] || 0)}`} label="Trading / Repack-Relabel" /></div>
-        <div className="card statcard amber"><div className="ic">📉</div><Stat value={fmt.num(meta.summary?.total_msl)} label="Total MSL (KG)" /></div>
+        <div className="card statcard"><div className="ic"><Package size={22} /></div><Stat value={fmt.num(meta.summary?.items)} label="Finished products (moved)" /></div>
+        <div className="card statcard blue"><div className="ic"><Factory size={22} /></div><Stat value={fmt.num(byAct.Manufacturing || 0)} label="Manufacturing items" /></div>
+        <div className="card statcard"><div className="ic"><Repeat size={22} /></div><Stat value={`${fmt.num(byAct.Trading || 0)} / ${fmt.num(byAct["Repack/Relabel"] || 0)}`} label="Trading / Repack-Relabel" /></div>
+        <div className="card statcard amber"><div className="ic"><TrendingDown size={22} /></div><Stat value={fmt.num(meta.summary?.total_msl)} label="Total MSL (KG)" /></div>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, margin: "16px 0 8px" }}>
@@ -105,7 +106,7 @@ export default function MSL() {
               ))}
             </SelectBox>
           )}
-          {!ref && <button className="btn secondary" disabled={busy === "save"} onClick={save} title="Store this MSL snapshot in the database">{busy === "save" ? "Saving…" : "💾 Save snapshot"}</button>}
+          {!ref && <button className="btn secondary" disabled={busy === "save"} onClick={save} title="Store this MSL snapshot in the database">{busy === "save" ? "Saving…" : <><Save size={15} /> Save snapshot</>}</button>}
           <button className="btn" disabled={busy === "dl"} onClick={dl}>{busy === "dl" ? "Exporting…" : "⤓ Download (Excel)"}</button>
         </div>
       </div>

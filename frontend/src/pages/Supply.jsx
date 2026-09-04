@@ -5,7 +5,7 @@ import SupplyDashboard from "../components/SupplyDashboard.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 import { useSupplyPlan } from "../SupplyPlanContext.jsx";
-import { Package, Factory, Tags, Truck, FileSpreadsheet, Download, Upload, Play, RotateCcw, Check, Save, Share2, Boxes } from "lucide-react";
+import { Package, Factory, Tags, Truck, FileSpreadsheet, Download, Upload, Play, RotateCcw, Check, Save, Share2, Boxes, CalendarDays, Receipt, TriangleAlert, ClipboardList } from "lucide-react";
 
 function TemplateBar() {
   const { data } = useAsync(api.templateSegments);
@@ -119,13 +119,13 @@ function RMPlanning() {
   return (
     <section className="supply-page">
       <div className="banner supply-context" style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", fontSize: 13 }}>
-        <span>📅 <b>Planning JC{pjc}</b>{data.planning_jc_from ? ` · ${data.planning_jc_from} → ${data.planning_jc_to}` : ""}</span>
-        {data.soc_window && <span>🧾 <b>Pending SOC:</b> {data.soc_window.from <= "1900-01-01" ? "As on date" : data.soc_window.from} → {data.soc_window.to}</span>}
-        {data.po_window && <span>🚚 <b>Pending PO dates:</b> {data.po_window.from} → {data.po_window.to}</span>}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><CalendarDays size={15} /> <b>Planning JC{pjc}</b>{data.planning_jc_from ? ` · ${data.planning_jc_from} → ${data.planning_jc_to}` : ""}</span>
+        {data.soc_window && <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Receipt size={15} /> <b>Pending SOC:</b> {data.soc_window.from <= "1900-01-01" ? "As on date" : data.soc_window.from} → {data.soc_window.to}</span>}
+        {data.po_window && <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Truck size={15} /> <b>Pending PO dates:</b> {data.po_window.from} → {data.po_window.to}</span>}
       </div>
       {data.projection_jc_note && (
         <div className="banner supply-notice">
-          ⚠️ <b>Projection roll-forward:</b> {data.projection_jc_note}
+          <TriangleAlert size={15} style={{ verticalAlign: "-2px" }} /> <b>Projection roll-forward:</b> {data.projection_jc_note}
         </div>
       )}
 
@@ -143,8 +143,8 @@ function RMPlanning() {
       {uploaded && (
         <div className="banner supply-notice">
           {uploaded.plan_mode === "bom_override"
-            ? <>📋 Showing <b>plan #{uploaded.plan_id ?? "—"}</b> with <b>{uploaded.overrides_applied} BOM override(s)</b> applied · saved to DB — flows into consolidated RM, Excel &amp; Production Scheduling. </>
-            : <>📋 Showing <b>uploaded plan #{uploaded.plan_id ?? "—"}</b> ({uploaded.plan_mode === "excel_only" ? "Excel only" : "Consolidated: Excel + Projection + Pending SOC"}) · {uploaded.excel_items} Excel items · saved to DB. </>}
+            ? <><ClipboardList size={14} style={{ verticalAlign: "-2px" }} /> Showing <b>plan #{uploaded.plan_id ?? "—"}</b> with <b>{uploaded.overrides_applied} BOM override(s)</b> applied · saved to DB — flows into consolidated RM, Excel &amp; Production Scheduling. </>
+            : <><ClipboardList size={14} style={{ verticalAlign: "-2px" }} /> Showing <b>uploaded plan #{uploaded.plan_id ?? "—"}</b> ({uploaded.plan_mode === "excel_only" ? "Excel only" : "Consolidated: Excel + Projection + Pending SOC"}) · {uploaded.excel_items} Excel items · saved to DB. </>}
           <button className="link" onClick={() => setUploaded(null)}>↺ back to CRM plan</button>
         </div>
       )}

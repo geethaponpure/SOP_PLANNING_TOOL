@@ -4,6 +4,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
+import { Factory, Package, TriangleAlert, Star, Globe } from "lucide-react";
 
 const scoreColor = (v) => (v >= 75 ? "#1a7d4f" : v >= 50 ? "#8a6d00" : "#a11");
 const scoreBg = (v) => (v >= 75 ? "#E6F6EC" : v >= 50 ? "#FFF4DA" : "#FFE5E5");
@@ -87,11 +88,11 @@ export default function SupplierScorecard() {
       </div>
 
       <div className="grid cols-4">
-        <div className="card statcard"><div className="ic">🏭</div><Stat value={fmt.num(s.suppliers)} label="Suppliers (rated)" /></div>
-        <div className="card statcard"><div className="ic">📦</div><Stat value={fmt.num(s.items_supplied)} label="RM items supplied" /></div>
-        <div className="card statcard red"><div className="ic">⚠️</div><Stat value={`${fmt.num(s.critical)} · ${fmt.num(s.sole_source)}`} label="Critical · sole-source suppliers" /></div>
+        <div className="card statcard"><div className="ic"><Factory size={22} /></div><Stat value={fmt.num(s.suppliers)} label="Suppliers (rated)" /></div>
+        <div className="card statcard"><div className="ic"><Package size={22} /></div><Stat value={fmt.num(s.items_supplied)} label="RM items supplied" /></div>
+        <div className="card statcard red"><div className="ic"><TriangleAlert size={22} /></div><Stat value={`${fmt.num(s.critical)} · ${fmt.num(s.sole_source)}`} label="Critical · sole-source suppliers" /></div>
         <div className="card statcard" style={{ borderLeft: `4px solid ${scoreColor(s.avg_score)}` }}>
-          <div className="ic">⭐</div><Stat value={fmt.num(s.avg_score, 1)} label="Average score" /></div>
+          <div className="ic"><Star size={22} /></div><Stat value={fmt.num(s.avg_score, 1)} label="Average score" /></div>
       </div>
 
       <div className="pagebar" style={{ marginTop: 14 }}>
@@ -146,9 +147,9 @@ export default function SupplierScorecard() {
                     <td><b>{x.vendor}</b>
                       {x.critical && <span className="chip" style={{ cursor: "default", marginLeft: 6, fontSize: 10,
                         background: x.criticality === "High" ? "#FFE5E5" : "#FFF4DA",
-                        color: x.criticality === "High" ? "#a11" : "#8a6d00", borderColor: "transparent" }}>⚠ {x.criticality}</span>}
+                        color: x.criticality === "High" ? "#a11" : "#8a6d00", borderColor: "transparent" }}><TriangleAlert size={12} style={{ verticalAlign: "-2px" }} /> {x.criticality}</span>}
                       <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                        <span style={{ color: x.trade === "Import" ? "var(--red)" : "var(--muted)" }}>{x.trade === "Import" ? "🌐 Import" : "Domestic"}</span>
+                        <span style={{ color: x.trade === "Import" ? "var(--red)" : "var(--muted)" }}>{x.trade === "Import" ? <><Globe size={12} style={{ verticalAlign: "-2px" }} /> Import</> : "Domestic"}</span>
                         {x.currencies.length > 0 && ` · ${x.currencies.join(", ")}`}
                         {x.locations.length > 0 && ` · ${x.locations.slice(0, 2).join(", ")}`}
                         {x.criticality_reasons.length > 0 && <> · <span style={{ color: "#a11" }}>{x.criticality_reasons.join(" · ")}</span></>}</div></td>
@@ -167,7 +168,7 @@ export default function SupplierScorecard() {
                     <tr className="expander"><td></td><td colSpan={11}>
                       {x.criticality_reasons.length > 0 && (
                         <div style={{ marginBottom: 8, padding: 8, background: "#FFF6F6", borderRadius: 6, fontSize: 12 }}>
-                          <b style={{ color: "#a11" }}>⚠ Criticality: {x.criticality}</b> — {x.criticality_reasons.join(" · ")}.
+                          <b style={{ color: "#a11" }}><TriangleAlert size={13} style={{ verticalAlign: "-2px" }} /> Criticality: {x.criticality}</b> — {x.criticality_reasons.join(" · ")}.
                           {x.sole_source_items.length > 0 && (
                             <div style={{ marginTop: 4 }}><b>Sole source for:</b> {x.sole_source_items.map((it) => `${it.name}`).join(", ")}
                               <span style={{ color: "var(--muted)" }}> — losing this supplier stops these RMs.</span></div>)}

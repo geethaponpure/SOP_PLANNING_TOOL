@@ -4,6 +4,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
+import { Hourglass, Calculator, Wallet, TrendingUp, CalendarDays } from "lucide-react";
 
 const inr = (v) => (v == null ? "—" : `₹${Number(v).toLocaleString("en-IN")}`);
 
@@ -28,7 +29,7 @@ export default function PPV() {
           <b>Purchase Price Variance (PPV).</b> Standard = weighted-average price over FY{data.std_fy}.
           Evaluating <b>FY{data.eval_fy}</b> purchases (from {data.eval_from}) JC-wise.
         </div>
-        <div className="banner warn" style={{ marginTop: 12 }}>⏳ {data.note}</div>
+        <div className="banner warn" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 7 }}><Hourglass size={15} /> {data.note}</div>
       </>
     );
 
@@ -52,10 +53,10 @@ export default function PPV() {
       </div>
 
       <div className="grid cols-4">
-        <div className="card statcard"><div className="ic">🧮</div><Stat value={fmt.num(s.std_items)} label="Items with standard" /></div>
-        <div className="card statcard"><div className="ic">💰</div><Stat value={inr(s.total_spend)} label={`Total spend (FY${data.std_fy})`} /></div>
-        <div className="card statcard red"><div className="ic">📈</div><Stat value={`${inr(s.timing_overspend)} · ${s.timing_overspend_pct}%`} label="Timing overspend (vs annual WAP)" /></div>
-        <div className="card statcard"><div className="ic">📅</div><Stat value={`JC${s.best_jc} / JC${s.worst_jc}`} label="Best / worst JC" /></div>
+        <div className="card statcard"><div className="ic"><Calculator size={22} /></div><Stat value={fmt.num(s.std_items)} label="Items with standard" /></div>
+        <div className="card statcard"><div className="ic"><Wallet size={22} /></div><Stat value={inr(s.total_spend)} label={`Total spend (FY${data.std_fy})`} /></div>
+        <div className="card statcard red"><div className="ic"><TrendingUp size={22} /></div><Stat value={`${inr(s.timing_overspend)} · ${s.timing_overspend_pct}%`} label="Timing overspend (vs annual WAP)" /></div>
+        <div className="card statcard"><div className="ic"><CalendarDays size={22} /></div><Stat value={`JC${s.best_jc} / JC${s.worst_jc}`} label="Best / worst JC" /></div>
       </div>
 
       <div className="card" style={{ marginTop: 14 }}>

@@ -23,7 +23,7 @@ function Badge({ map, k }) {
   return <span style={{ ...PILL, background: bg, color: fg }}>{txt}</span>;
 }
 const URG = {
-  "order-now": ["#fdecec", "#b23b3b", "🛒 Order now"], "order-soon": ["#fff6e6", "#8a6d00", "Order soon"],
+  "order-now": ["#fdecec", "#b23b3b", "Order now"], "order-soon": ["#fff6e6", "#8a6d00", "Order soon"],
   routine: ["#eef4fb", "#1768c4", "Routine"], covered: ["#e6f4ea", "#1a7d4f", "✓ Covered"], _default: ["#eef1f5", "#5b6675", "Plan"],
 };
 const READY = {

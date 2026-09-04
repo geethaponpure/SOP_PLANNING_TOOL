@@ -4,6 +4,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
+import { Factory, FlaskConical, BarChart3, Hourglass, CalendarDays } from "lucide-react";
 
 // priority -> colour + label (SOC scenario x RM availability) + start-date basis
 const PRIO = {
@@ -145,7 +146,7 @@ export default function ProductionSchedule() {
             {plans.map((p) => <option key={p.plan_id} value={p.plan_id}>#{p.plan_id} · JC{p.jc_number} · {p.plan_type} · {p.plan_datetime}{(p.planned_fg_qty || 0) > 0 ? "" : " · (empty)"}</option>)}
           </SelectBox>
         </label>
-        <SmoothInput className="searchbox" style={{ maxWidth: 220 }} placeholder="🔍 Search item…"
+        <SmoothInput className="searchbox" style={{ maxWidth: 220 }} placeholder="Search item…"
           value={q} onChange={(e) => setQ(e.target.value)} />
         {ql && <span style={{ fontSize: 12, color: "var(--muted)" }}>{matches.length} job(s) match</span>}
         <span style={{ fontSize: 12, color: "var(--muted)" }}>
@@ -165,18 +166,18 @@ export default function ProductionSchedule() {
 
       {s.manufacturing_only && (
         <div className="banner info" style={{ marginBottom: 12 }}>
-          🏭 <b>Manufacturing only.</b> Only Manufacturing-class FGs are scheduled here.
+          <Factory size={15} style={{ verticalAlign: "-2px" }} /> <b>Manufacturing only.</b> Only Manufacturing-class FGs are scheduled here.
           Skipped this plan: <b>{fmt.num(s.skipped_non_manufacturing)}</b> repack/relabel & <b>{fmt.num(s.skipped_no_bom)}</b> no-BOM items.
           Jobs are load-balanced across a product's candidate vessels (finish-earliest) — see equipment utilisation below.
         </div>
       )}
 
       <div className="grid cols-4">
-        <div className="card statcard"><div className="ic">🏭</div><Stat value={fmt.num(s.scheduled_jobs)} label="Manufacturing jobs" /></div>
-        <div className="card statcard blue"><div className="ic">⚗️</div><Stat value={fmt.num(s.total_batches)} label="Total batches" /></div>
+        <div className="card statcard"><div className="ic"><Factory size={22} /></div><Stat value={fmt.num(s.scheduled_jobs)} label="Manufacturing jobs" /></div>
+        <div className="card statcard blue"><div className="ic"><FlaskConical size={22} /></div><Stat value={fmt.num(s.total_batches)} label="Total batches" /></div>
         <div className="card statcard" style={{ borderTop: `3px solid ${s.utilisation_pct >= 85 ? "#c0392b" : s.utilisation_pct >= 60 ? "#d68910" : "#1a7d4f"}` }}>
-          <div className="ic">📊</div><Stat value={`${fmt.num(s.utilisation_pct)}%`} label={`Plant utilisation (${fmt.num(s.equipment_used)} equip · ${fmt.num(s.horizon_days)} d)`} /></div>
-        <div className="card statcard amber"><div className="ic">⏳</div><Stat value={fmt.num(s.unscheduled_jobs)} label="Unscheduled (no vessel)" /></div>
+          <div className="ic"><BarChart3 size={22} /></div><Stat value={`${fmt.num(s.utilisation_pct)}%`} label={`Plant utilisation (${fmt.num(s.equipment_used)} equip · ${fmt.num(s.horizon_days)} d)`} /></div>
+        <div className="card statcard amber"><div className="ic"><Hourglass size={22} /></div><Stat value={fmt.num(s.unscheduled_jobs)} label="Unscheduled (no vessel)" /></div>
       </div>
 
       {data.utilisation && data.utilisation.length > 0 && (
@@ -221,7 +222,7 @@ export default function ProductionSchedule() {
           {Object.entries(PRIO).map(([p, v]) => (
             <div key={p} style={{ minWidth: 200, flex: "0 0 auto", border: "1px solid var(--line, #e3e3e8)", borderLeft: `4px solid ${v.c}`, borderRadius: 6, padding: "6px 9px" }}>
               <div style={{ fontSize: 12, fontWeight: 600 }}>{v.label} <span style={{ color: "var(--muted)", fontWeight: 400 }}>({s.by_priority?.[p] ?? 0})</span></div>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>📅 {v.d}</div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2, display: "inline-flex", alignItems: "center", gap: 5 }}><CalendarDays size={14} /> {v.d}</div>
             </div>
           ))}
         </div>

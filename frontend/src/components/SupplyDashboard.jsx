@@ -3,6 +3,7 @@ import EChart from "./EChart.jsx";
 import SelectBox from "./SelectBox.jsx";
 import SegTabs from "./SegTabs.jsx";
 import { fmt } from "../api";
+import { BarChart3 } from "lucide-react";
 
 const ACTIVITY = {
   manufacturing: { label: "Manufacturing", color: "#2a9d8f" },
@@ -195,7 +196,7 @@ export default function SupplyDashboard({ data }) {
   return (
     <div className="supply-dash">
       <div className="supply-dash-head">
-        <h3>📊 Plan dashboard</h3>
+        <h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><BarChart3 size={16} /> Plan dashboard</h3>
         <SelectBox className="searchbox" style={{ maxWidth: 200 }} value={sel.seg2} onChange={(e) => setSel((s) => ({ ...s, seg2: e.target.value }))}>
           <option value="">All Segment 2</option>
           {seg2opts.map((o) => <option key={o} value={o}>{o}</option>)}

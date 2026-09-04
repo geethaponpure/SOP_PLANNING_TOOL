@@ -7,6 +7,7 @@ import { avatarUrl } from "../assets/avatars/index.js";
 import { NAV, HIDDEN } from "../nav";
 import { api } from "../api";
 import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
+import { Users, Plus, User, KeyRound, Save } from "lucide-react";
 
 // grantable modules = the navigable pages (incl. User Master itself, so admins can be
 // created); hidden/non-navigable pages are not offered.
@@ -68,8 +69,8 @@ export default function UserMaster() {
       </div>
 
       <div className="pagebar" style={{ marginTop: 12, gap: 8 }}>
-        <button className={tab === "approved" ? "chip active" : "chip"} onClick={() => setTab("approved")}>👥 Approved users ({approved.length})</button>
-        <button className={tab === "crm" ? "chip active" : "chip"} onClick={() => setTab("crm")}>➕ Add CRM users</button>
+        <button className={tab === "approved" ? "chip active" : "chip"} style={{ display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => setTab("approved")}><Users size={15} /> Approved users ({approved.length})</button>
+        <button className={tab === "crm" ? "chip active" : "chip"} style={{ display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => setTab("crm")}><Plus size={15} /> Add CRM users</button>
       </div>
 
       {tab === "crm" && <>
@@ -111,7 +112,7 @@ export default function UserMaster() {
                             onClick={(e) => { e.stopPropagation(); setPickFor(u.user_code); }}>
                             {avatarUrl(u.avatar)
                               ? <img src={avatarUrl(u.avatar)} alt={`${u.name} avatar`} />
-                              : <span className="um-avatar-ph">👤</span>}
+                              : <span className="um-avatar-ph"><User size={22} /></span>}
                             <span className="um-avatar-edit">✎</span>
                           </button>
                           <span className="um-name-txt">
@@ -160,7 +161,7 @@ export default function UserMaster() {
                                 {st.password_enabled ? (
                                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                     <button className="chip" title="Reset to the default password"
-                                      onClick={() => act(async () => { const r = await api.userMaster.resetPassword(u.user_code); alert(`${u.name}'s password reset to: ${r.password}`); })}>🔑 Reset</button>
+                                      onClick={() => act(async () => { const r = await api.userMaster.resetPassword(u.user_code); alert(`${u.name}'s password reset to: ${r.password}`); })} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><KeyRound size={15} /> Reset</button>
                                     <button className="chip" title="Set a specific password"
                                       onClick={() => { const p = prompt(`New password for ${u.name} (min 4 chars):`); if (p) act(() => api.userMaster.setPassword(u.user_code, p)); }}>Set…</button>
                                   </div>
@@ -287,7 +288,7 @@ function AllowedDepartments({ deptsA, onSaved }) {
               </span>
             ))}
           </div>
-          {sel && <button className="btn" style={{ marginTop: 10 }} onClick={save}>💾 Save eligible departments</button>}
+          {sel && <button className="btn" style={{ marginTop: 10 }} onClick={save}><Save size={15} /> Save eligible departments</button>}
         </div>
       )}
     </div>

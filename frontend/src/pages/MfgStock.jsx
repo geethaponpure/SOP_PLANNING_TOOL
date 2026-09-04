@@ -3,6 +3,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
+import { Package, Factory, Scale, Search } from "lucide-react";
 import MfgStockCharts from "../components/MfgStockCharts.jsx";
 
 function applySort(rows, { key, dir }) {
@@ -68,10 +69,10 @@ export default function MfgStock() {
   return (
     <>
       <div className="grid cols-4">
-        <div className="card statcard"><div className="ic">📦</div><Stat value={fmt.num(s.items)} label="Distinct items" /></div>
-        <div className="card statcard"><div className="ic">🏭</div><Stat value={fmt.num(s.orgs)} label="MFG organizations" /></div>
-        <div className="card statcard amber"><div className="ic">⚖️</div><Stat value={fmt.num(s.total_qty)} label="Total on-hand (KG)" /></div>
-        <div className="card statcard"><div className="ic">🔎</div><Stat value={fmt.num(shownQty)} label="Shown qty (filtered, KG)" /></div>
+        <div className="card statcard"><div className="ic"><Package size={22} /></div><Stat value={fmt.num(s.items)} label="Distinct items" /></div>
+        <div className="card statcard"><div className="ic"><Factory size={22} /></div><Stat value={fmt.num(s.orgs)} label="MFG organizations" /></div>
+        <div className="card statcard amber"><div className="ic"><Scale size={22} /></div><Stat value={fmt.num(s.total_qty)} label="Total on-hand (KG)" /></div>
+        <div className="card statcard"><div className="ic"><Search size={22} /></div><Stat value={fmt.num(shownQty)} label="Shown qty (filtered, KG)" /></div>
       </div>
 
       <MfgStockCharts rows={rows} />

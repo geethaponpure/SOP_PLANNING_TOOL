@@ -6,7 +6,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
-import { Truck, Wallet, Handshake, Package, Target, ClipboardList, BarChart3, TriangleAlert } from "lucide-react";
+import { Truck, Wallet, Handshake, Package, Target, ClipboardList, BarChart3, TriangleAlert, TrendingUp, Eye, Dna, CalendarDays, CircleCheck } from "lucide-react";
 
 // My Dashboard — permission-scoped dispatch view. The backend resolves the
 // user's CRM data grants (stg_user_scope) and returns a compact cube
@@ -208,8 +208,8 @@ function ItemGraphModal({ target, idParams, onClose }) {
         style={{ maxWidth: 780, width: "94vw" }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-container-header">
           <div className="modal-container-title" style={{ minWidth: 0 }}>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              📈 {target.name}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, overflow: "hidden" }}>
+              <TrendingUp size={16} style={{ flex: "none" }} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{target.name}</span>
             </span>
           </div>
           <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
@@ -275,6 +275,62 @@ function pipeOption(pipe) {
   };
 }
 
+// The three single-number projection metrics share one canvas: pick the metric,
+// then read it as a chart or as the table behind it.
+const PROJ_METRICS = [
+  { id: "accuracy", label: "Accuracy", icon: Target, title: "Accuracy on projected items" },
+  { id: "volume", label: "Volume projected", icon: BarChart3, title: "Sales volume projected" },
+  { id: "items", label: "Items missing", icon: TriangleAlert, title: "Items with no projection" },
+];
+
+// Single-number projection metrics, drawn rather than printed on a card.
+const accColor = (v) => (v == null ? "#90a1ac" : v < 40 ? "#c53030" : v < 70 ? "#b7791f" : "#2f855a");
+
+function gaugeOption(value, caption) {
+  const c = accColor(value);
+  return {
+    ...ANIM,
+    tooltip: { ...TT, trigger: "item",
+      formatter: () => `Accuracy on projected items<br/><b style="font-size:14px">${value == null ? "—" : value + "%"}</b>` +
+        `<br/><span style="color:#90a1ac">100 − WMAPE across completed JCs</span>` },
+    series: [{
+      type: "gauge", startAngle: 205, endAngle: -25, min: 0, max: 100,
+      radius: "94%", center: ["50%", "60%"],
+      progress: { show: true, width: 16, roundCap: true, itemStyle: { color: c } },
+      axisLine: { lineStyle: { width: 16, color: [[1, "#eef2f7"]] } },
+      pointer: { show: false }, anchor: { show: false },
+      axisTick: { show: false }, splitLine: { show: false },
+      axisLabel: { distance: -20, fontSize: 9, color: "#b6c2cc",
+        formatter: (v) => (v === 0 || v === 100 ? `${v}` : "") },
+      detail: { valueAnimation: true, fontSize: 30, fontWeight: 700, offsetCenter: [0, "0%"],
+        formatter: (v) => (value == null ? "—" : `${v}%`), color: c },
+      title: { offsetCenter: [0, "34%"], fontSize: 11, color: "#90a1ac" },
+      data: [{ value: value == null ? 0 : value, name: caption }],
+    }],
+  };
+}
+
+// Donut for a two-way split (projected vs not), with the share in the middle.
+function ratioOption(rows, { centerText, centerSub, unit }) {
+  return {
+    ...ANIM,
+    tooltip: { ...TT, trigger: "item",
+      formatter: (o) => `${o.marker} ${o.name}<br/><b style="font-size:13px">${fmt.num(o.value)}</b> ${unit} · ${o.percent}%` },
+    legend: { bottom: 0, icon: "circle", itemWidth: 9, itemHeight: 9,
+      textStyle: { color: "#414d55", fontSize: 11 } },
+    title: { text: centerText, subtext: centerSub, left: "center", top: "31%",
+      textStyle: { fontSize: 24, fontWeight: 700, color: "#1f3a5f" },
+      subtextStyle: { fontSize: 11, color: "#90a1ac" } },
+    series: [{
+      type: "pie", radius: ["58%", "80%"], center: ["50%", "42%"], avoidLabelOverlap: true,
+      itemStyle: { borderRadius: 6, borderColor: "#fff", borderWidth: 2 },
+      label: { show: false }, labelLine: { show: false },
+      emphasis: { scale: true, scaleSize: 8, itemStyle: { shadowBlur: 14, shadowColor: "rgba(0,0,0,.18)" } },
+      data: rows.map((r) => ({ value: r.value, name: r.name, itemStyle: { color: r.color } })),
+    }],
+  };
+}
+
 // ── projection analytics charts (JC trend / accuracy / items / item group) ────
 
 // Projected KG per JC (bars) against actual sales (line on its own axis) — the
@@ -287,7 +343,12 @@ function jcQtyOption(trend) {
     tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
       formatter: (ps) => {
         const t = trend[ps[0].dataIndex] || {};
-        return `<b>${t.label}</b><span style="color:#90a1ac;font-size:11px"> ${t.from} → ${t.to}</span>` +
+        const when = t.from ? `<span style="color:#90a1ac;font-size:11px"> ${t.from} → ${t.to}</span>` : "";
+        if (!t.done) {
+          return `<b>${t.label}</b>${when}<br/>Projected: <b>${fmt.num(t.proj)}</b> KG` +
+            `<br/><span style="color:#90a1ac">planning cycle — not dispatched yet</span>`;
+        }
+        return `<b>${t.label}</b>${when}` +
           `<br/>Projected: <b>${fmt.num(t.proj)}</b> KG` +
           `<br/>Actual sales: <b>${fmt.num(t.actual)}</b> KG` +
           `<br/><span style="color:#90a1ac">${t.items_projected} of ${t.items_sold} selling items projected</span>`;
@@ -304,8 +365,8 @@ function jcQtyOption(trend) {
     ],
     series: [
       { name: "Projected KG", type: "bar", barWidth: "48%", yAxisIndex: 0,
-        itemStyle: { borderRadius: [5, 5, 0, 0], color: "#4880ff" },
-        data: trend.map((t) => t.proj) },
+        data: trend.map((t) => ({ value: t.proj,
+          itemStyle: { borderRadius: [5, 5, 0, 0], color: t.done ? "#4880ff" : "#b9cdfd" } })) },
       { name: "Actual sales KG", type: "line", yAxisIndex: 1, smooth: true,
         symbol: "circle", symbolSize: 7, lineStyle: { width: 3, color: "#2a9d8f" },
         itemStyle: { color: "#2a9d8f" }, data: trend.map((t) => t.actual) },
@@ -353,6 +414,10 @@ function jcItemsOption(trend) {
     tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
       formatter: (ps) => {
         const t = trend[ps[0].dataIndex] || {};
+        if (!t.done) {
+          return `<b>${t.label}</b><br/>Items with a projection: <b>${fmt.num(t.items_projected)}</b>` +
+            `<br/><span style="color:#90a1ac">planning cycle — not dispatched yet</span>`;
+        }
         const pct = t.items_sold ? Math.round((t.items_projected / t.items_sold) * 100) : null;
         return `<b>${t.label}</b><br/>Items with a projection: <b>${fmt.num(t.items_projected)}</b>` +
           `<br/>Items that sold: <b>${fmt.num(t.items_sold)}</b>` +
@@ -364,8 +429,8 @@ function jcItemsOption(trend) {
       axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true } },
     series: [
       { name: "Items projected", type: "bar", barWidth: "48%",
-        itemStyle: { borderRadius: [5, 5, 0, 0], color: "#805ad5" },
-        data: trend.map((t) => t.items_projected) },
+        data: trend.map((t) => ({ value: t.items_projected,
+          itemStyle: { borderRadius: [5, 5, 0, 0], color: t.done ? "#805ad5" : "#cdbdf0" } })) },
       { name: "Items sold", type: "line", smooth: true, symbol: "circle", symbolSize: 7,
         lineStyle: { width: 3, color: "#90a1ac" }, itemStyle: { color: "#90a1ac" },
         data: trend.map((t) => t.items_sold) },
@@ -458,7 +523,7 @@ export default function Dashboard({ session, isAdmin }) {
   const switcher = isAdmin && plist.length > 0 && (
     <div className="card" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10,
       padding: "10px 16px", marginBottom: 14, background: viewAs.username ? "#FFF9EF" : undefined }}>
-      <b style={{ fontSize: 13 }}>👁 View as</b>
+      <b style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}><Eye size={15} /> View as</b>
       <SelectBox className="searchbox" style={{ maxWidth: 250 }} value={viewAs.persona} onChange={pickPersona}>
         <option value="">Myself (Admin — all data)</option>
         {plist.map((p) => (
@@ -527,6 +592,7 @@ export default function Dashboard({ session, isAdmin }) {
   useEffect(() => {
     setPipeView("chart"); setPipeQ(""); setItemPop(null);
     setGroupView("chart"); setMissView("chart"); setMissQ("");
+    setProjMetric("accuracy"); setProjView("chart");
   }, [viewAs.username, viewAs.persona]);
 
   const idParams = useMemo(() => (viewAs.username
@@ -545,6 +611,27 @@ export default function Dashboard({ session, isAdmin }) {
     name: FLAGS[s.flag]?.label || s.flag, value: s.items, color: FLAGS[s.flag]?.color })), [p]);
   const statusOpt = useMemo(() => distOption(statusRows, { shape: shape.proj, unit: "items", center: "items" }),
     [statusRows, shape.proj]);
+  const accGaugeOpt = useMemo(
+    () => gaugeOption(p?.overall_accuracy_proj ?? null, "on projected items"), [p]);
+  const volRatioOpt = useMemo(() => ratioOption([
+    { name: "Projected", value: p?.covered_kg || 0, color: "#2a9d8f" },
+    { name: "No projection", value: p?.uncovered_kg || 0, color: "#c53030" },
+  ], { centerText: `${p?.coverage_pct ?? 0}%`, centerSub: "of sales volume", unit: "KG / JC" }), [p]);
+  const itemRatioOpt = useMemo(() => {
+    const projected = p?.items_projected || 0, missing = p?.missing_total || 0;
+    const tot = projected + missing;
+    return ratioOption([
+      { name: "Has a projection", value: projected, color: "#4880ff" },
+      { name: "No projection", value: missing, color: "#c53030" },
+    ], { centerText: fmt.num(missing), centerSub: "items unprojected",
+      unit: tot ? "items" : "items" });
+  }, [p]);
+  const [projMetric, setProjMetric] = useState("accuracy");
+  const [projView, setProjView] = useState("chart");
+  const lastDoneJc = useMemo(() => {
+    const done = (p?.jc_trend || []).filter((t) => t.done);
+    return done.length ? done[done.length - 1].jc : "—";
+  }, [p]);
   const jcQtyOpt = useMemo(() => jcQtyOption(p?.jc_trend || []), [p]);
   const jcAccOpt = useMemo(() => jcAccOption(p?.jc_trend || []), [p]);
   const jcItemsOpt = useMemo(() => jcItemsOption(p?.jc_trend || []), [p]);
@@ -661,25 +748,178 @@ export default function Dashboard({ session, isAdmin }) {
 
       {p && (
         <>
-          <div className="grid cols-4" style={{ marginTop: 14 }}>
-            <div className="card statcard"><div className="ic"><Target size={22} /></div>
-              <Stat value={p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}
-                label="Accuracy on projected items" /></div>
-            <div className="card statcard"><div className="ic"><ClipboardList size={22} /></div>
-              <Stat value={fmt.num(p.items_projected)}
-                label={`Items projected · JC${p.jc}`} /></div>
-            <div className="card statcard amber"><div className="ic"><BarChart3 size={22} /></div>
-              <Stat value={`${p.coverage_pct}%`} label="Sales volume projected" /></div>
-            <div className="card statcard"><div className="ic"><TriangleAlert size={22} /></div>
-              <Stat value={fmt.num(p.missing_total)} label="Items with no projection" /></div>
-          </div>
+          <div className="card" style={{ marginTop: 14 }}>
+            <div className="supply-dash-cardhead">
+              <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>{(() => { const M = PROJ_METRICS.find((m) => m.id === projMetric); const I = M?.icon; return <>{I && <I size={16} />} {M?.title}</>; })()}</h3>
+                <div className="sub">
+                  {projMetric === "accuracy" && <>100 − WMAPE over JC1–JC{lastDoneJc} · only the items that were projected</>}
+                  {projMetric === "volume" && <>share of your 3-JC average sales that carries a JC{p.jc} projection</>}
+                  {projMetric === "items" && <>selling items with vs without a JC{p.jc} projection</>}
+                </div></div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <SegTabs size="sm" value={projMetric} onChange={setProjMetric}
+                  tabs={PROJ_METRICS.map((m) => ({ id: m.id, label: m.label }))} />
+                <SegTabs size="sm" value={projView} onChange={setProjView}
+                  tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
+              </div>
+            </div>
 
+            {projView === "chart" ? (
+              <div style={{ maxWidth: 560, margin: "0 auto" }}>
+                <EChart option={projMetric === "accuracy" ? accGaugeOpt
+                  : projMetric === "volume" ? volRatioOpt : itemRatioOpt} height={250} />
+              </div>
+            ) : projMetric === "accuracy" ? (
+              <div className="tbl-wrap" style={{ maxHeight: 340 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...HCELL, textAlign: "left" }}>Job cycle</th>
+                      <th style={{ ...HCELL, textAlign: "left" }}>Period</th>
+                      <th style={{ ...HCELL, textAlign: "right" }}>Projected (KG)</th>
+                      <th style={{ ...HCELL, textAlign: "right" }}>Actual sales (KG)</th>
+                      <th style={{ ...HCELL, textAlign: "right" }}>Items projected</th>
+                      <th style={{ ...HCELL, textAlign: "right" }}>Accuracy (projected)</th>
+                      <th style={{ ...HCELL, textAlign: "right" }}>Accuracy (all items)</th>
+                      <th style={{ ...HCELL, textAlign: "right" }}>Volume projected</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(p.jc_trend || []).map((t, i) => (
+                      <tr key={i}>
+                        <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>
+                          {t.label}{!t.done && <span style={{ fontSize: 10.5, color: "var(--muted)",
+                            fontWeight: 400 }}> · planning</span>}
+                        </td>
+                        <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                          {t.from ? `${t.from} → ${t.to}` : "—"}
+                        </td>
+                        <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(t.proj)}</td>
+                        <td style={{ ...CELL, textAlign: "right" }}>
+                          {t.actual == null ? <span style={{ color: "var(--muted)" }}>not dispatched yet</span>
+                            : fmt.num(t.actual)}
+                        </td>
+                        <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(t.items_projected)}</td>
+                        <td style={{ ...CELL, textAlign: "right", fontWeight: 600,
+                          color: t.accuracy_proj == null ? "var(--muted)" : accColor(t.accuracy_proj) }}>
+                          {t.accuracy_proj == null ? "—" : `${t.accuracy_proj}%`}
+                        </td>
+                        <td style={{ ...CELL, textAlign: "right", color: "var(--muted)" }}>
+                          {t.accuracy == null ? "—" : `${t.accuracy}%`}
+                        </td>
+                        <td style={{ ...CELL, textAlign: "right" }}>
+                          {t.coverage_pct == null ? "—" : `${t.coverage_pct}%`}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td style={{ ...CELL, background: "#f7fafc", fontWeight: 700 }} colSpan={5}>
+                        Overall · completed cycles
+                      </td>
+                      <td style={{ ...CELL, background: "#f7fafc", textAlign: "right", fontWeight: 700,
+                        color: accColor(p.overall_accuracy_proj) }}>
+                        {p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}
+                      </td>
+                      <td style={{ ...CELL, background: "#f7fafc", textAlign: "right", fontWeight: 700,
+                        color: "var(--muted)" }}>
+                        {p.overall_accuracy == null ? "—" : `${p.overall_accuracy}%`}
+                      </td>
+                      <td style={{ ...CELL, background: "#f7fafc", textAlign: "right", fontWeight: 700 }}>
+                        {p.coverage_pct}%
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <>
+                <div className="pagebar" style={{ marginBottom: 10 }}>
+                  <SegTabs size="sm" value={groupLevel} onChange={setGroupLevel}
+                    tabs={[{ id: "segment3", label: "Segment 3" }, { id: "segment2", label: "Segment 2" }]} />
+                  <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
+                    broken down by item group
+                  </span>
+                </div>
+                <div className="tbl-wrap" style={{ maxHeight: 340 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      {projMetric === "volume" ? (
+                        <tr>
+                          <th style={{ ...HCELL, textAlign: "left" }}>Item group</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales (KG)</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>Projected (KG)</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>Sales with a projection</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>Sales with none</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>Volume projected</th>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <th style={{ ...HCELL, textAlign: "left" }}>Item group</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>Items</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>With a projection</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>No projection</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>Unprojected sales (KG)</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>% items missing</th>
+                        </tr>
+                      )}
+                    </thead>
+                    <tbody>
+                      {groupRows.map((g, i) => {
+                        const covPct = g.avg3 ? (g.covered_kg / g.avg3) * 100 : null;
+                        const missPct = g.items ? (g.missing / g.items) * 100 : null;
+                        return (
+                          <tr key={i}>
+                            <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>{g.name}</td>
+                            {projMetric === "volume" ? (
+                              <>
+                                <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(g.avg3)}</td>
+                                <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(g.proj)}</td>
+                                <td style={{ ...CELL, textAlign: "right", color: "#2a9d8f", fontWeight: 600 }}>
+                                  {fmt.num(g.covered_kg)}
+                                </td>
+                                <td style={{ ...CELL, textAlign: "right",
+                                  color: g.uncovered_kg ? "#c53030" : "var(--muted)", fontWeight: g.uncovered_kg ? 600 : 400 }}>
+                                  {fmt.num(g.uncovered_kg)}
+                                </td>
+                                <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>
+                                  {covPct == null ? "—" : `${covPct.toFixed(1)}%`}
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(g.items)}</td>
+                                <td style={{ ...CELL, textAlign: "right", color: "#4880ff", fontWeight: 600 }}>
+                                  {fmt.num(g.items - g.missing)}
+                                </td>
+                                <td style={{ ...CELL, textAlign: "right",
+                                  color: g.missing ? "#c53030" : "var(--muted)", fontWeight: g.missing ? 600 : 400 }}>
+                                  {fmt.num(g.missing)}
+                                </td>
+                                <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(g.uncovered_kg)}</td>
+                                <td style={{ ...CELL, textAlign: "right", fontWeight: 600,
+                                  color: missPct && missPct > 50 ? "#c53030" : "inherit" }}>
+                                  {missPct == null ? "—" : `${missPct.toFixed(0)}%`}
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        );
+                      })}
+                      {groupRows.length === 0 && (
+                        <tr><td colSpan={6} style={CELL}>No item groups in scope.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
           <div className="grid cols-2" style={{ marginTop: 14 }}>
             {p.jc_trend.length > 0 && (
               <div className="card">
                 <div className="supply-dash-cardhead">
-                  <div><h3>📦 Total projection qty by JC</h3>
-                    <div className="sub">projected KG per job cycle vs actual sales · {p.acc_year}</div></div>
+                  <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Package size={16} /> Total projection qty by JC</h3>
+                    <div className="sub">projected KG per job cycle vs actual sales · {p.acc_year} · the pale bar is the planning JC{p.jc}</div></div>
                 </div>
                 <EChart option={jcQtyOpt} height={260} />
               </div>
@@ -688,7 +928,7 @@ export default function Dashboard({ session, isAdmin }) {
             {p.jc_trend.length > 0 && (
               <div className="card">
                 <div className="supply-dash-cardhead">
-                  <div><h3>🎯 Projection accuracy by JC</h3>
+                  <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Target size={16} /> Projection accuracy by JC</h3>
                     <div className="sub">100 − WMAPE per item · overall <b>{p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}</b> on projected items</div></div>
                 </div>
                 <EChart option={jcAccOpt} height={260} />
@@ -698,8 +938,8 @@ export default function Dashboard({ session, isAdmin }) {
             {p.jc_trend.length > 0 && (
               <div className="card">
                 <div className="supply-dash-cardhead">
-                  <div><h3>📝 Items with a projection</h3>
-                    <div className="sub">how many items were projected vs how many actually sold</div></div>
+                  <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><ClipboardList size={16} /> Items projected · every JC</h3>
+                    <div className="sub">items carrying a projection each cycle vs items that actually sold · the pale bar is the planning JC (not dispatched yet)</div></div>
                 </div>
                 <EChart option={jcItemsOpt} height={260} />
               </div>
@@ -716,7 +956,7 @@ export default function Dashboard({ session, isAdmin }) {
 
             <div className="card" style={{ gridColumn: "1 / -1" }}>
               <div className="supply-dash-cardhead">
-                <div><h3>🧬 Projection by item group</h3>
+                <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Dna size={16} /> Projection by item group</h3>
                   <div className="sub">JC{p.jc} projected KG per {groupLevel === "segment2" ? "division (Segment 2)" : "product group (Segment 3)"} · sales, accuracy and gaps in the tooltip</div></div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <SegTabs size="sm" value={groupLevel} onChange={setGroupLevel}
@@ -763,7 +1003,7 @@ export default function Dashboard({ session, isAdmin }) {
 
             <div className="card" style={{ gridColumn: "1 / -1" }}>
               <div className="supply-dash-cardhead">
-                <div><h3>🎯 Projection vs 3-JC avg sales</h3>
+                <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Target size={16} /> Projection vs 3-JC avg sales</h3>
                   <div className="sub">
                     top items by sales · JC{p.jc} {p.acc_year} projection
                     ({p.basis === "collector" ? "your collectors" : "per item, company-wide"}) vs 3-JC average sales ·
@@ -776,7 +1016,7 @@ export default function Dashboard({ session, isAdmin }) {
 
             <div className="card" style={{ gridColumn: "1 / -1" }}>
               <div className="supply-dash-cardhead">
-                <div><h3>📅 Projection pipeline</h3>
+                <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><CalendarDays size={16} /> Projection pipeline</h3>
                   <div className="sub">projected KG for the current and the next two job cycles · your scope</div></div>
                 <SegTabs size="sm" value={pipeView} onChange={setPipeView}
                   tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
@@ -837,7 +1077,7 @@ export default function Dashboard({ session, isAdmin }) {
             <div className="card" style={{ gridColumn: "1 / -1",
               ...(p.missing_total > 0 ? { borderColor: "#f0b9b9", background: "#FFFBFA" } : {}) }}>
               <div className="supply-dash-cardhead">
-                <div><h3>⚠️ Missing projections</h3>
+                <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><TriangleAlert size={16} /> Missing projections</h3>
                   <div className="sub">
                     selling items with <b>no JC{p.jc} projection</b>
                     {p.missing_total > 0 && (
@@ -852,8 +1092,8 @@ export default function Dashboard({ session, isAdmin }) {
                 )}
               </div>
               {p.missing_total === 0 ? (
-                <div style={{ padding: "48px 0", textAlign: "center", color: "#2f855a", fontSize: 13 }}>
-                  ✅ Every selling item in your scope has a projection for JC{p.jc}.
+                <div style={{ padding: "48px 0", textAlign: "center", color: "#2f855a", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+                  <CircleCheck size={16} /> Every selling item in your scope has a projection for JC{p.jc}.
                 </div>
               ) : missView === "chart" ? (
                 <>

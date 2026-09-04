@@ -25,7 +25,7 @@ from ..integration.planning_filter import _proj_flag   # the plan's ±20% band
 
 # bump when the payload shape changes so stale precomputed admin payloads
 # (computed_plan.dashboard_admin) are rebuilt instead of served
-_PAYLOAD_V = 5
+_PAYLOAD_V = 7
 
 # broadest scope first — a user holding several personas gets the widest view
 _PERSONA_PRIORITY = ["Division Head", "Business Head", "Technical Head",
@@ -281,6 +281,8 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
     for level, gm in groups.items():
         out = [{"name": g["name"], "proj": round(g["proj"]), "avg3": round(g["avg3"]),
                 "items": g["items"], "missing": g["missing"],
+                "covered_kg": round(sum(a for pr, a in g["pairs"] if pr > 0)),
+                "uncovered_kg": round(sum(a for pr, a in g["pairs"] if pr <= 0)),
                 "accuracy": _wmape_acc(g["pairs"]),
                 "accuracy_proj": _wmape_acc([x for x in g["pairs"] if x[0] > 0])}
                for g in gm.values()]
@@ -312,29 +314,36 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
         d = proj_by_jc.setdefault(int(r["jc"]), {})
         d[k] = d.get(k, 0.0) + float(r.get("current_q") or 0)
 
+    # Every staged JC of the year — including the PLANNING JC, which has
+    # projections but no actuals yet (its actual/accuracy come back as null so
+    # the qty and item-count charts still show it).
+    win = {int(w.get("jc") or 0): (i, w) for i, w in enumerate(window or [])
+           if str(w.get("fy")) == str(acc_year)}
     jc_trend, all_pairs, all_pairs_p = [], [], []
-    for idx, w in enumerate(window or []):
-        if str(w.get("fy")) != str(acc_year):
-            continue
-        wjc = int(w.get("jc") or 0)
-        pj, ac = proj_by_jc.get(wjc, {}), act_by_jc.get(idx, {})
+    for wjc in sorted(set(proj_by_jc) | set(win)):
+        idx, w = win.get(wjc, (None, {}))
+        pj = proj_by_jc.get(wjc, {})
+        ac = act_by_jc.get(idx, {}) if idx is not None else {}
+        done = idx is not None          # a completed JC we can score
         if not pj and not ac:
             continue
         pairs = [(pj.get(k, 0.0), ac.get(k, 0.0)) for k in set(pj) | set(ac)]
         pairs_p = [x for x in pairs if x[0] > 0]
-        all_pairs += pairs
-        all_pairs_p += pairs_p
+        if done:
+            all_pairs += pairs
+            all_pairs_p += pairs_p
+        act_tot = sum(a for _, a in pairs)
         jc_trend.append({
-            "label": f"JC{wjc}", "jc": wjc,
+            "label": f"JC{wjc}", "jc": wjc, "done": done,
             "from": str(w.get("from") or ""), "to": str(w.get("to") or ""),
-            "proj": round(sum(pj.values())), "actual": round(sum(ac.values())),
+            "proj": round(sum(pj.values())),
+            "actual": round(sum(ac.values())) if done else None,
             "items_projected": sum(1 for v in pj.values() if v > 0),
-            "items_sold": sum(1 for v in ac.values() if v > 0),
-            "accuracy": _wmape_acc(pairs),
-            "accuracy_proj": _wmape_acc(pairs_p),
-            "coverage_pct": (round(100 * sum(a for _, a in pairs_p)
-                                   / sum(a for _, a in pairs), 1)
-                             if sum(a for _, a in pairs) > 0 else None),
+            "items_sold": sum(1 for v in ac.values() if v > 0) if done else None,
+            "accuracy": _wmape_acc(pairs) if done else None,
+            "accuracy_proj": _wmape_acc(pairs_p) if done else None,
+            "coverage_pct": (round(100 * sum(a for _, a in pairs_p) / act_tot, 1)
+                             if done and act_tot > 0 else None),
         })
 
     missing_all = [{"name": i["name"], "code": i["code"], "avg3": i["avg3"]}
@@ -353,6 +362,8 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
         "by_group": by_group,
         "items_projected": pipeline[0]["items"],
         "items_selling": sum(1 for i in items if i["avg3"] > 0),
+        "covered_kg": round(covered),
+        "uncovered_kg": round(sum(i["avg3"] for i in items if i["proj"] <= 0)),
         "missing": missing_all[:15],
         "missing_all": missing_all,
         "missing_total": sum(1 for i in items if i["flag"] == "none"),

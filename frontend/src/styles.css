@@ -621,12 +621,18 @@ body {
 .profile-menu-pop .dd-item.act-pw svg { color: #00bf63; }
 .profile-menu-pop .dd-item.logout { color: #e5484d; }
 .profile-menu-pop .dd-item.logout svg { color: #e5484d; }
-/* signature green hover — every item, icon turns white (matches the reference) */
-.profile-menu-pop .dd-item[data-hovered], .profile-menu-pop .dd-item[data-focused],
-.profile-menu-pop .dd-item.logout[data-hovered], .profile-menu-pop .dd-item.logout[data-focused] {
+/* neutralise the shared dd focus tint: react-aria sets [data-focused] while the menu
+   closes, which otherwise flashes the fill colour on the way out */
+.profile-menu-pop .dd-item[data-focused] { background: transparent; }
+/* signature green fill on real hover / keyboard focus — icon turns white */
+.profile-menu-pop .dd-item[data-hovered], .profile-menu-pop .dd-item[data-focus-visible] {
   background: #00bf63; color: #fff;
 }
-.profile-menu-pop .dd-item[data-hovered] svg, .profile-menu-pop .dd-item[data-focused] svg { color: #fff; }
+/* logout keeps its red identity */
+.profile-menu-pop .dd-item.logout[data-hovered], .profile-menu-pop .dd-item.logout[data-focus-visible] {
+  background: #e5484d; color: #fff;
+}
+.profile-menu-pop .dd-item[data-hovered] svg, .profile-menu-pop .dd-item[data-focus-visible] svg { color: #fff; }
 
 /* ---- SelectBox: custom <select> on react-aria (see components/SelectBox.jsx) ---- */
 /* wrapper is layout-transparent so the trigger sits in the parent flex like a native select */

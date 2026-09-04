@@ -5,6 +5,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
+import { CalendarDays, Receipt, ArrowUp, BadgePlus, ShoppingCart } from "lucide-react";
 
 const NetCell = ({ v }) => <span className={v > 0 ? "num-pos" : "num-zero"}>{fmt.num(v)}</span>;
 
@@ -86,12 +87,12 @@ export default function AdhocPlanning() {
 
       <div className="card" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", padding: "12px 14px" }}>
         {[
-          ["📅 Current JC", `JC${fz.jc} · ${fz.jc_from} → ${fz.jc_to} · FY ${fz.fy}`],
-          ["🧾 Pending-SOC window", `${fz.pending_from} → ${fz.pending_to}`],
+          [<><CalendarDays size={14} /> Current JC</>, `JC${fz.jc} · ${fz.jc_from} → ${fz.jc_to} · FY ${fz.fy}`],
+          [<><Receipt size={14} /> Pending-SOC window</>, `${fz.pending_from} → ${fz.pending_to}`],
         ].map(([k, v], i) => (
           <span key={i} style={{ display: "inline-flex", gap: 6, alignItems: "baseline", background: "#F0F6FF",
             border: "1px solid #CFE0FB", borderRadius: 8, padding: "5px 11px", fontSize: 12.5 }}>
-            <span style={{ color: "var(--muted)", fontWeight: 600 }}>{k}</span>
+            <span style={{ color: "var(--muted)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>{k}</span>
             <b style={{ color: "var(--navy)" }}>{v}</b>
           </span>
         ))}
@@ -111,10 +112,10 @@ export default function AdhocPlanning() {
       {!data.mysql_ready && <div className="banner warn">MySQL store not ready — JC-plan deduction & logging need <code>backend/db/migrate_adhoc.sql</code> (run as root). Adhoc still evaluates on full stock.</div>}
 
       <div className="grid cols-4">
-        <div className="card statcard"><div className="ic">🧾</div><Stat value={fmt.num(s.soc_items)} label="Post-freeze SOC items" /></div>
-        <div className="card statcard red"><div className="ic">⬆️</div><Stat value={fmt.num(s.exceeds)} label="Exceeds (excess adhoc)" /></div>
-        <div className="card statcard blue"><div className="ic">🆕</div><Stat value={fmt.num(s.new)} label="New line items" /></div>
-        <div className="card statcard amber"><div className="ic">🛒</div><Stat value={`${fmt.num(s.rms_to_buy)} · ${fmt.num(s.total_buy_qty)}`} label="Adhoc RMs to buy · KG" /></div>
+        <div className="card statcard"><div className="ic"><Receipt size={22} /></div><Stat value={fmt.num(s.soc_items)} label="Post-freeze SOC items" /></div>
+        <div className="card statcard red"><div className="ic"><ArrowUp size={22} /></div><Stat value={fmt.num(s.exceeds)} label="Exceeds (excess adhoc)" /></div>
+        <div className="card statcard blue"><div className="ic"><BadgePlus size={22} /></div><Stat value={fmt.num(s.new)} label="New line items" /></div>
+        <div className="card statcard amber"><div className="ic"><ShoppingCart size={22} /></div><Stat value={`${fmt.num(s.rms_to_buy)} · ${fmt.num(s.total_buy_qty)}`} label="Adhoc RMs to buy · KG" /></div>
       </div>
 
       <div style={{ margin: "16px 0 8px" }}>

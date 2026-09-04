@@ -4,6 +4,7 @@ import SegTabs from "../components/SegTabs.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
+import { Hourglass, FlaskConical, Factory, ShoppingCart, CircleCheck, Recycle, TrendingUp } from "lucide-react";
 
 export default function AgedRM() {
   const { data, loading, error } = useAsync(api.agedRmPlan);
@@ -30,16 +31,16 @@ export default function AgedRM() {
       </div>
 
       <div className="grid cols-4">
-        <div className="card statcard"><div className="ic">⏳</div><Stat value={fmt.num(s.aged_rm_items)} label={`Aged RM items (> ${data.aged_days}d)`} /></div>
-        <div className="card statcard"><div className="ic">⚗️</div><Stat value={fmt.num(s.aged_rm_qty)} label="Aged RM qty (KG)" /></div>
-        <div className="card statcard blue"><div className="ic">🏭</div><Stat value={fmt.num(s.fgs_producible_from_aged)} label="FGs producible from aged RM" /></div>
-        <div className="card statcard amber"><div className="ic">🛒</div><Stat value={fmt.num(s.fgs_needing_purchase)} label="FGs needing a purchase" /></div>
+        <div className="card statcard"><div className="ic"><Hourglass size={22} /></div><Stat value={fmt.num(s.aged_rm_items)} label={`Aged RM items (> ${data.aged_days}d)`} /></div>
+        <div className="card statcard"><div className="ic"><FlaskConical size={22} /></div><Stat value={fmt.num(s.aged_rm_qty)} label="Aged RM qty (KG)" /></div>
+        <div className="card statcard blue"><div className="ic"><Factory size={22} /></div><Stat value={fmt.num(s.fgs_producible_from_aged)} label="FGs producible from aged RM" /></div>
+        <div className="card statcard amber"><div className="ic"><ShoppingCart size={22} /></div><Stat value={fmt.num(s.fgs_needing_purchase)} label="FGs needing a purchase" /></div>
       </div>
       <div className="grid cols-3" style={{ marginTop: 12 }}>
-        <div className="card statcard"><div className="ic">✅</div><Stat value={`${fmt.num(s.recommended_fgs)} FGs`} label="Recommended to produce" /></div>
-        <div className="card statcard"><div className="ic">♻️</div><Stat value={`${fmt.num(s.aged_consumed_qty)} KG`} label="Aged RM consumed by plan" /></div>
+        <div className="card statcard"><div className="ic"><CircleCheck size={22} /></div><Stat value={`${fmt.num(s.recommended_fgs)} FGs`} label="Recommended to produce" /></div>
+        <div className="card statcard"><div className="ic"><Recycle size={22} /></div><Stat value={`${fmt.num(s.aged_consumed_qty)} KG`} label="Aged RM consumed by plan" /></div>
         <div className="card statcard" style={{ borderLeft: `4px solid ${s.utilisation_pct >= 60 ? "var(--green)" : "var(--amber)"}` }}>
-          <div className="ic">📈</div><Stat value={`${s.utilisation_pct}%`} label={`Aged utilisation · ${fmt.num(s.aged_left_unused)} KG left`} /></div>
+          <div className="ic"><TrendingUp size={22} /></div><Stat value={`${s.utilisation_pct}%`} label={`Aged utilisation · ${fmt.num(s.aged_left_unused)} KG left`} /></div>
       </div>
 
       <div style={{ margin: "16px 0 8px" }}>

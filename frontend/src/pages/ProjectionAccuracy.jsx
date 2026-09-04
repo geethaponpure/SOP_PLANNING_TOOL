@@ -5,6 +5,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
+import { ArrowDown, Target, Scale, BarChart3, Link2, Package, Factory, CircleCheck, TriangleAlert } from "lucide-react";
 
 const pct = (v, d = 1) => (v == null ? "—" : `${Number(v).toFixed(d)}%`);
 const accColor = (v) => (v == null ? "var(--muted)" : v >= 80 ? "var(--green,#2A9D8F)" : v >= 50 ? "#8a6d00" : "var(--red)");
@@ -117,7 +118,7 @@ export default function ProjectionAccuracy() {
         </label>
         <button className="btn" style={{ marginLeft: "auto", alignSelf: "flex-end" }}
           onClick={() => api.projAccuracyExport({ acc_year: accYear || undefined, jc: jc === "" ? undefined : Number(jc), approved })}>
-          ⬇ Export Excel
+          <ArrowDown size={15} /> Export Excel
         </button>
       </div>
 
@@ -128,23 +129,23 @@ export default function ProjectionAccuracy() {
           {data.data.note && <div className="banner warn" style={{ marginTop: 8 }}>{data.data.note}</div>}
 
           <div className="grid cols-4" style={{ marginTop: 12 }}>
-            <div className="card statcard"><div className="ic">🎯</div>
+            <div className="card statcard"><div className="ic"><Target size={22} /></div>
               <Stat value={<span style={{ color: accColor(s.accuracy_pct) }}>{pct(s.accuracy_pct)}</span>} label="Accuracy % (matched, WMAPE-based)" /></div>
-            <div className="card statcard"><div className="ic">⚖️</div>
+            <div className="card statcard"><div className="ic"><Scale size={22} /></div>
               <Stat value={pct(s.bias_pct)} label="Bias % (matched)" /></div>
-            <div className="card statcard amber"><div className="ic">📊</div>
+            <div className="card statcard amber"><div className="ic"><BarChart3 size={22} /></div>
               <Stat value={`${pct(s.mape)} / ${pct(s.wmape)}`} label="MAPE / WMAPE %" /></div>
-            <div className="card statcard"><div className="ic">🔗</div>
+            <div className="card statcard"><div className="ic"><Link2 size={22} /></div>
               <Stat value={pct(s.coverage_pct)} label="Production covered by projection" /></div>
           </div>
           <div className="grid cols-4" style={{ marginTop: 10 }}>
-            <div className="card statcard"><div className="ic">📦</div>
+            <div className="card statcard"><div className="ic"><Package size={22} /></div>
               <Stat value={fmt.num(s.projected_all)} label="Projected total (KG)" /></div>
-            <div className="card statcard"><div className="ic">🏭</div>
+            <div className="card statcard"><div className="ic"><Factory size={22} /></div>
               <Stat value={fmt.num(s.actual_all)} label="Actual produced (KG)" /></div>
-            <div className="card statcard"><div className="ic">✅</div>
+            <div className="card statcard"><div className="ic"><CircleCheck size={22} /></div>
               <Stat value={`${fmt.num(s.n_matched)} / ${fmt.num(s.n_items)}`} label="Matched / total items" /></div>
-            <div className="card statcard"><div className="ic">⚠️</div>
+            <div className="card statcard"><div className="ic"><TriangleAlert size={22} /></div>
               <Stat value={`${fmt.num(s.n_proj_only)} / ${fmt.num(s.n_prod_only)}`} label="Proj-only / Prod-only" /></div>
           </div>
 

@@ -5,6 +5,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
+import { ClipboardList, History, Mail, Settings, User, Timer, TriangleAlert, Factory, Package, Pause, Ban, Save, Download } from "lucide-react";
 
 const ROLES = ["R&D Requester", "Warehouse In-charge", "Warehouse Executive",
   "QA / QC", "R&D Head / Plant Head", "System Administrator"];
@@ -88,7 +89,7 @@ export default function SRDMS({ session, mode = "all" }) {
         <div className="card" style={{ marginTop: 12, padding: "10px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           {lu ? (
             <>
-              <span style={{ fontSize: 13 }}>👤 <b>{persona.name}</b>{persona.email ? ` · ${persona.email}` : ""}</span>
+              <span style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}><User size={14} /> <b>{persona.name}</b>{persona.email ? ` · ${persona.email}` : ""}</span>
               <span className="chip" style={{ cursor: "default" }}>{realRole}{persona.plant_id ? ` · plant ${persona.plant_id}` : ""}</span>
               <label style={{ fontSize: 12, color: "var(--muted)", display: "flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
                 View as:
@@ -109,12 +110,12 @@ export default function SRDMS({ session, mode = "all" }) {
         <SegTabs value={view === "detail" ? "requests" : view}
           onChange={(id) => { setView(id); setSelId(null); }}
           tabs={[
-            { id: "dashboard", label: "📊 Dashboard" },
-            { id: "requests", label: "📋 Requests" },
-            ...(isReq(persona.role) ? [{ id: "new", label: "➕ New Request" }] : []),
-            { id: "reports", label: "🕘 Reports" },
-            { id: "notifications", label: "✉ Notifications" },
-            ...(isAdmin(persona.role) ? [{ id: "masters", label: "⚙ Masters" }] : []),
+            { id: "dashboard", label: "Dashboard" },
+            { id: "requests", label: "Requests" },
+            ...(isReq(persona.role) ? [{ id: "new", label: "New Request" }] : []),
+            { id: "reports", label: "Reports" },
+            { id: "notifications", label: "Notifications" },
+            ...(isAdmin(persona.role) ? [{ id: "masters", label: "Masters" }] : []),
           ]} />
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
           Acting as <b>{persona.name || "—"}</b> · {persona.role}
@@ -175,10 +176,10 @@ function Dashboard({ onOpen, ver }) {
       <div className="grid cols-4" style={{ marginTop: 10 }}>
         {card(t.all, "All requests")}
         {card(t.closed, "Closed")}
-        <div className="card statcard"><div className="ic">⏱</div><div className="stat">
+        <div className="card statcard"><div className="ic"><Timer size={22} /></div><div className="stat">
           <div className="v">{data.avg_ack_tat_h == null ? "—" : `${data.avg_ack_tat_h}h`}</div>
           <div className="l">Avg acknowledge TAT</div></div></div>
-        <div className="card statcard"><div className="ic">⏱</div><div className="stat">
+        <div className="card statcard"><div className="ic"><Timer size={22} /></div><div className="stat">
           <div className="v">{data.avg_total_tat_h == null ? "—" : `${data.avg_total_tat_h}h`}</div>
           <div className="l">Avg total TAT (closed)</div></div></div>
       </div>
@@ -214,7 +215,7 @@ function Dashboard({ onOpen, ver }) {
 
       {(data.hold_overdue_lines || []).length > 0 && (
         <>
-          <h3 style={{ marginTop: 18, color: "var(--red)" }}>⚠ Holds past planned date</h3>
+          <h3 style={{ marginTop: 18, color: "var(--red)", display: "inline-flex", alignItems: "center", gap: 7 }}><TriangleAlert size={16} /> Holds past planned date</h3>
           <div className="tbl-wrap"><table><thead><tr>
             <th>SR No</th><th>Item</th><th>Planned date</th><th>Reason</th><th>Requester</th><th></th>
           </tr></thead><tbody>
@@ -360,7 +361,7 @@ function ItemPicker({ desc, onPick }) {
   return (
     <div style={{ position: "relative", width: "100%" }}>
       <input style={{ width: "100%", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, fontSize: 13, background: "#fff" }}
-        value={q} placeholder="🔍 Search item name from CRM…"
+        value={q} placeholder="Search item name from CRM…"
         onChange={(e) => { setQ(e.target.value); onPick({ item_desc: e.target.value }); setOpen(true); }}
         onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 200)} />
       {open && (loading || results.length > 0) && (
@@ -414,7 +415,7 @@ function NewRequest({ masters, persona, onDone }) {
   return (
     <div className="card" style={{ marginTop: 12, padding: 20, maxWidth: 1180 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 18 }}>📝</span>
+        <ClipboardList size={18} />
         <h3 style={{ margin: 0 }}>Form A — Sample Request</h3>
       </div>
       <div className="sub" style={{ marginBottom: 16 }}>Fill the request header, then add one or more sample items. Item code is filled automatically when you pick a name from CRM.</div>
@@ -482,7 +483,7 @@ function NewRequest({ masters, persona, onDone }) {
       <button className="chip" style={{ marginTop: 10 }} onClick={() => setLines((ls) => [...ls, blankLine()])}>+ Add item</button>
 
       <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", gap: 10 }}>
-        <button className="btn secondary" disabled={busy} onClick={() => create(false)}>💾 Save draft</button>
+        <button className="btn secondary" disabled={busy} onClick={() => create(false)}><Save size={15} /> Save draft</button>
         <button className="btn" disabled={busy} onClick={() => create(true)}>{busy ? "…" : "▶ Submit request"}</button>
       </div>
     </div>
@@ -689,14 +690,14 @@ function Detail({ id, persona, masters, onChange, onBack, ver }) {
             <div style={{ marginTop: 8 }}>
               {l.dispatches.length > 0 && <div style={{ fontSize: 11 }}>{l.dispatches.map((d, k) => (
                 <div key={k} style={{ marginBottom: 2 }}>
-                  📦 <b>{d.batch_no}</b> ×{d.qty} · {d.mode} {d.mode_details?.awb_no || d.mode_details?.vehicle_no || d.mode_details?.person_name || ""}
+                  <Package size={13} style={{ verticalAlign: -2 }} /> <b>{d.batch_no}</b> ×{d.qty} · {d.mode} {d.mode_details?.awb_no || d.mode_details?.vehicle_no || d.mode_details?.person_name || ""}
                   {d.packages ? ` · ${d.packages} pkg` : ""}{d.freight ? ` · ${d.freight}` : ""}{d.dispatch_date ? ` · ${d.dispatch_date}` : ""}{d.expected_arrival ? ` · ETA ${d.expected_arrival}` : ""}
                   {(d.batches || []).some((b) => b.mfg_date || b.exp_date) &&
                     <div style={{ color: "var(--muted)", marginLeft: 14 }}>{d.batches.map((b) => `${b.batch_no}: ${b.qty} (mfg ${b.mfg_date || "—"} / exp ${b.exp_date || "—"})`).join("; ")}</div>}
                 </div>
               ))}</div>}
-              {l.hold && <div style={{ fontSize: 11, color: "#8a6d00" }}>⏸ {l.hold.reason} · planned {l.hold.planned_date || "—"}{l.hold.responsible_dept ? ` · dept ${l.hold.responsible_dept}` : ""} {l.hold.remarks ? `· ${l.hold.remarks}` : ""}</div>}
-              {l.reject && <div style={{ fontSize: 11, color: "var(--red)" }}>⛔ {l.reject.short_close ? "Short-closed" : "Rejected"}: {l.reject.reason}</div>}
+              {l.hold && <div style={{ fontSize: 11, color: "#8a6d00" }}><Pause size={13} style={{ verticalAlign: -2 }} /> {l.hold.reason} · planned {l.hold.planned_date || "—"}{l.hold.responsible_dept ? ` · dept ${l.hold.responsible_dept}` : ""} {l.hold.remarks ? `· ${l.hold.remarks}` : ""}</div>}
+              {l.reject && <div style={{ fontSize: 11, color: "var(--red)" }}><Ban size={13} style={{ verticalAlign: -2 }} /> {l.reject.short_close ? "Short-closed" : "Rejected"}: {l.reject.reason}</div>}
               {l.receipt && <div style={{ fontSize: 11, color: "#1c6b4b" }}>✓ {l.receipt.status}{l.receipt.discrepancy_type ? ` — ${l.receipt.discrepancy_type}` : ""}{l.receipt.received_date ? ` · ${l.receipt.received_date}` : ""} {l.receipt.remarks ? `· ${l.receipt.remarks}` : ""}</div>}
               <ActionPanel req={req} line={l} persona={persona} masters={masters} onChange={bump} />
             </div>
@@ -721,7 +722,7 @@ function Reports({ ver }) {
     <>
       <div className="pagebar" style={{ marginTop: 12 }}>
         <b style={{ fontSize: 13 }}>TAT & ageing report</b>
-        <button className="btn" style={{ marginLeft: "auto" }} disabled={busy} onClick={exp}>{busy ? "…" : "⬇ Export Excel"}</button>
+        <button className="btn" style={{ marginLeft: "auto" }} disabled={busy} onClick={exp}>{busy ? "…" : <><Download size={15} /> Export Excel</>}</button>
       </div>
       {loading && <Loading what="TAT report" />}
       {error && <ErrorBox msg={error} />}
@@ -795,12 +796,12 @@ function Notifications({ ver }) {
   return (
     <>
       <div className="banner info" style={{ marginTop: 12 }}>
-        ✉ Emails are sent <b>automatically</b> the moment each notification is created — this is the email log.
+        <Mail size={14} style={{ verticalAlign: -2 }} /> Emails are sent <b>automatically</b> the moment each notification is created — this is the email log.
         Any row still marked <b>unsent</b> means delivery failed (check the recipient email in Masters / SMTP).
       </div>
       <div className="pagebar" style={{ marginTop: 8 }}>
         <label className="chip" style={{ cursor: "pointer" }}><input type="checkbox" checked={unsent} onChange={(e) => setUnsent(e.target.checked)} /> Unsent / failed only</label>
-        <button className="btn secondary" onClick={digest} title="Send the daily pending digest (N13) now">🕘 Send daily digest</button>
+        <button className="btn secondary" onClick={digest} title="Send the daily pending digest (N13) now"><History size={15} /> Send daily digest</button>
       </div>
       {loading && <Loading what="notifications" />}
       {error && <ErrorBox msg={error} />}
@@ -860,7 +861,7 @@ function Masters({ masters, onSaved }) {
   return (
     <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 14 }}>
       <div className="card" style={{ padding: 18 }}>
-        <h3 style={{ margin: 0 }}>🏭 Plant → warehouse in-charge mapping</h3>
+        <h3 style={{ margin: 0, display: "inline-flex", alignItems: "center", gap: 7 }}><Factory size={16} /> Plant → warehouse in-charge mapping</h3>
         <div className="sub" style={{ marginTop: 4, marginBottom: 12 }}>Recipients notified for each plant. Tick <b>Regulated (QA)</b> to require QA batch release before a line can be dispatched.</div>
         <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflowX: "auto" }}>
           <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", fontSize: 12, minWidth: 780 }}>
@@ -886,7 +887,7 @@ function Masters({ masters, onSaved }) {
       </div>
 
       <div className="card" style={{ padding: 18 }}>
-        <h3 style={{ margin: 0 }}>📋 Dropdown lists</h3>
+        <h3 style={{ margin: 0, display: "inline-flex", alignItems: "center", gap: 7 }}><ClipboardList size={16} /> Dropdown lists</h3>
         <div className="sub" style={{ marginTop: 4, marginBottom: 12 }}>One value per line — these populate the pickers used across the module.</div>
         <div className="grid cols-3" style={{ gap: 14 }}>
           {listEdit("Hold reasons", "hold_reasons")}
@@ -900,7 +901,7 @@ function Masters({ masters, onSaved }) {
       </div>
 
       <div className="card" style={{ padding: 18 }}>
-        <h3 style={{ margin: 0, marginBottom: 12 }}>⚙ SLA & configuration</h3>
+        <h3 style={{ margin: 0, marginBottom: 12, display: "inline-flex", alignItems: "center", gap: 7 }}><Settings size={16} /> SLA & configuration</h3>
         <div className="grid cols-3" style={{ gap: 14 }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, color: "var(--navy)", alignSelf: "end", paddingBottom: 9 }}>
             <input type="checkbox" style={{ width: 16, height: 16 }} checked={!!m.sla.approval_required} onChange={(e) => setSla("approval_required", e.target.checked)} /> Require R&D approval before warehouse</label>
@@ -913,12 +914,12 @@ function Masters({ masters, onSaved }) {
       </div>
 
       <div className="card" style={{ padding: 18 }}>
-        <h3 style={{ margin: 0, marginBottom: 12 }}>✉ Email templates (N1–N13 + approval / QA)</h3>
+        <h3 style={{ margin: 0, marginBottom: 12, display: "inline-flex", alignItems: "center", gap: 7 }}><Mail size={16} /> Email templates (N1–N13 + approval / QA)</h3>
         <EmailTemplates masters={m} setMasters={setM} />
       </div>
 
       <div style={{ position: "sticky", bottom: 0, padding: "12px 0", background: "linear-gradient(transparent, var(--bg) 40%)" }}>
-        <button className="btn" disabled={busy} onClick={save}>{busy ? "Saving…" : "💾 Save masters"}</button>
+        <button className="btn" disabled={busy} onClick={save}>{busy ? "Saving…" : <><Save size={15} /> Save masters</>}</button>
       </div>
     </div>
   );

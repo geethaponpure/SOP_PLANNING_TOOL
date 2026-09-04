@@ -8,6 +8,42 @@
         "value": "lato",
         "createdAt": "2026-09-04T05:27:15.420Z",
         "reason": "pre-existing Figma-derived font on the User Master employee-table (styles.css L408); outside this session's scope, mirrors its Figma source"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/pages/ProductionSchedule.jsx"
+        ],
+        "createdAt": "2026-09-04T05:51:18.330Z",
+        "reason": "pre-existing data-driven accent (threshold/priority/row-status color), not decorative; predates the emoji->lucide migration"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/pages/AgedRM.jsx"
+        ],
+        "createdAt": "2026-09-04T05:51:18.524Z",
+        "reason": "pre-existing data-driven accent (threshold/priority/row-status color), not decorative; predates the emoji->lucide migration"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/pages/AdhocPlanning.jsx"
+        ],
+        "createdAt": "2026-09-04T05:51:18.942Z",
+        "reason": "pre-existing data-driven accent (threshold/priority/row-status color), not decorative; predates the emoji->lucide migration"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/pages/SupplierScorecard.jsx"
+        ],
+        "createdAt": "2026-09-04T05:51:19.257Z",
+        "reason": "pre-existing data-driven accent (threshold/priority/row-status color), not decorative; predates the emoji->lucide migration"
       }
     ]
   }

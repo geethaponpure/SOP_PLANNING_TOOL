@@ -4,6 +4,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
+import { Target, ArrowUp, ArrowDown, CircleCheck } from "lucide-react";
 
 const FLAG = {
   over: { cls: "pill-buy", label: "Over" },
@@ -81,13 +82,13 @@ export default function ProjectionSales() {
         return (
           <div className="grid cols-4">
             <div className="card statcard" style={ring(!flag, "var(--teal)")} title="Show all flags" onClick={() => setFlag("")}>
-              <div className="ic">🎯</div><Stat value={fmt.num(s.items)} label="Projected items" /></div>
+              <div className="ic"><Target size={22} /></div><Stat value={fmt.num(s.items)} label="Projected items" /></div>
             <div className="card statcard red" style={ring(flag === "over", "var(--red)")} title="Filter: over-projected" onClick={() => toggle("over")}>
-              <div className="ic">⬆️</div><Stat value={fmt.num(s.item_over)} label="Over-projected (proj > sales)" /></div>
+              <div className="ic"><ArrowUp size={22} /></div><Stat value={fmt.num(s.item_over)} label="Over-projected (proj > sales)" /></div>
             <div className="card statcard amber" style={ring(flag === "under", "var(--amber)")} title="Filter: under-projected" onClick={() => toggle("under")}>
-              <div className="ic">⬇️</div><Stat value={fmt.num(s.item_under)} label="Under-projected (proj < sales)" /></div>
+              <div className="ic"><ArrowDown size={22} /></div><Stat value={fmt.num(s.item_under)} label="Under-projected (proj < sales)" /></div>
             <div className="card statcard" style={ring(flag === "ontrack", "var(--green)")} title="Filter: on track" onClick={() => toggle("ontrack")}>
-              <div className="ic">✅</div><Stat value={`${fmt.num(s.item_ontrack)} / ${fmt.num(s.item_new)}`} label="On track / New (no sales)" /></div>
+              <div className="ic"><CircleCheck size={22} /></div><Stat value={`${fmt.num(s.item_ontrack)} / ${fmt.num(s.item_new)}`} label="On track / New (no sales)" /></div>
           </div>
         );
       })()}

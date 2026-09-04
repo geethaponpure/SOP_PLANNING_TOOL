@@ -7,7 +7,7 @@ import { Dropdown } from "../components/Dropdown.jsx";
 import { fmt } from "../api";
 import { Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
 import { useSupplyPlan } from "../SupplyPlanContext.jsx";
-import { Package, ShoppingCart, CircleCheck, FlaskConical, Scale, TriangleAlert, Flag, Globe } from "lucide-react";
+import { Package, ShoppingCart, CircleCheck, FlaskConical, Scale, TriangleAlert, Flag, Globe, BarChart3, CalendarDays, Receipt, Truck, ClipboardList, Pencil } from "lucide-react";
 import RMDataCharts from "../components/RMDataCharts.jsx";
 import CardCharts from "../components/CardCharts.jsx";
 import ConfirmModal from "../components/ConfirmModal.jsx";
@@ -188,7 +188,7 @@ export function ProductCard({ p, data, pjc, bi = 0, onPickBom }) {
 
           {/* insight charts (only when the card is open → no cost when collapsed) */}
           <div className="sc-rm">
-            <div className="sc-sec-title">📊 Insights</div>
+            <div className="sc-sec-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><BarChart3 size={14} /> Insights</div>
             <CardCharts p={p} bom={bom} pr={pr} pjc={pjc} wh={wh} br={br} data={data} />
           </div>
 
@@ -537,14 +537,14 @@ export default function SupplyCards() {
   return (
     <section className="supply-page">
       <div className="banner supply-context" style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", fontSize: 13 }}>
-        <span>📅 <b>Planning JC{pjc}</b>{data.planning_jc_from ? ` · ${data.planning_jc_from} → ${data.planning_jc_to}` : ""}</span>
-        {data.soc_window && <span>🧾 <b>Pending SOC:</b> {data.soc_window.from <= "1900-01-01" ? "As on date" : data.soc_window.from} → {data.soc_window.to}</span>}
-        {data.po_window && <span>🚚 <b>Pending PO dates:</b> {data.po_window.from} → {data.po_window.to}</span>}
-        {uploaded && <span style={{ marginLeft: "auto" }}>📋 <b>Viewing {uploaded.plan_mode === "excel_only" ? "Excel-only" : uploaded.plan_mode === "bom_override" ? "overridden" : "uploaded"} plan #{uploaded.plan_id ?? "—"}</b></span>}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><CalendarDays size={15} /> <b>Planning JC{pjc}</b>{data.planning_jc_from ? ` · ${data.planning_jc_from} → ${data.planning_jc_to}` : ""}</span>
+        {data.soc_window && <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Receipt size={15} /> <b>Pending SOC:</b> {data.soc_window.from <= "1900-01-01" ? "As on date" : data.soc_window.from} → {data.soc_window.to}</span>}
+        {data.po_window && <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Truck size={15} /> <b>Pending PO dates:</b> {data.po_window.from} → {data.po_window.to}</span>}
+        {uploaded && <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}><ClipboardList size={15} /> <b>Viewing {uploaded.plan_mode === "excel_only" ? "Excel-only" : uploaded.plan_mode === "bom_override" ? "overridden" : "uploaded"} plan #{uploaded.plan_id ?? "—"}</b></span>}
       </div>
       {overrideCount > 0 && (
         <div className="bom-save-bar">
-          <span className="bom-save-icon" aria-hidden>✏️</span>
+          <span className="bom-save-icon" aria-hidden style={{ display: "inline-flex" }}><Pencil size={16} /></span>
           <div className="bom-save-text">
             <b>{overrideCount} BOM override{overrideCount > 1 ? "s" : ""} selected</b>
             <span>Save to rebuild &amp; apply — until then these changes won’t affect the plan or exports.</span>

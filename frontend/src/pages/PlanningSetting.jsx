@@ -4,6 +4,7 @@ import SmoothInput from "../components/SmoothInput.jsx";
 import IconButton from "../components/IconButton.jsx";
 import { api } from "../api";
 import { Loading, ErrorBox } from "../components/ui.jsx";
+import { SprayCan, TrendingUp, FlaskConical, Package, Factory, Building2, Plus, Ban } from "lucide-react";
 
 function Toggle({ checked, onChange }) {
   return (
@@ -32,7 +33,7 @@ function Section({ n, icon, title, desc, children }) {
     <>
       <div className="sec">
         <div className="n tealn">{n}</div>
-        <div><h2>{icon} {title}</h2>{desc && <div className="d">{desc}</div>}</div>
+        <div><h2 style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>{icon}{title}</h2>{desc && <div className="d">{desc}</div>}</div>
       </div>
       {children}
     </>
@@ -117,7 +118,7 @@ function VookiFgMapSection() {
     : [];
 
   return (
-    <Section n="6" icon="🧴" title="Vooki FG names"
+    <Section n="6" icon={<SprayCan size={18} />} title="Vooki FG names"
       desc="The Vooki finished-good SKUs used by the Vooki Planning page (bulk SKUs from the master + any added below). Add new ones from CRM Vooki Division items. Stored in the app's MySQL database.">
       {err && <ErrorBox msg={err} />}
       {!d ? <Loading what="Vooki FG names" /> : !d.ready ? (
@@ -152,7 +153,7 @@ function VookiFgMapSection() {
           </div>
 
           <div className="card" style={{ marginTop: 14 }}>
-            <h3 style={{ fontSize: 13 }}>➕ Add new FG SKU (from CRM Vooki Division)</h3>
+            <h3 style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 7 }}><Plus size={16} /> Add new FG SKU (from CRM Vooki Division)</h3>
             {!fg ? <Loading what="Vooki Division items" /> : !fg.candidates || fg.candidates.length === 0 ? (
               <div className="sub">No Vooki Division items found in CRM.</div>
             ) : (
@@ -238,7 +239,7 @@ export default function PlanningSetting() {
         <span className="pill">Excluded sub-inv: {(form.excluded_subinv || []).length}</span>
       </div>
 
-      <Section n="1" icon="📈" title="Projection filtering (3-JC)"
+      <Section n="1" icon={<TrendingUp size={18} />} title="Projection filtering (3-JC)"
         desc="Item-based summation → Current / Next1 / Next2. Choose which JCs to plan ('plan as individual also').">
         <div className="grid cols-2">
           <div className="card">
@@ -268,7 +269,7 @@ export default function PlanningSetting() {
         </div>
       </Section>
 
-      <Section n="2" icon="🧪" title="BOM filtering technique"
+      <Section n="2" icon={<FlaskConical size={18} />} title="BOM filtering technique"
         desc="Match by ASSEMBLY_DESC; the highest-priority enabled rule selects the BOM, the rest appear under 'More' on the Supply & RM page. Packing BOMs (packed assemblies) are shown separately for packing-material planning.">
         <div className="grid cols-2">
           <div className="card">
@@ -290,7 +291,7 @@ export default function PlanningSetting() {
             <SetRow checked={form.decode_encoded_names} onChange={(v) => set("decode_encoded_names", v)}
               title="Decode encoded RM / intermediate names" hint="Show COMP_ITEM_DESC instead of the encoded item code" />
             <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
-              🚫 <b>Excluded from substitutes (data-entry errors):</b> packing material (item code starting <code>P</code>, auto-excluded) and the DM-water codes listed below. These never count toward RM availability.
+              <Ban size={13} style={{ verticalAlign: -2 }} /> <b>Excluded from substitutes (data-entry errors):</b> packing material (item code starting <code>P</code>, auto-excluded) and the DM-water codes listed below. These never count toward RM availability.
             </div>
           </div>
           <ListEditor label="DM-water item codes (excluded from substitutes)"
@@ -299,7 +300,7 @@ export default function PlanningSetting() {
         </div>
       </Section>
 
-      <Section n="3" icon="📦" title="Finished-good stock filtering"
+      <Section n="3" icon={<Package size={18} />} title="Finished-good stock filtering"
         desc="Business ≠ Raw Material. Split into Warehouse (MFG orgs) vs Branch; excluded sub-inventories removed.">
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="set-row">
@@ -321,7 +322,7 @@ export default function PlanningSetting() {
         </div>
       </Section>
 
-      <Section n="4" icon="🏭" title="Raw-material filtering"
+      <Section n="4" icon={<Factory size={18} />} title="Raw-material filtering"
         desc="RM = Business = Raw Material plus General-Chemicals / intermediates in the RM-source organizations.">
         <div className="grid cols-2">
           <OrgEditor label="RM-source organizations" hint="General Chemicals / intermediates"
@@ -355,7 +356,7 @@ export default function PlanningSetting() {
           value={form.intransit_rm_only_orgs} onChange={(v) => set("intransit_rm_only_orgs", v)} allOrgs={allOrgs} />
       </Section>
 
-      <Section n="5" icon="🏢" title="Group-company (inter-company) PO vendors"
+      <Section n="5" icon={<Building2 size={18} />} title="Group-company (inter-company) PO vendors"
         desc="Purchases from these vendors are DROPPED from all PO analytics — in-transit, net-to-buy, lead time, supplier scorecard, PPV. Matched on Vendor Name (whitespace-normalized, case-insensitive), so add every spelling variant used in the data (e.g. 'PVT LTD' vs 'PRIVATE LIMITED').">
         <ListEditor label="Inter-company vendor names" hint="Exact vendor-name match; add variants to be safe"
           value={form.intercompany_vendors} onChange={(v) => set("intercompany_vendors", v)} />

@@ -4,6 +4,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
+import { Package, Calculator, CircleCheck } from "lucide-react";
 
 const fmtD = (s) => (s ? new Date(s + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" }) : "—");
 
@@ -62,7 +63,7 @@ export default function ItemReceiptSchedule() {
             ))}
           </SelectBox>
         </label>
-        <SmoothInput className="searchbox" style={{ maxWidth: 220 }} placeholder="🔍 Search item…"
+        <SmoothInput className="searchbox" style={{ maxWidth: 220 }} placeholder="Search item…"
           value={q} onChange={(e) => setQ(e.target.value)} />
         {ql && <span style={{ fontSize: 12, color: "var(--muted)" }}>{items.length} item(s) match</span>}
         <div style={{ marginLeft: "auto", display: "inline-flex", background: "#eef2f7", border: "1px solid var(--border)", borderRadius: 10, padding: 3, gap: 2 }}>
@@ -87,7 +88,7 @@ export default function ItemReceiptSchedule() {
         <div className={`grid cols-${Math.min(4, windows.length)}`}>
           {windows.map((w) => (
             <div key={w.key} className="card statcard" style={{ borderTop: `3px solid ${WCOL[w.key] || "#1f3a5f"}` }}>
-              <div className="ic">📦</div>
+              <div className="ic"><Package size={22} /></div>
               <Stat value={fmt.num(byWindow[w.key] || 0)} label={`${w.key} · ${w.jc} (${fmtD(w.from)} → ${fmtD(w.to)})`} />
             </div>
           ))}
@@ -95,8 +96,8 @@ export default function ItemReceiptSchedule() {
       )}
 
       <div className="grid cols-2" style={{ marginTop: 4 }}>
-        <div className="card statcard blue"><div className="ic">🧮</div><Stat value={fmt.num(s.total_items)} label="Planned items" /></div>
-        <div className="card statcard"><div className="ic">✅</div><Stat value={fmt.num(s.rm_available_items)} label="Material available in warehouse" /></div>
+        <div className="card statcard blue"><div className="ic"><Calculator size={22} /></div><Stat value={fmt.num(s.total_items)} label="Planned items" /></div>
+        <div className="card statcard"><div className="ic"><CircleCheck size={22} /></div><Stat value={fmt.num(s.rm_available_items)} label="Material available in warehouse" /></div>
       </div>
 
       {(data.items || []).length > 0 ? (

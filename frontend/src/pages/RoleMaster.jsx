@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { api } from "../api";
 import IconButton from "../components/IconButton.jsx";
 import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
+import { Plus } from "lucide-react";
 
 export default function RoleMaster() {
   const [ver, setVer] = useState(0);
@@ -49,7 +50,7 @@ export default function RoleMaster() {
       )}
 
       <div className="card" style={{ marginTop: 12, padding: 16 }}>
-        <h3 style={{ marginTop: 0 }}>➕ Create a role</h3>
+        <h3 style={{ marginTop: 0, display: "inline-flex", alignItems: "center", gap: 7 }}><Plus size={16} /> Create a role</h3>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 5, flex: "1 1 220px" }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--navy)" }}>Role name *</span>
