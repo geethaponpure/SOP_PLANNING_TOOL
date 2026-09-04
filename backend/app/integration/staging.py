@@ -439,6 +439,23 @@ def read_projection(acc_year: str, jc: int, approved: bool = True) -> list[dict]
         return []
 
 
+def read_projection_all(acc_year: str, approved: bool = True) -> list[dict]:
+    """Every staged JC of one accounting year, item level — the My-Dashboard
+    projection-accuracy trend (JC1..current)."""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT jc, item_name, segment2, segment3, current_q "
+                            "FROM stg_projection WHERE acc_year=%s AND approved=%s",
+                            (acc_year, 1 if approved else 0))
+                return cur.fetchall()
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
 # ── projection ROWS (per item x collector — Projection-vs-Sales) ──────────────
 
 _PROJ_ROWS_COLS = ["acc_year", "jc", "item_name", "collector", "segment2", "segment3",
@@ -616,6 +633,21 @@ def read_dispatch(variant: str, n_jc: int) -> list[dict]:
         return []
 
 
+def read_projection_rows_all(acc_year: str) -> list[dict]:
+    """Every staged JC of one accounting year, per item x collector."""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT jc, item_name, collector, segment2, segment3, current_q "
+                            "FROM stg_projection_rows WHERE acc_year=%s", (acc_year,))
+                return cur.fetchall()
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
 # ── dispatch_scope (permission-dashboard cube, see migrate_dashboard.sql) ─────
 
 _DISP_SCOPE_COLS = ["jc_index", "item_code", "item_name", "customer_id", "customer_name",
@@ -749,19 +781,28 @@ def dashboard_datasets(flt: dict, jc_from: int | None = None) -> dict:
                             f"{base}{w_cust} GROUP BY d.customer_id "
                             "ORDER BY SUM(d.qty) DESC LIMIT 15", tuple(params))
                 top_customers = cur.fetchall()
-                sales3 = []
+                sales3, item_jc = [], []
                 if jc_from is not None:
                     w3 = w + (" AND " if w else " WHERE ") + "d.jc_index >= %s"
                     cur.execute("SELECT d.item_name AS name, MAX(d.item_code) AS code, "
                                 f"SUM(d.qty) AS qty3 {base}{w3} GROUP BY d.item_name",
                                 tuple(params) + (int(jc_from),))
                     sales3 = cur.fetchall()
+                    # per item x JC actuals — the projection-accuracy trend needs
+                    # per-item variances (WMAPE), not netted totals
+                    cur.execute("SELECT d.jc_index AS jc, d.item_name AS name, "
+                                "MAX(d.segment2) AS segment2, MAX(d.segment3) AS segment3, "
+                                f"SUM(d.qty) AS qty {base}{w} GROUP BY d.jc_index, d.item_name",
+                                tuple(params))
+                    item_jc = cur.fetchall()
                 return {"cube": cube, "totals": totals, "top_items": top_items,
-                        "top_customers": top_customers, "sales3": sales3}
+                        "top_customers": top_customers, "sales3": sales3,
+                        "item_jc": item_jc}
         finally:
             conn.close()
     except Exception:   # noqa: BLE001
-        return {"cube": [], "totals": {}, "top_items": [], "top_customers": [], "sales3": []}
+        return {"cube": [], "totals": {}, "top_items": [], "top_customers": [],
+                "sales3": [], "item_jc": []}
 
 
 # ── "Refresh now" queue (used by the worker's poller in Phase 4) ───────────────

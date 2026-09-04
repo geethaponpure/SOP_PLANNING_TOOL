@@ -25,7 +25,7 @@ from ..integration.planning_filter import _proj_flag   # the plan's ±20% band
 
 # bump when the payload shape changes so stale precomputed admin payloads
 # (computed_plan.dashboard_admin) are rebuilt instead of served
-_PAYLOAD_V = 4
+_PAYLOAD_V = 5
 
 # broadest scope first — a user holding several personas gets the widest view
 _PERSONA_PRIORITY = ["Division Head", "Business Head", "Technical Head",
@@ -149,13 +149,29 @@ def _proj_map(mine: list[dict], admin: bool, acc_year: str, jc: int):
     return proj, use_rows
 
 
-def _projection_block(sales3: list[dict], mine: list[dict], stype: str,
-                      admin: bool = False) -> dict | None:
+def _wmape_acc(pairs) -> float | None:
+    """Accuracy % over (projected, actual) pairs — 100 - WMAPE, the same metric
+    the Projection-Accuracy page uses (projection_accuracy._metrics). Summing the
+    per-item absolute variance (not the netted totals) keeps over- and
+    under-projections from cancelling each other out."""
+    act = sum(a for _, a in pairs)
+    if act <= 0:
+        return None
+    err = sum(abs(pr - a) for pr, a in pairs)
+    return round(max(0.0, 100 - 100 * err / act), 1)
+
+
+def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict],
+                      mine: list[dict], stype: str, admin: bool = False) -> dict | None:
     """Projection accuracy for the user's scope: the plan-table projection
     (stg_projection CurrentQ for the planning JC — the same slice the RM plan
     build reads) vs the scoped 3-JC AVERAGE sales per item, flagged with the
     plan's own ±20% band (_proj_flag: over / under / ontrack / new). Items with
     sales but NO projection ('none') are the submission gaps to highlight.
+
+    Also returns the per-JC trend (projected vs actual + accuracy for every
+    completed JC of the accounting year), the item-group roll-up and the full
+    missing-projection list.
 
     When the scope names specific collectors, projections come from
     stg_projection_rows summed over those collectors (same CRM projection data,
@@ -227,6 +243,7 @@ def _projection_block(sales3: list[dict], mine: list[dict], stype: str,
          "kg": round(sum(i["next2"] for i in items)),
          "items": sum(1 for i in items if i["next2"] > 0)},
     ]
+
     # row-by-row product detail for the pipeline table: top items by projected
     # volume (then by sales) — capped so huge scopes don't bloat the payload
     pipeline_rows = sorted(
@@ -240,6 +257,88 @@ def _projection_block(sales3: list[dict], mine: list[dict], stype: str,
     for i in items:   # next1/next2 fed the pipeline only — keep the payload lean
         i.pop("next1", None)
         i.pop("next2", None)
+
+    # ── item groups (Segment 2 / Segment 3): projection vs 3-JC avg sales ──────
+    seg_of: dict = {}
+    for k, pr in proj.items():
+        seg_of[k] = (pr.get("s2") or "Unmapped", pr.get("s3") or "Unmapped")
+    for r in (item_jc or []):          # cube segments fill in the non-projected items
+        k = _norm(r.get("name"))
+        if k and k not in seg_of:
+            seg_of[k] = (r.get("segment2") or "Unmapped", r.get("segment3") or "Unmapped")
+    groups: dict = {"segment2": {}, "segment3": {}}
+    for i in items:
+        s2, s3 = seg_of.get(_norm(i["name"]), ("Unmapped", "Unmapped"))
+        for level, name in (("segment2", s2), ("segment3", s3)):
+            g = groups[level].setdefault(name, {"name": name, "proj": 0.0, "avg3": 0.0,
+                                                "items": 0, "missing": 0, "pairs": []})
+            g["proj"] += i["proj"]
+            g["avg3"] += i["avg3"]
+            g["items"] += 1
+            g["missing"] += 1 if i["flag"] == "none" else 0
+            g["pairs"].append((i["proj"], i["avg3"]))
+    by_group = {}
+    for level, gm in groups.items():
+        out = [{"name": g["name"], "proj": round(g["proj"]), "avg3": round(g["avg3"]),
+                "items": g["items"], "missing": g["missing"],
+                "accuracy": _wmape_acc(g["pairs"]),
+                "accuracy_proj": _wmape_acc([x for x in g["pairs"] if x[0] > 0])}
+               for g in gm.values()]
+        by_group[level] = sorted(out, key=lambda d: -(d["proj"] + d["avg3"]))[:14]
+
+    # ── per-JC trend: projected vs actual + accuracy, for every completed JC ───
+    # Only this accounting year is staged, so the trend covers JC1..current.
+    allowed = None if admin else {_norm(i["name"]) for i in items}
+    act_by_jc: dict = {}
+    for r in (item_jc or []):
+        k = _norm(r.get("name"))
+        if not k or (allowed is not None and k not in allowed):
+            continue
+        d = act_by_jc.setdefault(int(r["jc"]), {})
+        d[k] = d.get(k, 0.0) + float(r.get("qty") or 0)
+
+    if use_rows:
+        wanted = {_norm(c) for c in
+                  {g.get("collector_name") for g in mine if g.get("collector_name")}}
+        hist = [r for r in staging.read_projection_rows_all(acc_year)
+                if _norm(r.get("collector")) in wanted]
+    else:
+        hist = staging.read_projection_all(acc_year, approved=True)
+    proj_by_jc: dict = {}
+    for r in hist:
+        k = _norm(r.get("item_name"))
+        if not k or (allowed is not None and k not in allowed):
+            continue
+        d = proj_by_jc.setdefault(int(r["jc"]), {})
+        d[k] = d.get(k, 0.0) + float(r.get("current_q") or 0)
+
+    jc_trend, all_pairs, all_pairs_p = [], [], []
+    for idx, w in enumerate(window or []):
+        if str(w.get("fy")) != str(acc_year):
+            continue
+        wjc = int(w.get("jc") or 0)
+        pj, ac = proj_by_jc.get(wjc, {}), act_by_jc.get(idx, {})
+        if not pj and not ac:
+            continue
+        pairs = [(pj.get(k, 0.0), ac.get(k, 0.0)) for k in set(pj) | set(ac)]
+        pairs_p = [x for x in pairs if x[0] > 0]
+        all_pairs += pairs
+        all_pairs_p += pairs_p
+        jc_trend.append({
+            "label": f"JC{wjc}", "jc": wjc,
+            "from": str(w.get("from") or ""), "to": str(w.get("to") or ""),
+            "proj": round(sum(pj.values())), "actual": round(sum(ac.values())),
+            "items_projected": sum(1 for v in pj.values() if v > 0),
+            "items_sold": sum(1 for v in ac.values() if v > 0),
+            "accuracy": _wmape_acc(pairs),
+            "accuracy_proj": _wmape_acc(pairs_p),
+            "coverage_pct": (round(100 * sum(a for _, a in pairs_p)
+                                   / sum(a for _, a in pairs), 1)
+                             if sum(a for _, a in pairs) > 0 else None),
+        })
+
+    missing_all = [{"name": i["name"], "code": i["code"], "avg3": i["avg3"]}
+                   for i in with_sales if i["flag"] == "none"][:500]
     return {
         "acc_year": acc_year, "jc": int(jc),
         "basis": "collector" if use_rows else "item",
@@ -248,7 +347,14 @@ def _projection_block(sales3: list[dict], mine: list[dict], stype: str,
         "pipeline": pipeline,
         "pipeline_rows": pipeline_rows,
         "compare": with_sales[:12],
-        "missing": [i for i in with_sales if i["flag"] == "none"][:10],
+        "jc_trend": jc_trend,
+        "overall_accuracy": _wmape_acc(all_pairs),
+        "overall_accuracy_proj": _wmape_acc(all_pairs_p),
+        "by_group": by_group,
+        "items_projected": pipeline[0]["items"],
+        "items_selling": sum(1 for i in items if i["avg3"] > 0),
+        "missing": missing_all[:15],
+        "missing_all": missing_all,
         "missing_total": sum(1 for i in items if i["flag"] == "none"),
         "missing_kg": round(sum(i["avg3"] for i in items if i["flag"] == "none")),
     }
@@ -416,7 +522,8 @@ def my_dashboard(username: str | None = None, email: str | None = None,
             ds = staging.dashboard_datasets({}, jc_from=jc_from)
             payload = {**base, "scope": _scope_summary("Admin", "", []),
                        **_assemble(ds, len(jcs)),
-                       "projection": _projection_block(ds["sales3"], [], "", admin=True)}
+                       "projection": _projection_block(ds["sales3"], ds["item_jc"], jcs,
+                                                      [], "", admin=True)}
             staging.save_computed("dashboard_admin", payload)
         _CACHE[key] = payload
         return payload
@@ -428,7 +535,7 @@ def my_dashboard(username: str | None = None, email: str | None = None,
     if flt:
         ds = staging.dashboard_datasets(flt, jc_from=jc_from)
         data = {**_assemble(ds, len(jcs)),
-                "projection": _projection_block(ds["sales3"], mine, stype)}
+                "projection": _projection_block(ds["sales3"], ds["item_jc"], jcs, mine, stype)}
     else:
         data = _empty_datasets()
     payload = {**base, "scope": _scope_summary(persona, stype, mine),

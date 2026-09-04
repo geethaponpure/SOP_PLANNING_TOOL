@@ -18,6 +18,8 @@ const TT = {
   extraCssText: "box-shadow:0 12px 30px rgba(15,23,42,.16);border-radius:10px;",
 };
 const ANIM = { animationDuration: 650, animationEasing: "cubicOut" };
+const gradV = (c) => ({ type: "linear", x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: c + "55" }, { offset: 1, color: c + "05" }] });
+const grad = (c1, c2) => ({ type: "linear", x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: c1 }, { offset: 1, color: c2 }] });
 const PAL = ["#2a9d8f", "#4880ff", "#b7791f", "#805ad5", "#2f855a", "#c53030", "#28b5e1", "#90a1ac",
   "#d69e2e", "#3182ce", "#38a169", "#e53e3e", "#718096"];
 const SHAPE_DIST = [{ id: "donut", label: "Donut" }, { id: "pie", label: "Pie" }, { id: "bar", label: "Bar" }];
@@ -272,6 +274,157 @@ function pipeOption(pipe) {
   };
 }
 
+// ── projection analytics charts (JC trend / accuracy / items / item group) ────
+
+// Projected KG per JC (bars) against actual sales (line on its own axis) — the
+// two live on very different scales, so a shared axis would flatten one of them.
+function jcQtyOption(trend) {
+  return {
+    ...ANIM, grid: { left: 8, right: 8, top: 34, bottom: 8, containLabel: true },
+    legend: { top: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10,
+      textStyle: { color: "#414d55", fontSize: 11 } },
+    tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
+      formatter: (ps) => {
+        const t = trend[ps[0].dataIndex] || {};
+        return `<b>${t.label}</b><span style="color:#90a1ac;font-size:11px"> ${t.from} → ${t.to}</span>` +
+          `<br/>Projected: <b>${fmt.num(t.proj)}</b> KG` +
+          `<br/>Actual sales: <b>${fmt.num(t.actual)}</b> KG` +
+          `<br/><span style="color:#90a1ac">${t.items_projected} of ${t.items_sold} selling items projected</span>`;
+      } },
+    xAxis: { type: "category", data: trend.map((t) => t.label), axisTick: { show: false },
+      axisLabel: { color: "#414d55", fontSize: 11 } },
+    yAxis: [
+      { type: "value", name: "Projected", nameTextStyle: { color: "#90a1ac", fontSize: 10 },
+        splitLine: { lineStyle: { color: "#eef1f5" } },
+        axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true } },
+      { type: "value", name: "Actual", nameTextStyle: { color: "#90a1ac", fontSize: 10 },
+        splitLine: { show: false },
+        axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true } },
+    ],
+    series: [
+      { name: "Projected KG", type: "bar", barWidth: "48%", yAxisIndex: 0,
+        itemStyle: { borderRadius: [5, 5, 0, 0], color: "#4880ff" },
+        data: trend.map((t) => t.proj) },
+      { name: "Actual sales KG", type: "line", yAxisIndex: 1, smooth: true,
+        symbol: "circle", symbolSize: 7, lineStyle: { width: 3, color: "#2a9d8f" },
+        itemStyle: { color: "#2a9d8f" }, data: trend.map((t) => t.actual) },
+    ],
+  };
+}
+
+// Accuracy (100 - WMAPE) on the items that WERE projected, plus how much of the
+// scope's sales volume carried a projection at all.
+function jcAccOption(trend) {
+  return {
+    ...ANIM, grid: { left: 8, right: 8, top: 34, bottom: 8, containLabel: true },
+    legend: { top: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10,
+      textStyle: { color: "#414d55", fontSize: 11 } },
+    tooltip: { ...TT, trigger: "axis",
+      formatter: (ps) => {
+        const t = trend[ps[0].dataIndex] || {};
+        return `<b>${t.label}</b>` +
+          `<br/>Accuracy on projected items: <b>${t.accuracy_proj == null ? "—" : t.accuracy_proj + "%"}</b>` +
+          `<br/>Sales volume projected: <b>${t.coverage_pct == null ? "—" : t.coverage_pct + "%"}</b>` +
+          `<br/><span style="color:#90a1ac">incl. unprojected items: ${t.accuracy == null ? "—" : t.accuracy + "%"}</span>`;
+      } },
+    xAxis: { type: "category", data: trend.map((t) => t.label), axisTick: { show: false },
+      axisLabel: { color: "#414d55", fontSize: 11 } },
+    yAxis: { type: "value", min: 0, max: 100, splitLine: { lineStyle: { color: "#eef1f5" } },
+      axisLabel: { color: "#90a1ac", fontSize: 11, formatter: (v) => `${v}%` } },
+    series: [
+      { name: "Accuracy (projected items)", type: "line", smooth: true, symbol: "circle",
+        symbolSize: 8, lineStyle: { width: 3, color: "#2f855a" }, itemStyle: { color: "#2f855a" },
+        areaStyle: { color: gradV("#2f855a") },
+        data: trend.map((t) => t.accuracy_proj) },
+      { name: "Sales volume projected", type: "line", smooth: true, symbol: "circle",
+        symbolSize: 6, lineStyle: { width: 2, type: "dashed", color: "#b7791f" },
+        itemStyle: { color: "#b7791f" }, data: trend.map((t) => t.coverage_pct) },
+    ],
+  };
+}
+
+// How many items carried a projection each JC, against how many actually sold.
+function jcItemsOption(trend) {
+  return {
+    ...ANIM, grid: { left: 8, right: 8, top: 34, bottom: 8, containLabel: true },
+    legend: { top: 0, icon: "roundRect", itemWidth: 10, itemHeight: 10,
+      textStyle: { color: "#414d55", fontSize: 11 } },
+    tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
+      formatter: (ps) => {
+        const t = trend[ps[0].dataIndex] || {};
+        const pct = t.items_sold ? Math.round((t.items_projected / t.items_sold) * 100) : null;
+        return `<b>${t.label}</b><br/>Items with a projection: <b>${fmt.num(t.items_projected)}</b>` +
+          `<br/>Items that sold: <b>${fmt.num(t.items_sold)}</b>` +
+          (pct == null ? "" : `<br/><span style="color:#90a1ac">${pct}% of selling items projected</span>`);
+      } },
+    xAxis: { type: "category", data: trend.map((t) => t.label), axisTick: { show: false },
+      axisLabel: { color: "#414d55", fontSize: 11 } },
+    yAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } },
+      axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true } },
+    series: [
+      { name: "Items projected", type: "bar", barWidth: "48%",
+        itemStyle: { borderRadius: [5, 5, 0, 0], color: "#805ad5" },
+        data: trend.map((t) => t.items_projected) },
+      { name: "Items sold", type: "line", smooth: true, symbol: "circle", symbolSize: 7,
+        lineStyle: { width: 3, color: "#90a1ac" }, itemStyle: { color: "#90a1ac" },
+        data: trend.map((t) => t.items_sold) },
+    ],
+  };
+}
+
+// Projected KG per item group. Single series on purpose: group sales volumes
+// differ by orders of magnitude (a big trading group would flatten every other
+// bar), so sales / accuracy / gaps ride in the tooltip and the table view.
+function groupOption(rows) {
+  const rev = [...rows].reverse();
+  return {
+    ...ANIM, grid: { left: 8, right: 26, top: 12, bottom: 8, containLabel: true },
+    tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
+      formatter: (ps) => {
+        const g = rev[ps[0].dataIndex] || {};
+        return `<b>${g.name}</b><br/>Projected: <b>${fmt.num(g.proj)}</b> KG` +
+          `<br/>3-JC avg sales: <b>${fmt.num(g.avg3)}</b> KG` +
+          `<br/>Accuracy (projected items): <b>${g.accuracy_proj == null ? "—" : g.accuracy_proj + "%"}</b>` +
+          `<br/><span style="color:${g.missing ? "#c53030" : "#90a1ac"}">${g.missing} of ${g.items} items without a projection</span>`;
+      } },
+    xAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } },
+      axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true },
+      axisLine: { show: false }, axisTick: { show: false } },
+    yAxis: { type: "category", data: rev.map((g) => g.name),
+      axisLabel: { color: "#414d55", fontSize: 11, width: 150, overflow: "truncate", hideOverlap: true },
+      axisTick: { show: false }, axisLine: { show: false } },
+    series: [{ type: "bar", barWidth: "58%",
+      itemStyle: { borderRadius: [0, 6, 6, 0], color: grad("#7aa7ff", "#4880ff") },
+      data: rev.map((g) => g.proj) }],
+  };
+}
+
+// Unprojected selling items, biggest first — the action list.
+function missingOption(rows, total) {
+  const rev = [...rows].reverse();
+  return {
+    ...ANIM, grid: { left: 8, right: 26, top: 12, bottom: 8, containLabel: true },
+    tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
+      formatter: (ps) => {
+        const m = rev[ps[0].dataIndex] || {};
+        const share = total ? ((m.avg3 / total) * 100).toFixed(1) : null;
+        return `<b>${m.name}</b>` + (m.code ? `<br/><span style="color:#90a1ac;font-size:11px">${m.code}</span>` : "") +
+          `<br/><b>${fmt.num(m.avg3)}</b> KG avg / JC sold` +
+          (share ? `<br/><span style="color:#c53030">${share}% of your unprojected volume</span>` : "") +
+          `<br/><span style="color:#90a1ac">no projection submitted</span>`;
+      } },
+    xAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } },
+      axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true },
+      axisLine: { show: false }, axisTick: { show: false } },
+    yAxis: { type: "category", data: rev.map((m) => m.name),
+      axisLabel: { color: "#414d55", fontSize: 11, width: 190, overflow: "truncate", hideOverlap: true },
+      axisTick: { show: false }, axisLine: { show: false } },
+    series: [{ type: "bar", barWidth: "58%",
+      itemStyle: { borderRadius: [0, 6, 6, 0], color: grad("#f0a0a0", "#c53030") },
+      data: rev.map((m) => m.avg3) }],
+  };
+}
+
 export default function Dashboard({ session, isAdmin }) {
   const u = session?.user || {};
 
@@ -370,7 +523,10 @@ export default function Dashboard({ session, isAdmin }) {
   // pipeline detail table (row per product) with a chart/table toggle + search
   const [pipeView, setPipeView] = useState("chart");
   const [pipeQ, setPipeQ] = useState("");
-  useEffect(() => { setPipeView("chart"); setPipeQ(""); setItemPop(null); }, [viewAs.username, viewAs.persona]);
+  useEffect(() => {
+    setPipeView("chart"); setPipeQ(""); setItemPop(null);
+    setGroupView("chart"); setMissView("chart"); setMissQ("");
+  }, [viewAs.username, viewAs.persona]);
 
   const idParams = useMemo(() => (viewAs.username
     ? { username: viewAs.username, persona: viewAs.persona }
@@ -388,9 +544,28 @@ export default function Dashboard({ session, isAdmin }) {
     name: FLAGS[s.flag]?.label || s.flag, value: s.items, color: FLAGS[s.flag]?.color })), [p]);
   const statusOpt = useMemo(() => distOption(statusRows, { shape: shape.proj, unit: "items", center: "items" }),
     [statusRows, shape.proj]);
-  const missRows = useMemo(() => (p?.missing || []).map((m) => ({
-    name: m.name, value: m.avg3, color: "#c53030" })), [p]);
-  const missOpt = useMemo(() => distOption(missRows, { shape: "bar", unit: "KG avg / JC" }), [missRows]);
+  const jcQtyOpt = useMemo(() => jcQtyOption(p?.jc_trend || []), [p]);
+  const jcAccOpt = useMemo(() => jcAccOption(p?.jc_trend || []), [p]);
+  const jcItemsOpt = useMemo(() => jcItemsOption(p?.jc_trend || []), [p]);
+
+  // item-group roll-up (Segment 3 / Segment 2) with a chart/table toggle
+  const [groupLevel, setGroupLevel] = useState("segment3");
+  const [groupView, setGroupView] = useState("chart");
+  const groupRows = useMemo(() => (p?.by_group?.[groupLevel] || []), [p, groupLevel]);
+  const groupOpt = useMemo(() => groupOption(groupRows), [groupRows]);
+
+  // missing projections: top-N chart, or the full searchable table
+  const [missView, setMissView] = useState("chart");
+  const [missQ, setMissQ] = useState("");
+  const missChart = useMemo(() => (p?.missing_all || []).slice(0, 15), [p]);
+  const missOpt = useMemo(() => missingOption(missChart, p?.missing_kg || 0), [missChart, p]);
+  const missTableRows = useMemo(() => {
+    const src = (p?.missing_all || []).map((m, i) => ({ ...m, rank: i + 1 }));
+    const q = missQ.trim().toLowerCase();
+    if (!q) return src;
+    return src.filter((m) => (m.name || "").toLowerCase().includes(q) ||
+      (m.code || "").toLowerCase().includes(q));
+  }, [p, missQ]);
 
   if (loading && !data) return <Loading what="your dashboard" />;
   if (error) return <>{switcher}<ErrorBox msg={error} /></>;
@@ -484,111 +659,259 @@ export default function Dashboard({ session, isAdmin }) {
       </div>
 
       {p && (
-        <div className="grid cols-2" style={{ marginTop: 14 }}>
-          <div className="card" style={{ gridColumn: "1 / -1" }}>
-            <div className="supply-dash-cardhead">
-              <div><h3>🎯 Projection vs 3-JC avg sales</h3>
-                <div className="sub">
-                  top items by sales · JC{p.jc} {p.acc_year} projection
-                  ({p.basis === "collector" ? "your collectors" : "per item, company-wide"}) vs 3-JC average sales ·
-                  ±20% band · <b>{p.coverage_pct}%</b> of your sales volume has a projection
-                </div></div>
-            </div>
-            <ProjCompareTable rows={p.compare || []}
-              onItem={(r) => setItemPop({ name: r.name, code: r.code })} />
+        <>
+          <div className="grid cols-4" style={{ marginTop: 14 }}>
+            <div className="card statcard"><div className="ic">🎯</div>
+              <Stat value={p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}
+                label="Accuracy on projected items" /></div>
+            <div className="card statcard"><div className="ic">📝</div>
+              <Stat value={fmt.num(p.items_projected)}
+                label={`Items projected · JC${p.jc}`} /></div>
+            <div className="card statcard amber"><div className="ic">📊</div>
+              <Stat value={`${p.coverage_pct}%`} label="Sales volume projected" /></div>
+            <div className="card statcard"><div className="ic">⚠️</div>
+              <Stat value={fmt.num(p.missing_total)} label="Items with no projection" /></div>
           </div>
 
-          <div className="card" style={pipeView === "table" ? { gridColumn: "1 / -1" } : undefined}>
-            <div className="supply-dash-cardhead">
-              <div><h3>📅 Projection pipeline</h3>
-                <div className="sub">projected KG for the current and the next two job cycles · your scope</div></div>
-              <SegTabs size="sm" value={pipeView} onChange={setPipeView}
-                tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
-            </div>
-            {pipeView === "chart" ? (
-              <EChart option={pipeOpt} height={260} />
-            ) : (
-              <>
-                <div className="pagebar" style={{ marginBottom: 10 }}>
-                  <SmoothInput className="searchbox" placeholder="Search item code / name…"
-                    value={pipeQ} onChange={(e) => setPipeQ(e.target.value)} />
-                  <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
-                    {pipeRows.length} of {(p.pipeline_rows || []).length} products
-                    {(p.pipeline_rows || []).length >= 200 ? " (top 200 by projected volume)" : ""}
-                  </span>
+          <div className="grid cols-2" style={{ marginTop: 14 }}>
+            {p.jc_trend.length > 0 && (
+              <div className="card">
+                <div className="supply-dash-cardhead">
+                  <div><h3>📦 Total projection qty by JC</h3>
+                    <div className="sub">projected KG per job cycle vs actual sales · {p.acc_year}</div></div>
                 </div>
-                <div className="tbl-wrap" style={{ maxHeight: 380 }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Item Code</th>
-                        <th>Item Name</th>
-                        <th className="num">3-JC avg sales</th>
-                        <th className="num">Current · JC{p.jc}</th>
-                        <th className="num">Next JC</th>
-                        <th className="num">JC after next</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pipeRows.map((r, i) => (
-                        <tr key={i} onClick={() => setItemPop({ name: r.name, code: r.code })}
-                          style={{ cursor: "pointer" }} title="Click to see this item's JC-wise graph">
-                          <td style={{ fontSize: 12, whiteSpace: "nowrap" }}>{r.code || "—"}</td>
-                          <td title={r.name} style={{ maxWidth: 340, overflow: "hidden",
-                            textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</td>
-                          <td className="num">{fmt.num(r.avg3)}</td>
-                          <td className="num"><b>{fmt.num(r.proj)}</b></td>
-                          <td className="num">{fmt.num(r.next1)}</td>
-                          <td className="num">{fmt.num(r.next2)}</td>
-                          <td style={{ whiteSpace: "nowrap" }}>
-                            <span style={{ color: (FLAGS[r.flag] || {}).color, fontSize: 12, fontWeight: 600 }}>
-                              ● {(FLAGS[r.flag] || {}).label || r.flag}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                      {pipeRows.length === 0 && (
-                        <tr><td colSpan={7}>No products match the search.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="card">
-            <div className="supply-dash-cardhead">
-              <div><h3>Projection status</h3>
-                <div className="sub">items by flag · same ±20% band as the RM plan</div></div>
-              <SegTabs size="sm" value={shape.proj} onChange={setSh("proj")} tabs={SHAPE_DIST} />
-            </div>
-            <EChart option={statusOpt} height={260} />
-          </div>
-
-          <div className="card" style={{ gridColumn: "1 / -1",
-            ...(p.missing_total > 0 ? { borderColor: "#f0b9b9", background: "#FFFBFA" } : {}) }}>
-            <div className="supply-dash-cardhead">
-              <div><h3>⚠️ Missing projections</h3>
-                <div className="sub">
-                  high-selling items with <b>no JC{p.jc} projection</b>
-                  {p.missing_total > 0 && (
-                    <span style={{ color: "#c53030", fontWeight: 600 }}>
-                      {" "}· {p.missing_total} item{p.missing_total > 1 ? "s" : ""} · {abbr(p.missing_kg)} KG/JC unprojected
-                    </span>
-                  )}
-                </div></div>
-            </div>
-            {missRows.length > 0 ? (
-              <EChart option={missOpt} height={240} />
-            ) : (
-              <div style={{ padding: "48px 0", textAlign: "center", color: "#2f855a", fontSize: 13 }}>
-                ✅ Every high-selling item in your scope has a projection for JC{p.jc}.
+                <EChart option={jcQtyOpt} height={260} />
               </div>
             )}
+
+            {p.jc_trend.length > 0 && (
+              <div className="card">
+                <div className="supply-dash-cardhead">
+                  <div><h3>🎯 Projection accuracy by JC</h3>
+                    <div className="sub">100 − WMAPE per item · overall <b>{p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}</b> on projected items</div></div>
+                </div>
+                <EChart option={jcAccOpt} height={260} />
+              </div>
+            )}
+
+            {p.jc_trend.length > 0 && (
+              <div className="card">
+                <div className="supply-dash-cardhead">
+                  <div><h3>📝 Items with a projection</h3>
+                    <div className="sub">how many items were projected vs how many actually sold</div></div>
+                </div>
+                <EChart option={jcItemsOpt} height={260} />
+              </div>
+            )}
+
+            <div className="card">
+              <div className="supply-dash-cardhead">
+                <div><h3>Projection status</h3>
+                  <div className="sub">items by flag · same ±20% band as the RM plan</div></div>
+                <SegTabs size="sm" value={shape.proj} onChange={setSh("proj")} tabs={SHAPE_DIST} />
+              </div>
+              <EChart option={statusOpt} height={260} />
+            </div>
+
+            <div className="card" style={{ gridColumn: "1 / -1" }}>
+              <div className="supply-dash-cardhead">
+                <div><h3>🧬 Projection by item group</h3>
+                  <div className="sub">JC{p.jc} projected KG per {groupLevel === "segment2" ? "division (Segment 2)" : "product group (Segment 3)"} · sales, accuracy and gaps in the tooltip</div></div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <SegTabs size="sm" value={groupLevel} onChange={setGroupLevel}
+                    tabs={[{ id: "segment3", label: "Segment 3" }, { id: "segment2", label: "Segment 2" }]} />
+                  <SegTabs size="sm" value={groupView} onChange={setGroupView}
+                    tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
+                </div>
+              </div>
+              {groupView === "chart" ? (
+                <EChart option={groupOpt} height={Math.max(260, groupRows.length * 26)} />
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...HCELL, textAlign: "left" }}>Item group</th>
+                      <th style={{ ...HCELL, textAlign: "right" }}>Projected (KG)</th>
+                      <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales (KG)</th>
+                      <th style={{ ...HCELL, textAlign: "right" }}>Items</th>
+                      <th style={{ ...HCELL, textAlign: "right" }}>No projection</th>
+                      <th style={{ ...HCELL, textAlign: "right" }}>Accuracy</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupRows.map((g, i) => (
+                      <tr key={i}>
+                        <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>{g.name}</td>
+                        <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(g.proj)}</td>
+                        <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(g.avg3)}</td>
+                        <td style={{ ...CELL, textAlign: "right", color: "var(--muted)" }}>{fmt.num(g.items)}</td>
+                        <td style={{ ...CELL, textAlign: "right",
+                          color: g.missing ? "#c53030" : "var(--muted)", fontWeight: g.missing ? 600 : 400 }}>
+                          {fmt.num(g.missing)}
+                        </td>
+                        <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>
+                          {g.accuracy_proj == null ? "—" : `${g.accuracy_proj}%`}
+                        </td>
+                      </tr>
+                    ))}
+                    {groupRows.length === 0 && <tr><td colSpan={6} style={CELL}>No item groups in scope.</td></tr>}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="card" style={{ gridColumn: "1 / -1" }}>
+              <div className="supply-dash-cardhead">
+                <div><h3>🎯 Projection vs 3-JC avg sales</h3>
+                  <div className="sub">
+                    top items by sales · JC{p.jc} {p.acc_year} projection
+                    ({p.basis === "collector" ? "your collectors" : "per item, company-wide"}) vs 3-JC average sales ·
+                    ±20% band · <b>{p.coverage_pct}%</b> of your sales volume has a projection
+                  </div></div>
+              </div>
+              <ProjCompareTable rows={p.compare || []}
+                onItem={(r) => setItemPop({ name: r.name, code: r.code })} />
+            </div>
+
+            <div className="card" style={{ gridColumn: "1 / -1" }}>
+              <div className="supply-dash-cardhead">
+                <div><h3>📅 Projection pipeline</h3>
+                  <div className="sub">projected KG for the current and the next two job cycles · your scope</div></div>
+                <SegTabs size="sm" value={pipeView} onChange={setPipeView}
+                  tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
+              </div>
+              {pipeView === "chart" ? (
+                <EChart option={pipeOpt} height={260} />
+              ) : (
+                <>
+                  <div className="pagebar" style={{ marginBottom: 10 }}>
+                    <SmoothInput className="searchbox" placeholder="Search item code / name…"
+                      value={pipeQ} onChange={(e) => setPipeQ(e.target.value)} />
+                    <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
+                      {pipeRows.length} of {(p.pipeline_rows || []).length} products
+                      {(p.pipeline_rows || []).length >= 200 ? " (top 200 by projected volume)" : ""}
+                    </span>
+                  </div>
+                  <div className="tbl-wrap" style={{ maxHeight: 380 }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ ...HCELL, textAlign: "left" }}>Item Code</th>
+                          <th style={{ ...HCELL, textAlign: "left" }}>Item Name</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>Current · JC{p.jc}</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>Next JC</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>JC after next</th>
+                          <th style={{ ...HCELL, textAlign: "center" }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pipeRows.map((r, i) => (
+                          <tr key={i} onClick={() => setItemPop({ name: r.name, code: r.code })}
+                            style={{ cursor: "pointer" }} title="Click to see this item's JC-wise graph">
+                            <td style={{ ...CELL, fontSize: 12, whiteSpace: "nowrap" }}>{r.code || "—"}</td>
+                            <td title={r.name} style={{ ...CELL, maxWidth: 340, overflow: "hidden",
+                              textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</td>
+                            <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(r.avg3)}</td>
+                            <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(r.proj)}</td>
+                            <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(r.next1)}</td>
+                            <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(r.next2)}</td>
+                            <td style={{ ...CELL, textAlign: "center", whiteSpace: "nowrap" }}>
+                              <span style={{ color: (FLAGS[r.flag] || {}).color, fontSize: 12, fontWeight: 600 }}>
+                                ● {(FLAGS[r.flag] || {}).label || r.flag}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                        {pipeRows.length === 0 && (
+                          <tr><td colSpan={7} style={CELL}>No products match the search.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="card" style={{ gridColumn: "1 / -1",
+              ...(p.missing_total > 0 ? { borderColor: "#f0b9b9", background: "#FFFBFA" } : {}) }}>
+              <div className="supply-dash-cardhead">
+                <div><h3>⚠️ Missing projections</h3>
+                  <div className="sub">
+                    selling items with <b>no JC{p.jc} projection</b>
+                    {p.missing_total > 0 && (
+                      <span style={{ color: "#c53030", fontWeight: 600 }}>
+                        {" "}· {p.missing_total} item{p.missing_total > 1 ? "s" : ""} · {abbr(p.missing_kg)} KG/JC unprojected
+                      </span>
+                    )}
+                  </div></div>
+                {p.missing_total > 0 && (
+                  <SegTabs size="sm" value={missView} onChange={setMissView}
+                    tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
+                )}
+              </div>
+              {p.missing_total === 0 ? (
+                <div style={{ padding: "48px 0", textAlign: "center", color: "#2f855a", fontSize: 13 }}>
+                  ✅ Every selling item in your scope has a projection for JC{p.jc}.
+                </div>
+              ) : missView === "chart" ? (
+                <>
+                  <EChart option={missOpt} height={Math.max(240, missChart.length * 26)} />
+                  {(p.missing_all || []).length > missChart.length && (
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>
+                      Showing the {missChart.length} biggest — switch to <b>Table</b> for all {p.missing_total}.
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="pagebar" style={{ marginBottom: 10 }}>
+                    <SmoothInput className="searchbox" placeholder="Search item code / name…"
+                      value={missQ} onChange={(e) => setMissQ(e.target.value)} />
+                    <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
+                      {missTableRows.length} of {(p.missing_all || []).length} items
+                      {p.missing_total > (p.missing_all || []).length
+                        ? ` (top ${(p.missing_all || []).length} of ${p.missing_total} by volume)` : ""}
+                    </span>
+                  </div>
+                  <div className="tbl-wrap" style={{ maxHeight: 380 }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ ...HCELL, textAlign: "left", width: 60 }}>#</th>
+                          <th style={{ ...HCELL, textAlign: "left" }}>Item Code</th>
+                          <th style={{ ...HCELL, textAlign: "left" }}>Item Name</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales (KG)</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>Share of gap</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {missTableRows.map((m, i) => (
+                          <tr key={i} onClick={() => setItemPop({ name: m.name, code: m.code })}
+                            style={{ cursor: "pointer" }} title="Click to see this item's JC-wise graph">
+                            <td style={{ ...CELL, color: "var(--muted)" }}>{m.rank}</td>
+                            <td style={{ ...CELL, fontSize: 12, whiteSpace: "nowrap" }}>{m.code || "—"}</td>
+                            <td title={m.name} style={{ ...CELL, maxWidth: 380, overflow: "hidden",
+                              textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600, color: "#1f3a5f" }}>
+                              {m.name}
+                            </td>
+                            <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(m.avg3)}</td>
+                            <td style={{ ...CELL, textAlign: "right", color: "#c53030", fontWeight: 600 }}>
+                              {p.missing_kg ? `${((m.avg3 / p.missing_kg) * 100).toFixed(1)}%` : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                        {missTableRows.length === 0 && (
+                          <tr><td colSpan={5} style={CELL}>No items match the search.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
       </div>
 

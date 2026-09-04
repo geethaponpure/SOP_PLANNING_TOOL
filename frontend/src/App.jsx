@@ -177,7 +177,7 @@ export default function App() {
               onClick={() => goToPage(n.id)}
               title={collapsed ? n.label : undefined}
             >
-              <span className="nav-icon">{n.icon}</span>
+              <span className="nav-icon">{n.icon && <n.icon size={18} strokeWidth={1.75} />}</span>
               <span className="nav-label">{n.label}</span>
               {n.id === "validation" && openEx > 0 && <span className="badge">{openEx}</span>}
             </button>

@@ -1,7 +1,18 @@
 import React from "react";
-import { Button } from "react-aria-components";
+import { Button, Header } from "react-aria-components";
 import { avatarUrl } from "../assets/avatars/index.js";
 import { Dropdown } from "./Dropdown.jsx";
+
+const KeyIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M21 2l-2 2m-3.5 3.5L19 4l3 3-3.5 3.5m-3-3L11.4 11.6m0 0a5.5 5.5 0 1 0-7.8 7.8 5.5 5.5 0 0 0 7.8-7.8z" />
+  </svg>
+);
+const PowerIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10" />
+  </svg>
+);
 
 // Top-bar profile chip (avatar + name + role + chevron) with a dropdown for
 // change-password / logout. Built on the reusable Dropdown (react-aria-components),
@@ -39,8 +50,10 @@ export default function ProfileMenu({ name, role, avatar, onChangePassword, onLo
           }}
         >
           <Dropdown.Section>
-            <Dropdown.Item id="pw">🔑 Change password</Dropdown.Item>
-            <Dropdown.Item id="logout" className="logout">⏻ Logout</Dropdown.Item>
+            <Header className="profile-menu-title">{name}{role ? ` · ${role}` : ""}</Header>
+            <Dropdown.Item id="pw" className="act-pw"><KeyIcon /><span>Change password</span></Dropdown.Item>
+            <Dropdown.Separator />
+            <Dropdown.Item id="logout" className="logout"><PowerIcon /><span>Logout</span></Dropdown.Item>
           </Dropdown.Section>
         </Dropdown.Menu>
       </Dropdown.Popover>

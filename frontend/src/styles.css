@@ -595,7 +595,38 @@ body {
 .dd-bom-pop .dd-item.is-selected { background: #eef4fb; font-weight: 600; color: var(--supply-ink); }
 .dd-bom-pop::-webkit-scrollbar { width: 10px; }
 .dd-bom-pop::-webkit-scrollbar-thumb { background: #cbd5e0; border: 3px solid var(--card); border-radius: 99em; }
-.profile-menu-pop { min-width: 200px; }
+/* ---- Account menu: Galahhad-inspired popup (green hover, Poppins, colored icons) ---- */
+.profile-menu-pop {
+  min-width: 216px;
+  font-family: "Poppins", "Segoe UI", system-ui, sans-serif;
+  background: #fff;
+  border: 1px solid #e3e6ea;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+  padding: 6px;
+}
+.profile-menu-title {
+  display: block; padding: 7px 12px 5px; margin: 0;
+  font-size: 10px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase;
+  color: #8a8f98; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.profile-menu-pop .dd-separator { background: #eceef1; margin: 5px 6px; }
+.profile-menu-pop .dd-item {
+  gap: 12px; padding: 9px 12px; border-radius: 8px;
+  font-size: 14.5px; font-weight: 500; color: #333;
+  transition: background .12s ease, color .12s ease;
+}
+.profile-menu-pop .dd-item-label { display: flex; align-items: center; gap: 12px; }
+.profile-menu-pop .dd-item svg { width: 18px; height: 18px; flex: none; transition: color .12s ease; }
+.profile-menu-pop .dd-item.act-pw svg { color: #00bf63; }
+.profile-menu-pop .dd-item.logout { color: #e5484d; }
+.profile-menu-pop .dd-item.logout svg { color: #e5484d; }
+/* signature green hover — every item, icon turns white (matches the reference) */
+.profile-menu-pop .dd-item[data-hovered], .profile-menu-pop .dd-item[data-focused],
+.profile-menu-pop .dd-item.logout[data-hovered], .profile-menu-pop .dd-item.logout[data-focused] {
+  background: #00bf63; color: #fff;
+}
+.profile-menu-pop .dd-item[data-hovered] svg, .profile-menu-pop .dd-item[data-focused] svg { color: #fff; }
 
 /* ---- SelectBox: custom <select> on react-aria (see components/SelectBox.jsx) ---- */
 /* wrapper is layout-transparent so the trigger sits in the parent flex like a native select */

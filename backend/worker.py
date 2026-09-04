@@ -155,10 +155,24 @@ def sync_intransit(ctx) -> int:
 
 
 def sync_projection_rows(ctx) -> int:
-    """Per item x collector projection for the planning JC — Projection-vs-Sales."""
-    return _sync("projection_rows",
-                 lambda: crm.business_plan_projection_rows(ctx["acc_year"], ctx["plan_jc"]),
-                 lambda rows: staging.replace_projection_rows(ctx["acc_year"], ctx["plan_jc"], rows))
+    """Per item x collector projection for JC1..current — Projection-vs-Sales and
+    the My-Dashboard accuracy trend (collector-scoped personas need every JC, not
+    just the planning one, to compare their own projection against their sales)."""
+    run_id = staging.start_run("projection_rows")
+    t0 = time.time()
+    try:
+        acc, cur_jc, total = ctx["acc_year"], int(ctx["plan_jc"] or 0), 0
+        for j in range(1, cur_jc + 1):
+            rows = crm.business_plan_projection_rows(acc, j) or []
+            total += staging.replace_projection_rows(acc, j, rows)
+        staging.finish_run(run_id, "ok", total)
+        print(f"[sync] projection_rows: {total} rows ({cur_jc} JCs) in {time.time() - t0:.1f}s")
+        return total
+    except Exception as e:   # noqa: BLE001
+        msg = f"{type(e).__name__}: {str(e).splitlines()[0]}"
+        staging.finish_run(run_id, "error", None, msg)
+        print(f"[sync] projection_rows FAILED: {msg[:150]}")
+        return -1
 
 
 def sync_projection_accuracy(ctx) -> int:

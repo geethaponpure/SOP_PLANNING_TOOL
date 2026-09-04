@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "lato",
+        "createdAt": "2026-09-04T05:27:15.420Z",
+        "reason": "pre-existing Figma-derived font on the User Master employee-table (styles.css L408); outside this session's scope, mirrors its Figma source"
+      }
+    ]
+  }
+}

@@ -19,6 +19,7 @@ migration plan that keeps the app working at every step.
 | dispatch (jc3 + jc13) | stg_dispatch (long↔wide pivot) | **MSL, RM-Plan (MSL top-ups)** |
 | user_scope (6 CRM mapping tables → 8 personas) | stg_user_scope (one row per user × atomic grant; CSV collector lists exploded) | **My Dashboard** (see `db/migrate_user_scope.sql`) |
 | dispatch_scope (FnDespatchDetails, 13-JC window) | stg_dispatch_scope (JC × item × customer × collector × mc_code, qty + value) | **My Dashboard** charts (see `db/migrate_dashboard.sql`; item_segments also gained segment4) |
+| projection_rows (now JC1..current, not just the planning JC) | stg_projection_rows | **My Dashboard** projection-accuracy trend for collector-scoped personas |
 
 Verified with CRM deliberately unreachable: MFG-Stock, Aged-RM, MSL, Adhoc, and
 **RM-Plan (59 products)** all build entirely from MySQL. The 7.6-minute `soc_pending`
