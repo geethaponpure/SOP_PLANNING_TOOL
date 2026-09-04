@@ -21,6 +21,24 @@ def get_my_dashboard(username: str = "", email: str = "", admin: int = 0,
                         admin=bool(admin), persona=persona or None)
 
 
+class LayoutIn(BaseModel):
+    key: str = "mydash"
+    layouts: dict
+
+
+@router.get("/api/dashboard-layout")
+def get_dashboard_layout(key: str = "mydash"):
+    """The admin-saved default card arrangement (empty when none is saved)."""
+    return {"key": key, "layouts": staging.read_ui_layout(key) or None}
+
+
+@router.put("/api/dashboard-layout")
+def put_dashboard_layout(body: LayoutIn):
+    """Store the current arrangement as the default everyone starts from."""
+    staging.save_ui_layout(body.key, body.layouts)
+    return {"ok": True}
+
+
 @router.get("/api/my-dashboard/personas")
 def get_dashboard_personas():
     """Persona -> mapped users list for the admin 'View as' switcher."""

@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useState } from "react";
-import { Responsive, WidthProvider } from "react-grid-layout";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ResponsiveGridLayout, useContainerWidth } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
@@ -13,7 +13,6 @@ import "react-resizable/css/styles.css";
 // button, input) is excluded via draggableCancel so cross-filter clicks, table
 // scrolling and the Chart/Table toggles keep working normally.
 
-const RGL = WidthProvider(Responsive);
 const COLS = { lg: 12, md: 8, sm: 4, xs: 2 };
 const BREAKPOINTS = { lg: 1280, md: 960, sm: 680, xs: 0 };
 const CANCEL = "button, a, input, select, textarea, canvas, table, .tbl-wrap, .searchbox";
@@ -45,23 +44,45 @@ function buildLayout(ids, defaults, cols) {
   });
 }
 
-export default function DashGrid({ storageKey, defaults = {}, children }) {
+export default function DashGrid({
+  storageKey, defaults = {}, children,
+  expanded = [],          // ids to blow up to the full row (e.g. a table view)
+  remoteLayouts = null,   // the admin-saved default, once it arrives
+  canSaveDefault = false,
+  onSaveDefault,
+}) {
   const items = useMemo(() => flatten(children).filter((c) => c.key != null), [children]);
-  const ids = useMemo(() => items.map(keyOf), [items]);
+  // `children` is a fresh array on every render, so key the id list by VALUE —
+  // otherwise the memoised layout below would be rebuilt each render and the
+  // grid could fight itself over positions.
+  const idKey = items.map(keyOf).join("|");
+  const ids = useMemo(() => idKey.split("|").filter(Boolean), [idKey]);
 
+  // null = this user has not arranged the page, so fall back to the saved
+  // default (or the built-in one) and keep following it.
   const [layouts, setLayouts] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey));
       if (saved && typeof saved === "object") return saved;
     } catch { /* first visit, or storage blocked */ }
-    return { lg: buildLayout(ids, defaults, COLS.lg) };
+    return null;
   });
+  const [savedDefault, setSavedDefault] = useState("idle");
+  // memoised so the fallback keeps a stable identity — a fresh object every
+  // render would rebuild the layout and make the grid fight itself.
+  const fallback = useMemo(() => ({ lg: buildLayout(ids, defaults, COLS.lg) }), [ids, defaults]);
+  const base = layouts || remoteLayouts || fallback;
+
+  const expKey = expanded.join("|");
+  const expandedSet = useMemo(
+    () => new Set(expKey ? expKey.split("|") : []), [expKey]);
+  useEffect(() => { setSavedDefault("idle"); }, [expKey]);
 
   // keep the saved arrangement in step with the cards actually rendered:
   // drop layout entries for cards that disappeared, append newly added ones.
   const shown = useMemo(() => {
     const out = {};
-    for (const [bp, arr] of Object.entries(layouts || {})) {
+    for (const [bp, arr] of Object.entries(base || {})) {
       const cols = COLS[bp] || COLS.lg;
       const known = new Map((arr || []).map((l) => [l.i, l]));
       const kept = ids.filter((id) => known.has(id)).map((id) => known.get(id));
@@ -70,30 +91,65 @@ export default function DashGrid({ storageKey, defaults = {}, children }) {
       out[bp] = [
         ...kept,
         ...buildLayout(missing, defaults, cols).map((l) => ({ ...l, y: l.y + nextY })),
-      ];
+      ].map((l) => (expandedSet.has(l.i)
+        // a card switched to its table view takes the whole row, so the columns
+        // are readable — the user's own size is restored when they switch back
+        ? { ...l, x: 0, w: cols, h: Math.max(l.h, 13) }
+        : l));
     }
     return out;
-  }, [layouts, ids, defaults]);
+  }, [base, ids, defaults, expandedSet]);
 
   const save = useCallback((_cur, all) => {
+    // never bake a temporary full-row expansion into the saved arrangement
+    if (expandedSet.size) return;
     setLayouts(all);
     try { localStorage.setItem(storageKey, JSON.stringify(all)); } catch { /* ignore */ }
-  }, [storageKey]);
+  }, [storageKey, expandedSet]);
+
+  const saveDefault = useCallback(async () => {
+    if (!onSaveDefault) return;
+    setSavedDefault("saving");
+    try {
+      await onSaveDefault(base);
+      setSavedDefault("saved");
+    } catch {
+      setSavedDefault("failed");
+    }
+  }, [onSaveDefault, base]);
 
   const reset = useCallback(() => {
-    const fresh = { lg: buildLayout(ids, defaults, COLS.lg) };
-    setLayouts(fresh);
+    setLayouts(null);          // back to the saved default, else the built-in one
     try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
-  }, [ids, defaults, storageKey]);
+  }, [storageKey]);
+
+  // v2 measures its own container instead of the old WidthProvider HOC
+  const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true });
 
   return (
     <>
       <div className="dash-grid-bar">
         <span>Drag a card by its header to move it · drag its bottom-right corner to resize</span>
-        <button type="button" className="btn secondary" onClick={reset}>Reset layout</button>
+        {canSaveDefault && (
+          <button type="button" className="btn secondary" onClick={saveDefault}
+            style={{ marginLeft: "auto" }}
+            disabled={savedDefault === "saving" || expandedSet.size > 0}
+            title={expandedSet.size
+              ? "Switch the expanded card back to Chart first"
+              : "Make this arrangement the default everyone starts from"}>
+            {savedDefault === "saving" ? "Saving…"
+              : savedDefault === "saved" ? "✓ Saved as default"
+                : savedDefault === "failed" ? "Save failed — retry" : "Save as default"}
+          </button>
+        )}
+        <button type="button" className="btn secondary" onClick={reset}
+          style={canSaveDefault ? undefined : { marginLeft: "auto" }}>Reset layout</button>
       </div>
-      <RGL
+      <div ref={containerRef}>
+      {mounted && (
+      <ResponsiveGridLayout
         className="dash-grid"
+        width={width}
         layouts={shown}
         breakpoints={BREAKPOINTS}
         cols={COLS}
@@ -102,13 +158,14 @@ export default function DashGrid({ storageKey, defaults = {}, children }) {
         containerPadding={[0, 0]}
         draggableCancel={CANCEL}
         onLayoutChange={save}
-        measureBeforeMount
         useCSSTransforms
       >
         {items.map((child) => (
           <div key={keyOf(child)} className="dash-item">{child}</div>
         ))}
-      </RGL>
+      </ResponsiveGridLayout>
+      )}
+      </div>
     </>
   );
 }

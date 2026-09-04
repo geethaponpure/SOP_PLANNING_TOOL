@@ -4,6 +4,7 @@ import EChart from "../components/EChart.jsx";
 import SegTabs from "../components/SegTabs.jsx";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
+import DashGrid from "../components/DashGrid.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 import { Truck, Wallet, Handshake, Package, Target, ClipboardList, BarChart3, TriangleAlert, TrendingUp, Eye, Dna, CalendarDays, CircleCheck } from "lucide-react";
@@ -24,6 +25,22 @@ const grad = (c1, c2) => ({ type: "linear", x: 0, y: 0, x2: 1, y2: 0, colorStops
 const PAL = ["#2a9d8f", "#4880ff", "#b7791f", "#805ad5", "#2f855a", "#c53030", "#28b5e1", "#90a1ac",
   "#d69e2e", "#3182ce", "#38a169", "#e53e3e", "#718096"];
 const SHAPE_DIST = [{ id: "donut", label: "Donut" }, { id: "pie", label: "Pie" }, { id: "bar", label: "Bar" }];
+
+// Where each card sits until the user arranges the page themselves (12
+// columns; one row unit is 30px + a 14px gutter). A saved layout wins.
+const DASH_DEFAULTS = {
+  byColl:     { x: 0, y: 0, w: 6, h: 8 },
+  bySeg:      { x: 6, y: 0, w: 6, h: 8 },
+  projCanvas: { x: 0, y: 8, w: 12, h: 10 },
+  jcQty:      { x: 0, y: 18, w: 6, h: 8 },
+  jcAcc:      { x: 6, y: 18, w: 6, h: 8 },
+  jcItems:    { x: 0, y: 26, w: 6, h: 8 },
+  status:     { x: 6, y: 26, w: 6, h: 8 },
+  group:      { x: 0, y: 34, w: 12, h: 11 },
+  compare:    { x: 0, y: 45, w: 12, h: 12 },
+  pipeline:   { x: 0, y: 57, w: 12, h: 10 },
+  missing:    { x: 0, y: 67, w: 12, h: 12 },
+};
 const abbr = (v) => {
   const n = Math.abs(v);
   if (n >= 1e7) return (v / 1e7).toFixed(n >= 1e8 ? 0 : 1) + "Cr";
@@ -110,6 +127,7 @@ function MiniBar({ label, value, max, color }) {
 
 function ProjCompareTable({ rows, onItem }) {
   return (
+    <div className="tbl-wrap">
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
       <thead>
         <tr>
@@ -157,6 +175,7 @@ function ProjCompareTable({ rows, onItem }) {
         })}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -286,7 +305,7 @@ const PROJ_METRICS = [
 // Single-number projection metrics, drawn rather than printed on a card.
 const accColor = (v) => (v == null ? "#90a1ac" : v < 40 ? "#c53030" : v < 70 ? "#b7791f" : "#2f855a");
 
-function gaugeOption(value, caption) {
+export function gaugeOption(value, caption) {
   const c = accColor(value);
   return {
     ...ANIM,
@@ -295,23 +314,24 @@ function gaugeOption(value, caption) {
         `<br/><span style="color:#90a1ac">100 − WMAPE across completed JCs</span>` },
     series: [{
       type: "gauge", startAngle: 205, endAngle: -25, min: 0, max: 100,
-      radius: "94%", center: ["50%", "60%"],
-      progress: { show: true, width: 16, roundCap: true, itemStyle: { color: c } },
-      axisLine: { lineStyle: { width: 16, color: [[1, "#eef2f7"]] } },
+      radius: "80%", center: ["50%", "58%"],
+      progress: { show: true, width: 14, roundCap: true, itemStyle: { color: c } },
+      axisLine: { lineStyle: { width: 14, color: [[1, "#eef2f7"]] } },
       pointer: { show: false }, anchor: { show: false },
-      axisTick: { show: false }, splitLine: { show: false },
-      axisLabel: { distance: -20, fontSize: 9, color: "#b6c2cc",
-        formatter: (v) => (v === 0 || v === 100 ? `${v}` : "") },
-      detail: { valueAnimation: true, fontSize: 30, fontWeight: 700, offsetCenter: [0, "0%"],
-        formatter: (v) => (value == null ? "—" : `${v}%`), color: c },
-      title: { offsetCenter: [0, "34%"], fontSize: 11, color: "#90a1ac" },
+      axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
+      // valueAnimation feeds the formatter RAW interpolated floats — without
+      // rounding it renders "8.42361111111111%" mid-animation, which overflows
+      // the card at this font size.
+      detail: { valueAnimation: true, fontSize: 26, fontWeight: 700, offsetCenter: [0, "2%"],
+        formatter: (v) => (value == null ? "—" : `${Number(v).toFixed(1)}%`), color: c },
+      title: { offsetCenter: [0, "36%"], fontSize: 11, color: "#90a1ac", width: 150, overflow: "truncate" },
       data: [{ value: value == null ? 0 : value, name: caption }],
     }],
   };
 }
 
 // Donut for a two-way split (projected vs not), with the share in the middle.
-function ratioOption(rows, { centerText, centerSub, unit }) {
+export function ratioOption(rows, { centerText, centerSub, unit }) {
   return {
     ...ANIM,
     tooltip: { ...TT, trigger: "item",
@@ -595,6 +615,9 @@ export default function Dashboard({ session, isAdmin }) {
     setProjMetric("accuracy"); setProjView("chart");
   }, [viewAs.username, viewAs.persona]);
 
+  // the arrangement an admin saved for everyone (personal layouts still win)
+  const savedLayout = useAsync(() => api.dashboardLayout("mydash"), []);
+
   const idParams = useMemo(() => (viewAs.username
     ? { username: viewAs.username, persona: viewAs.persona }
     : { username: u.username || u.user_code || "", email: u.email || "", admin: isAdmin ? 1 : 0 }),
@@ -654,6 +677,16 @@ export default function Dashboard({ session, isAdmin }) {
     return src.filter((m) => (m.name || "").toLowerCase().includes(q) ||
       (m.code || "").toLowerCase().includes(q));
   }, [p, missQ]);
+
+  // a card showing its TABLE takes the full row, like the old full-width cards
+  const expandedCards = useMemo(() => {
+    const out = [];
+    if (projView === "table") out.push("projCanvas");
+    if (groupView === "table") out.push("group");
+    if (pipeView === "table") out.push("pipeline");
+    if (missView === "table") out.push("missing");
+    return out;
+  }, [projView, groupView, pipeView, missView]);
 
   if (loading && !data) return <Loading what="your dashboard" />;
   if (error) return <>{switcher}<ErrorBox msg={error} /></>;
@@ -721,34 +754,35 @@ export default function Dashboard({ session, isAdmin }) {
         </div>
       )}
 
-      <div className="grid cols-2" style={{ marginTop: 14 }}>
+      <DashGrid storageKey="mydash_layout_v1" defaults={DASH_DEFAULTS}
+        expanded={expandedCards} remoteLayouts={savedLayout.data?.layouts || null}
+        canSaveDefault={isAdmin}
+        onSaveDefault={(l) => api.saveDashboardLayout("mydash", l)}>
         {byColl.length > 1 && (
-          <div className="card">
+          <div key="byColl" className="card">
             <div className="supply-dash-cardhead">
               <div><h3>By collector{sel.segment ? ` · ${sel.segment}` : ""}</h3>
                 <div className="sub">click a {shape.coll === "bar" ? "bar" : "slice"} to cross-filter</div></div>
               <SegTabs size="sm" value={shape.coll} onChange={setSh("coll")} tabs={SHAPE_DIST} />
             </div>
-            <EChart option={collOpt} height={260} onEvents={collEvents} />
+            <EChart className="echart-fill" option={collOpt} height="100%" onEvents={collEvents} />
           </div>
         )}
 
         {bySeg.length > 1 && (
-          <div className="card">
+          <div key="bySeg" className="card">
             <div className="supply-dash-cardhead">
               <div><h3>Product mix by segment{sel.collector ? ` · ${sel.collector}` : ""}</h3>
                 <div className="sub">click a {shape.seg === "bar" ? "bar" : "slice"} to cross-filter</div></div>
               <SegTabs size="sm" value={shape.seg} onChange={setSh("seg")} tabs={SHAPE_DIST} />
             </div>
-            <EChart option={segOpt} height={260} onEvents={segEvents} />
+            <EChart className="echart-fill" option={segOpt} height="100%" onEvents={segEvents} />
           </div>
         )}
 
-      </div>
-
       {p && (
         <>
-          <div className="card" style={{ marginTop: 14 }}>
+          <div key="projCanvas" className="card">
             <div className="supply-dash-cardhead">
               <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>{(() => { const M = PROJ_METRICS.find((m) => m.id === projMetric); const I = M?.icon; return <>{I && <I size={16} />} {M?.title}</>; })()}</h3>
                 <div className="sub">
@@ -765,12 +799,12 @@ export default function Dashboard({ session, isAdmin }) {
             </div>
 
             {projView === "chart" ? (
-              <div style={{ maxWidth: 560, margin: "0 auto" }}>
+              <div className="echart-fill" style={{ width: "100%", maxWidth: 560, margin: "0 auto" }}>
                 <EChart option={projMetric === "accuracy" ? accGaugeOpt
-                  : projMetric === "volume" ? volRatioOpt : itemRatioOpt} height={250} />
+                  : projMetric === "volume" ? volRatioOpt : itemRatioOpt} height="100%" />
               </div>
             ) : projMetric === "accuracy" ? (
-              <div className="tbl-wrap" style={{ maxHeight: 340 }}>
+              <div className="tbl-wrap">
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr>
@@ -840,7 +874,7 @@ export default function Dashboard({ session, isAdmin }) {
                     broken down by item group
                   </span>
                 </div>
-                <div className="tbl-wrap" style={{ maxHeight: 340 }}>
+                <div className="tbl-wrap">
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <thead>
                       {projMetric === "volume" ? (
@@ -914,47 +948,46 @@ export default function Dashboard({ session, isAdmin }) {
               </>
             )}
           </div>
-          <div className="grid cols-2" style={{ marginTop: 14 }}>
             {p.jc_trend.length > 0 && (
-              <div className="card">
+              <div key="jcQty" className="card">
                 <div className="supply-dash-cardhead">
                   <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Package size={16} /> Total projection qty by JC</h3>
                     <div className="sub">projected KG per job cycle vs actual sales · {p.acc_year} · the pale bar is the planning JC{p.jc}</div></div>
                 </div>
-                <EChart option={jcQtyOpt} height={260} />
+                <EChart className="echart-fill" option={jcQtyOpt} height="100%" />
               </div>
             )}
 
             {p.jc_trend.length > 0 && (
-              <div className="card">
+              <div key="jcAcc" className="card">
                 <div className="supply-dash-cardhead">
                   <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Target size={16} /> Projection accuracy by JC</h3>
                     <div className="sub">100 − WMAPE per item · overall <b>{p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}</b> on projected items</div></div>
                 </div>
-                <EChart option={jcAccOpt} height={260} />
+                <EChart className="echart-fill" option={jcAccOpt} height="100%" />
               </div>
             )}
 
             {p.jc_trend.length > 0 && (
-              <div className="card">
+              <div key="jcItems" className="card">
                 <div className="supply-dash-cardhead">
                   <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><ClipboardList size={16} /> Items projected · every JC</h3>
                     <div className="sub">items carrying a projection each cycle vs items that actually sold · the pale bar is the planning JC (not dispatched yet)</div></div>
                 </div>
-                <EChart option={jcItemsOpt} height={260} />
+                <EChart className="echart-fill" option={jcItemsOpt} height="100%" />
               </div>
             )}
 
-            <div className="card">
+            <div key="status" className="card">
               <div className="supply-dash-cardhead">
                 <div><h3>Projection status</h3>
                   <div className="sub">items by flag · same ±20% band as the RM plan</div></div>
                 <SegTabs size="sm" value={shape.proj} onChange={setSh("proj")} tabs={SHAPE_DIST} />
               </div>
-              <EChart option={statusOpt} height={260} />
+              <EChart className="echart-fill" option={statusOpt} height="100%" />
             </div>
 
-            <div className="card" style={{ gridColumn: "1 / -1" }}>
+            <div key="group" className="card">
               <div className="supply-dash-cardhead">
                 <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Dna size={16} /> Projection by item group</h3>
                   <div className="sub">JC{p.jc} projected KG per {groupLevel === "segment2" ? "division (Segment 2)" : "product group (Segment 3)"} · sales, accuracy and gaps in the tooltip</div></div>
@@ -966,7 +999,7 @@ export default function Dashboard({ session, isAdmin }) {
                 </div>
               </div>
               {groupView === "chart" ? (
-                <EChart option={groupOpt} height={Math.max(260, groupRows.length * 26)} />
+                <EChart className="echart-fill" option={groupOpt} height="100%" />
               ) : (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
@@ -1001,7 +1034,7 @@ export default function Dashboard({ session, isAdmin }) {
               )}
             </div>
 
-            <div className="card" style={{ gridColumn: "1 / -1" }}>
+            <div key="compare" className="card">
               <div className="supply-dash-cardhead">
                 <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Target size={16} /> Projection vs 3-JC avg sales</h3>
                   <div className="sub">
@@ -1014,7 +1047,7 @@ export default function Dashboard({ session, isAdmin }) {
                 onItem={(r) => setItemPop({ name: r.name, code: r.code })} />
             </div>
 
-            <div className="card" style={{ gridColumn: "1 / -1" }}>
+            <div key="pipeline" className="card">
               <div className="supply-dash-cardhead">
                 <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><CalendarDays size={16} /> Projection pipeline</h3>
                   <div className="sub">projected KG for the current and the next two job cycles · your scope</div></div>
@@ -1022,7 +1055,7 @@ export default function Dashboard({ session, isAdmin }) {
                   tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
               </div>
               {pipeView === "chart" ? (
-                <EChart option={pipeOpt} height={260} />
+                <EChart className="echart-fill" option={pipeOpt} height="100%" />
               ) : (
                 <>
                   <div className="pagebar" style={{ marginBottom: 10 }}>
@@ -1033,7 +1066,7 @@ export default function Dashboard({ session, isAdmin }) {
                       {(p.pipeline_rows || []).length >= 200 ? " (top 200 by projected volume)" : ""}
                     </span>
                   </div>
-                  <div className="tbl-wrap" style={{ maxHeight: 380 }}>
+                  <div className="tbl-wrap">
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
                         <tr>
@@ -1074,8 +1107,8 @@ export default function Dashboard({ session, isAdmin }) {
               )}
             </div>
 
-            <div className="card" style={{ gridColumn: "1 / -1",
-              ...(p.missing_total > 0 ? { borderColor: "#f0b9b9", background: "#FFFBFA" } : {}) }}>
+            <div key="missing" className="card"
+              style={p.missing_total > 0 ? { background: "#FFFBFA" } : undefined}>
               <div className="supply-dash-cardhead">
                 <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><TriangleAlert size={16} /> Missing projections</h3>
                   <div className="sub">
@@ -1097,7 +1130,7 @@ export default function Dashboard({ session, isAdmin }) {
                 </div>
               ) : missView === "chart" ? (
                 <>
-                  <EChart option={missOpt} height={Math.max(240, missChart.length * 26)} />
+                  <EChart className="echart-fill" option={missOpt} height="100%" />
                   {(p.missing_all || []).length > missChart.length && (
                     <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>
                       Showing the {missChart.length} biggest — switch to <b>Table</b> for all {p.missing_total}.
@@ -1115,7 +1148,7 @@ export default function Dashboard({ session, isAdmin }) {
                         ? ` (top ${(p.missing_all || []).length} of ${p.missing_total} by volume)` : ""}
                     </span>
                   </div>
-                  <div className="tbl-wrap" style={{ maxHeight: 380 }}>
+                  <div className="tbl-wrap">
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
                         <tr>
@@ -1151,9 +1184,9 @@ export default function Dashboard({ session, isAdmin }) {
                 </>
               )}
             </div>
-          </div>
         </>
       )}
+      </DashGrid>
       </div>
 
       <ItemGraphModal target={itemPop} idParams={idParams} onClose={() => setItemPop(null)} />

@@ -23,7 +23,7 @@ export default function EChart({ option, height = 300, className, onEvents, notM
       timer = setTimeout(() => {
         cancelAnimationFrame(raf);
         raf = requestAnimationFrame(() => chartRef.current && chartRef.current.resize());
-      }, 140);
+      }, 80);
     });
     ro.observe(elRef.current);
     return () => {

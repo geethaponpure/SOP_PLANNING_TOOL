@@ -38,11 +38,22 @@ body {
 
 /* CSS-grid shell: the sidebar + main are two tracks that resize together, so
    collapsing reflows the content in lock-step (no flex-item width clipping).
-   We transition grid-template-columns (grid interpolates both tracks smoothly). */
+   The width slide is a LAYOUT animation, so it is kept short and the expensive
+   per-frame work that used to ride along with it was removed: debounced chart
+   resize (EChart.jsx), rAF-batched nav fade (useScrollFade), no backdrop blur. */
 .app { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100vh;
-  transition: grid-template-columns 0.22s cubic-bezier(0.4, 0, 0.2, 1); }
+  transition: grid-template-columns 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
 .app.sb-collapsed { grid-template-columns: 68px minmax(0, 1fr); }
 @media (prefers-reduced-motion: reduce) { .app { transition: none; } }
+
+/* sidebar content eases in on expand — opacity/transform only, never layout */
+@keyframes sb-item-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+.sidebar:not(.collapsed) nav button .nav-label,
+.sidebar:not(.collapsed) .brand .brand-content { animation: sb-item-in 0.18s ease both; }
+@media (prefers-reduced-motion: reduce) {
+  .sidebar:not(.collapsed) nav button .nav-label,
+  .sidebar:not(.collapsed) .brand .brand-content { animation: none; }
+}
 
 /* ---- burger toggle button ---- */
 .burger-btn {
@@ -151,7 +162,8 @@ body {
   background: transparent; border: none; color: #5B6471;
   font-size: 13.5px; font-weight: 500; cursor: pointer; text-align: left;
   border-left: 4px solid transparent;
-  transition: all 0.15s ease;
+  /* not "all": that included padding/gap, which animate layout on collapse */
+  transition: background-color 0.15s ease, color 0.15s ease, border-left-color 0.15s ease;
   position: relative;
 }
 .sidebar nav button .nav-icon {
@@ -841,8 +853,8 @@ body {
 }
 .card .sub { color: var(--kit-body); font-size: 12px; margin-bottom: 12px; }
 
-.stat { display: flex; flex-direction: column; gap: 2px; }
-.stat .v { font-size: 28px; font-weight: 700; color: var(--kit-slate); font-family: var(--font-display); }
+.stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat .v { font-size: 28px; font-weight: 700; color: var(--kit-slate); font-family: var(--font-display); line-height: 1.1; overflow-wrap: anywhere; }
 .stat .l { font-size: 12px; color: var(--kit-muted); }
 
 /* ---- Card UI kit: stat-widget pattern (uppercase label · big value · footer) ---- */
@@ -1774,11 +1786,13 @@ td.num b { color: var(--navy); }
 }
 /* the lift-on-hover would fight the grid's own transform — drop it in here */
 .dash-item > .card:hover { transform: none; }
-.dash-item .supply-dash-cardhead { cursor: move; flex: none; }
-/* everything under the header takes the leftover height so charts fill the card */
-.dash-item .dash-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.dash-item .dash-body > .tbl-wrap { flex: 1 1 auto; min-height: 0; max-height: none; }
-.dash-item .dash-body > table { display: block; overflow: auto; }
+.dash-item .supply-dash-cardhead { cursor: move; }
+/* header, toolbars and footnotes keep their natural height; the chart or table
+   takes whatever is left, so resizing the card really does resize the chart */
+.dash-item > .card > * { flex: 0 0 auto; }
+.dash-item > .card > .echart-fill,
+.dash-item > .card > .tbl-wrap { flex: 1 1 auto; min-height: 0; }
+.dash-item .tbl-wrap { max-height: none; }
 
 .react-grid-item.react-grid-placeholder {
   background: var(--navy, #1f3a5f); opacity: 0.12; border-radius: var(--kit-radius, 14px);
@@ -1786,5 +1800,5 @@ td.num b { color: var(--navy); }
 .react-grid-item.react-draggable-dragging { z-index: 5; }
 .react-grid-item.react-draggable-dragging > .card { box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22); }
 /* make the resize corner findable without being loud */
-.dash-item > .react-resizable-handle { padding: 0 4px 4px 0; opacity: 0.35; transition: opacity 0.15s ease; }
+.dash-item > .react-resizable-handle { padding: 0 4px 4px 0; opacity: 0.3; transition: opacity 0.15s ease; }
 .dash-item:hover > .react-resizable-handle { opacity: 0.9; }

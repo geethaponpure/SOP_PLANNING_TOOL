@@ -1,5 +1,18 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { TriangleAlert } from "lucide-react";
+import { fmt } from "../api";
+
+// Abbreviate a KPI value when it is a plain number (or a ₹-prefixed number), so
+// large totals don't overflow the card. Percentages, composite strings ("12 · 34",
+// "12 FGs"), already-abbreviated values, and JSX are left untouched.
+function compactStat(v) {
+  if (typeof v === "number") return fmt.compact(v);
+  if (typeof v === "string") {
+    const m = v.match(/^(₹\s*)?(-?[\d,]+(?:\.\d+)?)$/);
+    if (m) return (m[1] || "") + fmt.compact(Number(m[2].replace(/,/g, "")));
+  }
+  return v;
+}
 
 // Small data-fetching hook with refresh support.
 export function useAsync(fn, deps = []) {
@@ -130,7 +143,7 @@ export function KitStat({ label, value, foot }) {
 export function Stat({ value, label }) {
   return (
     <div className="stat">
-      <div className="v">{value}</div>
+      <div className="v">{compactStat(value)}</div>
       <div className="l">{label}</div>
     </div>
   );

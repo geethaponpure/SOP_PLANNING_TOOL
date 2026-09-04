@@ -164,7 +164,7 @@ function Dashboard({ onOpen, ver }) {
   if (error) return <ErrorBox msg={error} />;
   const t = data.totals || {};
   const card = (v, l, cls = "") => <div className={`card statcard ${cls}`}><div className="ic">•</div>
-    <div className="stat"><div className="v">{fmt.num(v)}</div><div className="l">{l}</div></div></div>;
+    <div className="stat"><div className="v">{fmt.compact(v)}</div><div className="l">{l}</div></div></div>;
   return (
     <>
       <div className="grid cols-4" style={{ marginTop: 12 }}>

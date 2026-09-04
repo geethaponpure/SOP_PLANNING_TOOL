@@ -72,6 +72,9 @@ export const api = {
   myDashboard: ({ username = "", email = "", admin = 0, persona = "" } = {}) =>
     req(`/my-dashboard?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}`),
   myDashboardPersonas: () => req("/my-dashboard/personas"),
+  dashboardLayout: (key = "mydash") => req(`/dashboard-layout?key=${encodeURIComponent(key)}`),
+  saveDashboardLayout: (key, layouts) =>
+    req("/dashboard-layout", { method: "PUT", body: JSON.stringify({ key, layouts }) }),
   myDashboardItem: ({ item = "", code = "", username = "", email = "", admin = 0, persona = "" } = {}) =>
     req(`/my-dashboard/item?item=${encodeURIComponent(item)}&code=${encodeURIComponent(code)}` +
       `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
@@ -261,6 +264,17 @@ export const fmt = {
   num: (v, d = 0) =>
     v == null || v === "" || v !== v ? "—"
       : Number(v).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d }),
+  // Compact Indian abbreviation for KPI cards: ≥1 crore → "Cr", ≥1 lakh → "L";
+  // smaller numbers stay full (they fit fine). Keeps big totals from overflowing.
+  compact: (v) => {
+    if (v == null || v === "" || v !== v) return "—";
+    const n = Number(v);
+    if (!isFinite(n)) return fmt.num(v);
+    const a = Math.abs(n);
+    if (a >= 1e7) return (n / 1e7).toFixed(2).replace(/\.?0+$/, "") + " Cr";
+    if (a >= 1e5) return (n / 1e5).toFixed(2).replace(/\.?0+$/, "") + " L";
+    return fmt.num(n);
+  },
   inr: (v) => (v == null ? "—" : `₹${Number(v).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`),
   money: (v) => {
     if (v == null) return "—";

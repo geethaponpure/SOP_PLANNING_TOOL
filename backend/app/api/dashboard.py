@@ -25,7 +25,7 @@ from ..integration.planning_filter import _proj_flag   # the plan's ±20% band
 
 # bump when the payload shape changes so stale precomputed admin payloads
 # (computed_plan.dashboard_admin) are rebuilt instead of served
-_PAYLOAD_V = 7
+_PAYLOAD_V = 8
 
 # broadest scope first — a user holding several personas gets the widest view
 _PERSONA_PRIORITY = ["Division Head", "Business Head", "Technical Head",
@@ -159,6 +159,22 @@ def _wmape_acc(pairs) -> float | None:
         return None
     err = sum(abs(pr - a) for pr, a in pairs)
     return round(max(0.0, 100 - 100 * err / act), 1)
+
+
+def _weighted_mean(rows) -> float | None:
+    """Volume-weighted mean of the per-JC accuracies.
+
+    Aggregate the per-JC figures rather than pooling raw errors across cycles:
+    WMAPE is floored at 0 per cycle, so one cycle whose projection overshoots
+    badly can push the POOLED ratio below zero and floor the headline at 0%
+    even when most cycles scored well — which made the gauge contradict the
+    per-JC table right beside it. Weighting by each cycle's actual volume keeps
+    big cycles dominant while the headline always sits inside the range the
+    table shows."""
+    tot = sum(w for a, w in rows if a is not None and w > 0)
+    if not tot:
+        return None
+    return round(sum(a * w for a, w in rows if a is not None and w > 0) / tot, 1)
 
 
 def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict],
@@ -319,7 +335,7 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
     # the qty and item-count charts still show it).
     win = {int(w.get("jc") or 0): (i, w) for i, w in enumerate(window or [])
            if str(w.get("fy")) == str(acc_year)}
-    jc_trend, all_pairs, all_pairs_p = [], [], []
+    jc_trend, acc_rows, acc_rows_p = [], [], []
     for wjc in sorted(set(proj_by_jc) | set(win)):
         idx, w = win.get(wjc, (None, {}))
         pj = proj_by_jc.get(wjc, {})
@@ -329,10 +345,11 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
             continue
         pairs = [(pj.get(k, 0.0), ac.get(k, 0.0)) for k in set(pj) | set(ac)]
         pairs_p = [x for x in pairs if x[0] > 0]
-        if done:
-            all_pairs += pairs
-            all_pairs_p += pairs_p
         act_tot = sum(a for _, a in pairs)
+        act_tot_p = sum(a for _, a in pairs_p)
+        if done:
+            acc_rows.append((_wmape_acc(pairs), act_tot))
+            acc_rows_p.append((_wmape_acc(pairs_p), act_tot_p))
         jc_trend.append({
             "label": f"JC{wjc}", "jc": wjc, "done": done,
             "from": str(w.get("from") or ""), "to": str(w.get("to") or ""),
@@ -357,8 +374,8 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
         "pipeline_rows": pipeline_rows,
         "compare": with_sales[:12],
         "jc_trend": jc_trend,
-        "overall_accuracy": _wmape_acc(all_pairs),
-        "overall_accuracy_proj": _wmape_acc(all_pairs_p),
+        "overall_accuracy": _weighted_mean(acc_rows),
+        "overall_accuracy_proj": _weighted_mean(acc_rows_p),
         "by_group": by_group,
         "items_projected": pipeline[0]["items"],
         "items_selling": sum(1 for i in items if i["avg3"] > 0),

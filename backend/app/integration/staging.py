@@ -981,6 +981,18 @@ def read_scope_users() -> list[dict]:
         return []
 
 
+# ── saved UI layouts (dashboard card arrangement) ─────────────────────────────
+# Reuses the computed_plan key/JSON store under a "ui_layout:" prefix so an
+# admin-saved arrangement survives restarts and reaches every user.
+
+def save_ui_layout(key: str, obj) -> None:
+    save_computed(f"ui_layout:{key}"[:48], obj)
+
+
+def read_ui_layout(key: str):
+    return read_computed(f"ui_layout:{key}"[:48])
+
+
 # ── freshness for the UI (data-as-of banner + Refresh now) ────────────────────
 
 SYNC_SOURCES = [
