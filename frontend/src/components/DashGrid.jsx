@@ -46,10 +46,14 @@ function buildLayout(ids, defaults, cols) {
 
 export default function DashGrid({
   storageKey, defaults = {}, children,
-  expanded = [],          // ids to blow up to the full row (e.g. a table view)
-  remoteLayouts = null,   // the admin-saved default, once it arrives
+  // Cards to blow up to the full row (e.g. a table view). Either a list of ids,
+  // or {id: rowUnits} to also give the card a height that fits its content.
+  expanded = [],
+  remoteLayouts = null,   // the app-level default, once it arrives
+  userLayouts = null,     // this user's own saved arrangement, once it arrives
   canSaveDefault = false,
-  onSaveDefault,
+  onSaveDefault,          // (layouts) => save the app-level default  [admin]
+  onSaveUser,             // (layouts) => save THIS user's own arrangement
 }) {
   const items = useMemo(() => flatten(children).filter((c) => c.key != null), [children]);
   // `children` is a fresh array on every render, so key the id list by VALUE —
@@ -68,14 +72,25 @@ export default function DashGrid({
     return null;
   });
   const [savedDefault, setSavedDefault] = useState("idle");
+  // The prop only carries what was on the server at PAGE LOAD. Keep it in state
+  // so that saving a new default takes effect for "Reset layout" right away
+  // instead of falling through to the built-in arrangement.
+  const [serverDefault, setServerDefault] = useState(remoteLayouts);
+  useEffect(() => { if (remoteLayouts) setServerDefault(remoteLayouts); }, [remoteLayouts]);
+  // this user's own arrangement, adopted once it arrives from the server (their
+  // local copy, if any, already won — it is the same thing, only faster)
+  const [mine, setMine] = useState(userLayouts);
+  useEffect(() => { if (userLayouts) setMine(userLayouts); }, [userLayouts]);
   // memoised so the fallback keeps a stable identity — a fresh object every
   // render would rebuild the layout and make the grid fight itself.
   const fallback = useMemo(() => ({ lg: buildLayout(ids, defaults, COLS.lg) }), [ids, defaults]);
-  const base = layouts || remoteLayouts || fallback;
+  const base = layouts || mine || serverDefault || fallback;
 
-  const expKey = expanded.join("|");
-  const expandedSet = useMemo(
-    () => new Set(expKey ? expKey.split("|") : []), [expKey]);
+  const expKey = Array.isArray(expanded) ? expanded.join("|") : JSON.stringify(expanded);
+  const expandedH = useMemo(() => (Array.isArray(expanded)
+    ? Object.fromEntries(expanded.map((id) => [id, 0]))
+    : (expanded || {})), [expKey]);              // eslint-disable-line react-hooks/exhaustive-deps
+  const expandedSet = useMemo(() => new Set(Object.keys(expandedH)), [expandedH]);
   useEffect(() => { setSavedDefault("idle"); }, [expKey]);
 
   // keep the saved arrangement in step with the cards actually rendered:
@@ -92,26 +107,38 @@ export default function DashGrid({
         ...kept,
         ...buildLayout(missing, defaults, cols).map((l) => ({ ...l, y: l.y + nextY })),
       ].map((l) => (expandedSet.has(l.i)
-        // a card switched to its table view takes the whole row, so the columns
-        // are readable — the user's own size is restored when they switch back
-        ? { ...l, x: 0, w: cols, h: Math.max(l.h, 13) }
+        // A card switched to its table view takes the whole row so the columns
+        // are readable, and only as much HEIGHT as its rows need — forcing a
+        // fixed height left a short table stranded in a mostly empty card.
+        // The user's own size comes back when they switch to the chart.
+        ? { ...l, x: 0, w: cols, h: expandedH[l.i] || Math.max(l.h, 13) }
         : l));
     }
     return out;
   }, [base, ids, defaults, expandedSet]);
 
+  const pending = React.useRef(null);
   const save = useCallback((_cur, all) => {
     // never bake a temporary full-row expansion into the saved arrangement
     if (expandedSet.size) return;
     setLayouts(all);
+    setMine(all);
     try { localStorage.setItem(storageKey, JSON.stringify(all)); } catch { /* ignore */ }
-  }, [storageKey, expandedSet]);
+    // persist to this user's own server slot so their layout follows them to
+    // another browser or machine; debounced so a drag is one write, not thirty
+    if (onSaveUser) {
+      clearTimeout(pending.current);
+      pending.current = setTimeout(() => { onSaveUser(all).catch(() => {}); }, 1200);
+    }
+  }, [storageKey, expandedSet, onSaveUser]);
+  useEffect(() => () => clearTimeout(pending.current), []);
 
   const saveDefault = useCallback(async () => {
     if (!onSaveDefault) return;
     setSavedDefault("saving");
     try {
       await onSaveDefault(base);
+      setServerDefault(base);      // Reset now returns to what was just saved
       setSavedDefault("saved");
     } catch {
       setSavedDefault("failed");
@@ -119,9 +146,13 @@ export default function DashGrid({
   }, [onSaveDefault, base]);
 
   const reset = useCallback(() => {
-    setLayouts(null);          // back to the saved default, else the built-in one
+    // drop only this user's layer — the app-level default shows through again
+    clearTimeout(pending.current);
+    setLayouts(null);
+    setMine(null);
     try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
-  }, [storageKey]);
+    if (onSaveUser) onSaveUser({}).catch(() => {});
+  }, [storageKey, onSaveUser]);
 
   // v2 measures its own container instead of the old WidthProvider HOC
   const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true });
@@ -129,7 +160,10 @@ export default function DashGrid({
   return (
     <>
       <div className="dash-grid-bar">
-        <span>Drag a card by its header to move it · drag its bottom-right corner to resize</span>
+        <span>
+          Drag a card by its header to move it · drag its bottom-right corner to resize ·
+          your arrangement saves automatically
+        </span>
         {canSaveDefault && (
           <button type="button" className="btn secondary" onClick={saveDefault}
             style={{ marginLeft: "auto" }}
@@ -143,7 +177,8 @@ export default function DashGrid({
           </button>
         )}
         <button type="button" className="btn secondary" onClick={reset}
-          style={canSaveDefault ? undefined : { marginLeft: "auto" }}>Reset layout</button>
+          title="Discard your own arrangement and go back to the app default"
+          style={canSaveDefault ? undefined : { marginLeft: "auto" }}>Reset to app default</button>
       </div>
       <div ref={containerRef}>
       {mounted && (

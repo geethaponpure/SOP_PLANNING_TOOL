@@ -615,8 +615,12 @@ export default function Dashboard({ session, isAdmin }) {
     setProjMetric("accuracy"); setProjView("chart");
   }, [viewAs.username, viewAs.persona]);
 
-  // the arrangement an admin saved for everyone (personal layouts still win)
-  const savedLayout = useAsync(() => api.dashboardLayout("mydash"), []);
+  // Personal arrangements are per LOGGED-IN USER (and per browser, since they
+  // live in localStorage) — two people sharing a machine keep their own.
+  const layoutKey = `mydash_layout_v1:${u.user_code || u.username || "anon"}`;
+  // both layers in one call: the app-level default + this user's own arrangement
+  const me = (u.user_code || u.username || "").trim();
+  const savedLayout = useAsync(() => api.dashboardLayout("mydash", me), [me]);
 
   const idParams = useMemo(() => (viewAs.username
     ? { username: viewAs.username, persona: viewAs.persona }
@@ -678,15 +682,32 @@ export default function Dashboard({ session, isAdmin }) {
       (m.code || "").toLowerCase().includes(q));
   }, [p, missQ]);
 
-  // a card showing its TABLE takes the full row, like the old full-width cards
+  // A card showing its TABLE takes the full row, sized to the rows it actually
+  // has. One grid unit is 30px plus a 14px gutter, so h units == 44h - 14 px.
+  // Long tables stop growing at MAX_ROWS and scroll inside the card instead.
+  const MAX_ROWS = 12;
+  const fitRows = (rows, toolbar = false) => {
+    const px = 62                       // card header (title + sub + toggles)
+      + (toolbar ? 46 : 0)              // search / segment bar, when present
+      + 38                              // table header
+      + Math.min(rows, MAX_ROWS) * 37   // body rows
+      + 42;                             // card padding + breathing room
+    return Math.max(5, Math.ceil((px + 14) / 44));
+  };
   const expandedCards = useMemo(() => {
-    const out = [];
-    if (projView === "table") out.push("projCanvas");
-    if (groupView === "table") out.push("group");
-    if (pipeView === "table") out.push("pipeline");
-    if (missView === "table") out.push("missing");
+    const out = {};
+    if (projView === "table") {
+      out.projCanvas = projMetric === "accuracy"
+        ? fitRows((p?.jc_trend?.length || 0) + 1)      // + the overall row
+        : fitRows(groupRows.length, true);
+    }
+    if (groupView === "table") out.group = fitRows(groupRows.length);
+    if (pipeView === "table") out.pipeline = fitRows(pipeRows.length, true);
+    if (missView === "table") out.missing = fitRows(missTableRows.length, true);
     return out;
-  }, [projView, groupView, pipeView, missView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projView, projMetric, groupView, pipeView, missView,
+      p, groupRows.length, pipeRows.length, missTableRows.length]);
 
   if (loading && !data) return <Loading what="your dashboard" />;
   if (error) return <>{switcher}<ErrorBox msg={error} /></>;
@@ -754,10 +775,13 @@ export default function Dashboard({ session, isAdmin }) {
         </div>
       )}
 
-      <DashGrid storageKey="mydash_layout_v1" defaults={DASH_DEFAULTS}
-        expanded={expandedCards} remoteLayouts={savedLayout.data?.layouts || null}
+      <DashGrid storageKey={layoutKey} defaults={DASH_DEFAULTS}
+        expanded={expandedCards}
+        remoteLayouts={savedLayout.data?.layouts || null}
+        userLayouts={savedLayout.data?.user_layouts || null}
         canSaveDefault={isAdmin}
-        onSaveDefault={(l) => api.saveDashboardLayout("mydash", l)}>
+        onSaveDefault={(l) => api.saveDashboardLayout("mydash", l)}
+        onSaveUser={me ? (l) => api.saveDashboardLayout("mydash", l, me) : undefined}>
         {byColl.length > 1 && (
           <div key="byColl" className="card">
             <div className="supply-dash-cardhead">
@@ -1001,6 +1025,7 @@ export default function Dashboard({ session, isAdmin }) {
               {groupView === "chart" ? (
                 <EChart className="echart-fill" option={groupOpt} height="100%" />
               ) : (
+                <div className="tbl-wrap">
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr>
@@ -1031,6 +1056,7 @@ export default function Dashboard({ session, isAdmin }) {
                     {groupRows.length === 0 && <tr><td colSpan={6} style={CELL}>No item groups in scope.</td></tr>}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
 

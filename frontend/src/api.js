@@ -72,9 +72,11 @@ export const api = {
   myDashboard: ({ username = "", email = "", admin = 0, persona = "" } = {}) =>
     req(`/my-dashboard?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}`),
   myDashboardPersonas: () => req("/my-dashboard/personas"),
-  dashboardLayout: (key = "mydash") => req(`/dashboard-layout?key=${encodeURIComponent(key)}`),
-  saveDashboardLayout: (key, layouts) =>
-    req("/dashboard-layout", { method: "PUT", body: JSON.stringify({ key, layouts }) }),
+  dashboardLayout: (key = "mydash", user = "") =>
+    req(`/dashboard-layout?key=${encodeURIComponent(key)}&user=${encodeURIComponent(user)}`),
+  // user "" writes the app-level default; a user code writes that person's own
+  saveDashboardLayout: (key, layouts, user = "") =>
+    req("/dashboard-layout", { method: "PUT", body: JSON.stringify({ key, layouts, user }) }),
   myDashboardItem: ({ item = "", code = "", username = "", email = "", admin = 0, persona = "" } = {}) =>
     req(`/my-dashboard/item?item=${encodeURIComponent(item)}&code=${encodeURIComponent(code)}` +
       `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +

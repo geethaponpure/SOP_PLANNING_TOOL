@@ -1790,9 +1790,17 @@ td.num b { color: var(--navy); }
 /* header, toolbars and footnotes keep their natural height; the chart or table
    takes whatever is left, so resizing the card really does resize the chart */
 .dash-item > .card > * { flex: 0 0 auto; }
-.dash-item > .card > .echart-fill,
-.dash-item > .card > .tbl-wrap { flex: 1 1 auto; min-height: 0; }
-.dash-item .tbl-wrap { max-height: none; }
+.dash-item > .card > .echart-fill { flex: 1 1 auto; min-height: 0; }
+/* Tables size to their CONTENT and shrink (with a scrollbar) when the card is
+   too short — stretching them left a tall empty box under a handful of rows. */
+.dash-item > .card > .tbl-wrap { flex: 0 1 auto; min-height: 0; max-height: none; }
+/* headers stay put while the rows scroll inside the card */
+/* border-collapse drops the border on a sticky cell in some browsers, so the
+   separating line is painted as an inset shadow instead */
+.dash-item .tbl-wrap thead th {
+  position: sticky; top: 0; z-index: 1;
+  box-shadow: inset 0 -1px 0 var(--border);
+}
 
 .react-grid-item.react-grid-placeholder {
   background: var(--navy, #1f3a5f); opacity: 0.12; border-radius: var(--kit-radius, 14px);
