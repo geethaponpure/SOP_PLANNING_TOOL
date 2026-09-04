@@ -6,8 +6,8 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import DashGrid from "../components/DashGrid.jsx";
 import { api, fmt } from "../api";
-import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
-import { Truck, Wallet, Handshake, Package, Target, ClipboardList, BarChart3, TriangleAlert, TrendingUp, Eye, Dna, CalendarDays, CircleCheck } from "lucide-react";
+import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
+import { BarChart3, CalendarDays, CircleCheck, ClipboardList, Dna, Download, Eye, Package, Target, TrendingUp, TriangleAlert } from "lucide-react";
 
 // My Dashboard — permission-scoped dispatch view. The backend resolves the
 // user's CRM data grants (stg_user_scope) and returns a compact cube
@@ -26,20 +26,21 @@ const PAL = ["#2a9d8f", "#4880ff", "#b7791f", "#805ad5", "#2f855a", "#c53030", "
   "#d69e2e", "#3182ce", "#38a169", "#e53e3e", "#718096"];
 const SHAPE_DIST = [{ id: "donut", label: "Donut" }, { id: "pie", label: "Pie" }, { id: "bar", label: "Bar" }];
 
+// The three cycle-by-cycle views share one card; this drives its filter.
+const JC_VIEWS = [
+  { id: "qty", label: "Quantity", title: "Total projection qty by JC", icon: <Package size={16} /> },
+  { id: "accuracy", label: "Accuracy", title: "Projection accuracy by JC", icon: <Target size={16} /> },
+  { id: "items", label: "Items", title: "Items projected · every JC", icon: <ClipboardList size={16} /> },
+];
+
 // Where each card sits until the user arranges the page themselves (12
 // columns; one row unit is 30px + a 14px gutter). A saved layout wins.
 const DASH_DEFAULTS = {
   byColl:     { x: 0, y: 0, w: 6, h: 8 },
-  bySeg:      { x: 6, y: 0, w: 6, h: 8 },
   projCanvas: { x: 0, y: 8, w: 12, h: 10 },
-  jcQty:      { x: 0, y: 18, w: 6, h: 8 },
-  jcAcc:      { x: 6, y: 18, w: 6, h: 8 },
-  jcItems:    { x: 0, y: 26, w: 6, h: 8 },
-  status:     { x: 6, y: 26, w: 6, h: 8 },
-  group:      { x: 0, y: 34, w: 12, h: 11 },
+  jcTrend:    { x: 0, y: 18, w: 6, h: 9 },
+  status:     { x: 6, y: 18, w: 6, h: 9 },
   compare:    { x: 0, y: 45, w: 12, h: 12 },
-  pipeline:   { x: 0, y: 57, w: 12, h: 10 },
-  missing:    { x: 0, y: 67, w: 12, h: 12 },
 };
 const abbr = (v) => {
   const n = Math.abs(v);
@@ -125,56 +126,68 @@ function MiniBar({ label, value, max, color }) {
   );
 }
 
-function ProjCompareTable({ rows, onItem }) {
+function ProjCompareTable({ rows, onItem, jc }) {
   return (
     <div className="tbl-wrap">
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-      <thead>
-        <tr>
-          <th style={{ ...HCELL, textAlign: "left" }}>Item</th>
-          <th style={{ ...HCELL, textAlign: "left", width: "22%" }}>Sales vs Projection</th>
-          <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales (KG)</th>
-          <th style={{ ...HCELL, textAlign: "right" }}>Projection (KG)</th>
-          <th style={{ ...HCELL, textAlign: "right" }}>Projected %</th>
-          <th style={{ ...HCELL, textAlign: "center" }}>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r, i) => {
-          const f = FLAGS[r.flag] || FLAGS.ontrack;
-          const max = Math.max(r.avg3, r.proj);
-          const acc = r.avg3 > 0 ? Math.round((r.proj / r.avg3) * 100) : null;
-          return (
-            <tr key={i} onClick={() => onItem(r)} style={{ cursor: "pointer" }}
-              title="Click to see this item's JC-wise graph">
-              <td style={{ ...CELL, maxWidth: 280 }}>
-                <div title={r.name} style={{ fontWeight: 600, color: "#1f3a5f", whiteSpace: "nowrap",
-                  overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
-                <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{r.code || "—"}</div>
-              </td>
-              <td style={CELL}>
-                <div style={{ display: "grid", gap: 5 }}>
-                  <MiniBar label="Sales" value={r.avg3} max={max} color="#2a9d8f" />
-                  <MiniBar label="Proj" value={r.proj} max={max} color="#4880ff" />
-                </div>
-              </td>
-              <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(r.avg3)}</td>
-              <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(r.proj)}</td>
-              <td style={{ ...CELL, textAlign: "right", fontWeight: 600,
-                color: acc == null ? "var(--muted)" : f.color }}>
-                {acc == null ? "—" : `${acc}%`}
-              </td>
-              <td style={{ ...CELL, textAlign: "center" }}>
-                <span style={{ display: "inline-block", fontSize: 11, fontWeight: 600, color: f.color,
-                  background: f.color + "16", padding: "3px 9px", borderRadius: 999, whiteSpace: "nowrap" }}>
-                  {f.label}
-                </span>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+      <table className="proj-table" style={{ borderCollapse: "collapse", fontSize: 13 }}>
+        <colgroup>
+          <col style={{ width: "27%" }} /><col style={{ width: "13%" }} />
+          <col style={{ width: "12%" }} /><col style={{ width: "11%" }} />
+          <col style={{ width: "11%" }} /><col style={{ width: "11%" }} />
+          <col style={{ width: "7%" }} /><col style={{ width: "8%" }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th style={{ ...HCELL, textAlign: "left" }}>Item</th>
+            <th style={{ ...HCELL, textAlign: "left" }} title="3-JC average sales vs the JC{jc} projection">Sales vs Proj</th>
+            <th style={{ ...HCELL, textAlign: "right" }} title="3-JC average sales (KG)">Avg sales</th>
+            <th style={{ ...HCELL, textAlign: "right" }} title={`Projection for the current cycle, JC${jc} (KG)`}>JC{jc}</th>
+            <th style={{ ...HCELL, textAlign: "right" }} title="Projection for the next cycle (KG)">Next JC</th>
+            <th style={{ ...HCELL, textAlign: "right" }} title="Projection for the cycle after next (KG)">JC after</th>
+            <th style={{ ...HCELL, textAlign: "right" }} title="Projection as a % of 3-JC average sales">Proj %</th>
+            <th style={{ ...HCELL, textAlign: "center" }}>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const f = FLAGS[r.flag] || FLAGS.ontrack;
+            const max = Math.max(r.avg3, r.proj);
+            const acc = r.avg3 > 0 ? Math.round((r.proj / r.avg3) * 100) : null;
+            return (
+              <tr key={i} onClick={() => onItem(r)} style={{ cursor: "pointer" }}
+                title="Click to see this item's JC-wise graph">
+                <td style={{ ...CELL, maxWidth: 260 }}>
+                  <div title={r.name} style={{ fontWeight: 600, color: "#1f3a5f", whiteSpace: "nowrap",
+                    overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{r.code || "—"}</div>
+                </td>
+                <td style={CELL}>
+                  <div style={{ display: "grid", gap: 5 }}>
+                    <MiniBar label="Sales" value={r.avg3} max={max} color="#2a9d8f" />
+                    <MiniBar label="Proj" value={r.proj} max={max} color="#4880ff" />
+                  </div>
+                </td>
+                <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(r.avg3)}</td>
+                <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(r.proj)}</td>
+                <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(r.next1 || 0)}</td>
+                <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(r.next2 || 0)}</td>
+                <td style={{ ...CELL, textAlign: "right", fontWeight: 600,
+                  color: acc == null ? "var(--muted)" : f.color }}>
+                  {acc == null ? "—" : `${acc}%`}
+                </td>
+                <td style={{ ...CELL, textAlign: "center" }} title={f.label}>
+                  <span className="proj-pill" style={{ color: f.color, background: f.color + "16" }}>
+                    {f.label}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+          {rows.length === 0 && (
+            <tr><td colSpan={8} style={CELL}>No items match the search.</td></tr>
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -298,8 +311,8 @@ function pipeOption(pipe) {
 // then read it as a chart or as the table behind it.
 const PROJ_METRICS = [
   { id: "accuracy", label: "Accuracy", icon: Target, title: "Accuracy on projected items" },
-  { id: "volume", label: "Volume projected", icon: BarChart3, title: "Sales volume projected" },
-  { id: "items", label: "Items missing", icon: TriangleAlert, title: "Items with no projection" },
+  { id: "volume", label: "Volume", icon: BarChart3, title: "Sales volume projected" },
+  { id: "items", label: "Missing", icon: TriangleAlert, title: "Items with no projection" },
 ];
 
 // Single-number projection metrics, drawn rather than printed on a card.
@@ -458,35 +471,9 @@ function jcItemsOption(trend) {
   };
 }
 
-// Projected KG per item group. Single series on purpose: group sales volumes
-// differ by orders of magnitude (a big trading group would flatten every other
-// bar), so sales / accuracy / gaps ride in the tooltip and the table view.
-function groupOption(rows) {
-  const rev = [...rows].reverse();
-  return {
-    ...ANIM, grid: { left: 8, right: 26, top: 12, bottom: 8, containLabel: true },
-    tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
-      formatter: (ps) => {
-        const g = rev[ps[0].dataIndex] || {};
-        return `<b>${g.name}</b><br/>Projected: <b>${fmt.num(g.proj)}</b> KG` +
-          `<br/>3-JC avg sales: <b>${fmt.num(g.avg3)}</b> KG` +
-          `<br/>Accuracy (projected items): <b>${g.accuracy_proj == null ? "—" : g.accuracy_proj + "%"}</b>` +
-          `<br/><span style="color:${g.missing ? "#c53030" : "#90a1ac"}">${g.missing} of ${g.items} items without a projection</span>`;
-      } },
-    xAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } },
-      axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true },
-      axisLine: { show: false }, axisTick: { show: false } },
-    yAxis: { type: "category", data: rev.map((g) => g.name),
-      axisLabel: { color: "#414d55", fontSize: 11, width: 150, overflow: "truncate", hideOverlap: true },
-      axisTick: { show: false }, axisLine: { show: false } },
-    series: [{ type: "bar", barWidth: "58%",
-      itemStyle: { borderRadius: [0, 6, 6, 0], color: grad("#7aa7ff", "#4880ff") },
-      data: rev.map((g) => g.proj) }],
-  };
-}
 
 // Unprojected selling items, biggest first — the action list.
-function missingOption(rows, total) {
+function missingOption(rows, total, color = "#c53030", byProj = false) {
   const rev = [...rows].reverse();
   return {
     ...ANIM, grid: { left: 8, right: 26, top: 12, bottom: 8, containLabel: true },
@@ -495,9 +482,9 @@ function missingOption(rows, total) {
         const m = rev[ps[0].dataIndex] || {};
         const share = total ? ((m.avg3 / total) * 100).toFixed(1) : null;
         return `<b>${m.name}</b>` + (m.code ? `<br/><span style="color:#90a1ac;font-size:11px">${m.code}</span>` : "") +
-          `<br/><b>${fmt.num(m.avg3)}</b> KG avg / JC sold` +
-          (share ? `<br/><span style="color:#c53030">${share}% of your unprojected volume</span>` : "") +
-          `<br/><span style="color:#90a1ac">no projection submitted</span>`;
+          `<br/><b>${fmt.num(m.avg3)}</b> KG ${byProj ? "projected / JC" : "avg / JC sold"}` +
+          (share ? `<br/><span style="color:${color}">${share}% of this group</span>` : "") +
+          (byProj ? "" : `<br/><span style="color:#90a1ac">projection ${fmt.num(m.proj || 0)} KG</span>`);
       } },
     xAxis: { type: "value", splitLine: { lineStyle: { color: "#eef1f5" } },
       axisLabel: { color: "#90a1ac", fontSize: 11, formatter: abbr, hideOverlap: true },
@@ -506,9 +493,131 @@ function missingOption(rows, total) {
       axisLabel: { color: "#414d55", fontSize: 11, width: 190, overflow: "truncate", hideOverlap: true },
       axisTick: { show: false }, axisLine: { show: false } },
     series: [{ type: "bar", barWidth: "58%",
-      itemStyle: { borderRadius: [0, 6, 6, 0], color: grad("#f0a0a0", "#c53030") },
+      itemStyle: { borderRadius: [0, 6, 6, 0], color: grad(color + "66", color) },
       data: rev.map((m) => m.avg3) }],
   };
+}
+
+// The cycle-by-cycle numbers behind every "by JC" view — shown both as the
+// detail under the accuracy gauge and as the table of the JC-trend card.
+// The cycle-by-cycle numbers behind every "by JC" view. The columns follow the
+// metric being looked at — showing all of them under every filter made the
+// filter look broken, since three different questions got one identical table.
+const JC_COLUMNS = {
+  qty: [
+    { head: "Projected (KG)", num: true, strong: true, cell: (t) => fmt.num(t.proj) },
+    { head: "Actual sales (KG)", num: true,
+      cell: (t) => (t.actual == null ? null : fmt.num(t.actual)) },
+    { head: "Variance (KG)", num: true,
+      cell: (t) => (t.actual == null ? null : fmt.num(t.proj - t.actual)),
+      color: (t) => (t.actual == null ? undefined : t.proj > t.actual ? "#b7791f" : "#3182ce") },
+  ],
+  accuracy: [
+    { head: "Accuracy (projected items)", num: true, strong: true,
+      cell: (t) => (t.accuracy_proj == null ? null : `${t.accuracy_proj}%`),
+      color: (t) => (t.accuracy_proj == null ? undefined : accColor(t.accuracy_proj)) },
+    { head: "Accuracy (all items)", num: true, muted: true,
+      cell: (t) => (t.accuracy == null ? null : `${t.accuracy}%`) },
+    { head: "Volume projected", num: true,
+      cell: (t) => (t.coverage_pct == null ? null : `${t.coverage_pct}%`) },
+  ],
+  items: [
+    { head: "Items projected", num: true, strong: true, cell: (t) => fmt.num(t.items_projected) },
+    { head: "Items sold", num: true,
+      cell: (t) => (t.items_sold == null ? null : fmt.num(t.items_sold)) },
+    { head: "Selling items projected", num: true,
+      cell: (t) => (t.items_sold ? `${Math.round((t.items_projected / t.items_sold) * 100)}%` : null) },
+  ],
+};
+
+function JcTrendTable({ p, metric = "accuracy" }) {
+  const rows = p.jc_trend || [];
+  const cols = JC_COLUMNS[metric] || JC_COLUMNS.accuracy;
+  const done = rows.filter((t) => t.done);
+  const foot = metric === "qty"
+    ? ["Total", fmt.num(rows.reduce((a, t) => a + (t.proj || 0), 0)),
+       fmt.num(done.reduce((a, t) => a + (t.actual || 0), 0)), ""]
+    : metric === "accuracy"
+      ? ["Overall · completed cycles",
+         p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`,
+         p.overall_accuracy == null ? "—" : `${p.overall_accuracy}%`, `${p.coverage_pct}%`]
+      : null;
+
+  return (
+    <div className="tbl-wrap">
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <thead>
+          <tr>
+            <th style={{ ...HCELL, textAlign: "left" }}>Job cycle</th>
+            <th style={{ ...HCELL, textAlign: "left" }}>Period</th>
+            {cols.map((c) => (
+              <th key={c.head} style={{ ...HCELL, textAlign: c.num ? "right" : "left" }}>{c.head}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((t, i) => (
+            <tr key={i}>
+              <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>
+                {t.label}{!t.done && <span style={{ fontSize: 10.5, color: "var(--muted)",
+                  fontWeight: 400 }}> · planning</span>}
+              </td>
+              <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                {t.from ? `${t.from} → ${t.to}` : "—"}
+              </td>
+              {cols.map((c) => {
+                const v = c.cell(t);
+                return (
+                  <td key={c.head} style={{
+                    ...CELL, textAlign: c.num ? "right" : "left",
+                    fontWeight: c.strong && v != null ? 600 : 400,
+                    color: v == null ? "var(--muted)" : (c.color && c.color(t)) || (c.muted ? "var(--muted)" : undefined),
+                  }}>
+                    {v == null ? (t.done ? "—" : "not dispatched yet") : v}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+          {foot && (
+            <tr>
+              {foot.map((v, i) => (
+                <td key={i} colSpan={i === 0 ? 2 : 1}
+                  style={{ ...CELL, background: "#f7fafc", fontWeight: 700,
+                    textAlign: i === 0 ? "left" : "right",
+                    color: i === 1 && metric === "accuracy" ? accColor(p.overall_accuracy_proj) : undefined }}>
+                  {v}
+                </td>
+              ))}
+            </tr>
+          )}
+          {rows.length === 0 && (
+            <tr><td colSpan={cols.length + 2} style={CELL}>No completed cycles yet.</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Small Excel download, pinned to a card's top-right corner. Sits outside the
+// header so it never disturbs the title/toggle layout, and stopPropagation keeps
+// a click from starting a card drag.
+function ExportBtn({ section, idParams, label = "Download this table as Excel" }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button type="button" className="btn secondary dash-export" title={label}
+      disabled={busy} aria-label={label}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={async (e) => {
+        e.stopPropagation();
+        setBusy(true);
+        try { await api.myDashboardExport({ ...idParams, section }); } catch { /* surfaced by the browser */ }
+        setBusy(false);
+      }}>
+      <Download size={14} />
+    </button>
+  );
 }
 
 export default function Dashboard({ session, isAdmin }) {
@@ -533,11 +642,11 @@ export default function Dashboard({ session, isAdmin }) {
   );
 
   const [metric, setMetric] = useState("qty");           // qty (KG) | value (₹)
-  const [shape, setShape] = useState({ coll: "bar", seg: "donut", proj: "donut" });
+  const [shape, setShape] = useState({ coll: "bar", proj: "donut" });
   const setSh = (k) => (v) => setShape((s) => ({ ...s, [k]: v }));
-  const [sel, setSel] = useState({ collector: null, segment: null });   // cross-filter
+  const [sel, setSel] = useState({ collector: null });   // cross-filter
   const toggle = (k) => (name) => setSel((s) => ({ ...s, [k]: s[k] === name ? null : name }));
-  useEffect(() => { setSel({ collector: null, segment: null }); }, [viewAs.username, viewAs.persona]);
+  useEffect(() => { setSel({ collector: null }); }, [viewAs.username, viewAs.persona]);
 
   const viewUsers = plist.find((x) => x.persona === viewAs.persona)?.users || [];
   const switcher = isAdmin && plist.length > 0 && (
@@ -572,31 +681,18 @@ export default function Dashboard({ session, isAdmin }) {
   // (Power BI behaviour: its own selection just highlights).
   const byColl = useMemo(() => {
     const m = {};
-    cube.forEach((r) => {
-      if (sel.segment && r.segment !== sel.segment) return;
-      m[r.collector] = (m[r.collector] || 0) + r[metric];
-    });
+    cube.forEach((r) => { m[r.collector] = (m[r.collector] || 0) + r[metric]; });
     return Object.entries(m).map(([name, v]) => ({ name, value: Math.round(v) }))
       .filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
-  }, [cube, sel.segment, metric]);
+  }, [cube, metric]);
 
-  const bySeg = useMemo(() => {
-    const m = {};
-    cube.forEach((r) => {
-      if (sel.collector && r.collector !== sel.collector) return;
-      m[r.segment] = (m[r.segment] || 0) + r[metric];
-    });
-    return Object.entries(m).map(([name, v]) => ({ name, value: Math.round(v) }))
-      .filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
-  }, [cube, sel.collector, metric]);
 
   const collEvents = useMemo(() => ({ click: (p) => { if (p.name) toggle("collector")(p.name); } }), []);
-  const segEvents = useMemo(() => ({ click: (p) => { if (p.name) toggle("segment")(p.name); } }), []);
+
 
   const collOpt = useMemo(() => distOption(byColl, { shape: shape.coll, unit, center: unit, selected: sel.collector }),
     [byColl, shape.coll, unit, sel.collector]);
-  const segOpt = useMemo(() => distOption(bySeg, { shape: shape.seg, unit, center: unit, selected: sel.segment }),
-    [bySeg, shape.seg, unit, sel.segment]);
+
 
   // ── projection accuracy (plan-table projection vs scoped 3-JC avg sales) ──
   const p = data?.projection;
@@ -605,14 +701,16 @@ export default function Dashboard({ session, isAdmin }) {
   // click-to-drill: which item's JC graph is open, and the identity the popup
   // fetch must use (respects the admin View-as impersonation)
   const [itemPop, setItemPop] = useState(null);
+  const [dlAll, setDlAll] = useState(false);   // whole-workbook download in flight
 
   // pipeline detail table (row per product) with a chart/table toggle + search
   const [pipeView, setPipeView] = useState("chart");
   const [pipeQ, setPipeQ] = useState("");
   useEffect(() => {
     setPipeView("chart"); setPipeQ(""); setItemPop(null);
-    setGroupView("chart"); setMissView("chart"); setMissQ("");
+    setStatusFlag(null); setStatusView("chart"); setStatusQ("");
     setProjMetric("accuracy"); setProjView("chart");
+    setJcMetric("qty"); setJcView("chart");
   }, [viewAs.username, viewAs.persona]);
 
   // Personal arrangements are per LOGGED-IN USER (and per browser, since they
@@ -653,6 +751,8 @@ export default function Dashboard({ session, isAdmin }) {
     ], { centerText: fmt.num(missing), centerSub: "items unprojected",
       unit: tot ? "items" : "items" });
   }, [p]);
+  const [jcMetric, setJcMetric] = useState("qty");
+  const [jcView, setJcView] = useState("chart");
   const [projMetric, setProjMetric] = useState("accuracy");
   const [projView, setProjView] = useState("chart");
   const lastDoneJc = useMemo(() => {
@@ -665,29 +765,42 @@ export default function Dashboard({ session, isAdmin }) {
 
   // item-group roll-up (Segment 3 / Segment 2) with a chart/table toggle
   const [groupLevel, setGroupLevel] = useState("segment3");
-  const [groupView, setGroupView] = useState("chart");
   const groupRows = useMemo(() => (p?.by_group?.[groupLevel] || []), [p, groupLevel]);
-  const groupOpt = useMemo(() => groupOption(groupRows), [groupRows]);
 
-  // missing projections: top-N chart, or the full searchable table
-  const [missView, setMissView] = useState("chart");
-  const [missQ, setMissQ] = useState("");
-  const missChart = useMemo(() => (p?.missing_all || []).slice(0, 15), [p]);
-  const missOpt = useMemo(() => missingOption(missChart, p?.missing_kg || 0), [missChart, p]);
-  const missTableRows = useMemo(() => {
-    const src = (p?.missing_all || []).map((m, i) => ({ ...m, rank: i + 1 }));
-    const q = missQ.trim().toLowerCase();
+  // Projection status drills down: click a slice to see the items behind it.
+  const [statusFlag, setStatusFlag] = useState(null);
+  const [statusView, setStatusView] = useState("chart");
+  const [statusQ, setStatusQ] = useState("");
+  const statusEvents = useMemo(() => ({
+    click: (e) => {
+      const flag = Object.keys(FLAGS).find((f) => FLAGS[f].label === e.name);
+      if (flag) { setStatusFlag(flag); setStatusView("chart"); setStatusQ(""); }
+    },
+  }), []);
+  const flagItems = useMemo(
+    () => (statusFlag ? (p?.items_by_flag?.[statusFlag] || []) : []), [p, statusFlag]);
+  const flagRows = useMemo(() => {
+    const q = statusQ.trim().toLowerCase();
+    const src = flagItems.map((m, i) => ({ ...m, rank: i + 1 }));
     if (!q) return src;
     return src.filter((m) => (m.name || "").toLowerCase().includes(q) ||
       (m.code || "").toLowerCase().includes(q));
-  }, [p, missQ]);
+  }, [flagItems, statusQ]);
+  const flagOpt = useMemo(() => {
+    // rank by what the status is about: sales for the ones that sell, projected
+    // volume for items that were projected but have not sold
+    const byProj = statusFlag === "new";
+    const top = flagItems.slice(0, 15).map((m) => ({ ...m, avg3: byProj ? m.proj : m.avg3 }));
+    const total = top.reduce((a, m) => a + (m.avg3 || 0), 0);
+    return missingOption(top, total, (FLAGS[statusFlag] || FLAGS.none).color, byProj);
+  }, [flagItems, statusFlag]);
 
   // A card showing its TABLE takes the full row, sized to the rows it actually
   // has. One grid unit is 30px plus a 14px gutter, so h units == 44h - 14 px.
   // Long tables stop growing at MAX_ROWS and scroll inside the card instead.
   const MAX_ROWS = 12;
   const fitRows = (rows, toolbar = false) => {
-    const px = 62                       // card header (title + sub + toggles)
+    const px = 76                       // card header (title + sub + toggles + its gap)
       + (toolbar ? 46 : 0)              // search / segment bar, when present
       + 38                              // table header
       + Math.min(rows, MAX_ROWS) * 37   // body rows
@@ -701,13 +814,15 @@ export default function Dashboard({ session, isAdmin }) {
         ? fitRows((p?.jc_trend?.length || 0) + 1)      // + the overall row
         : fitRows(groupRows.length, true);
     }
-    if (groupView === "table") out.group = fitRows(groupRows.length);
-    if (pipeView === "table") out.pipeline = fitRows(pipeRows.length, true);
-    if (missView === "table") out.missing = fitRows(missTableRows.length, true);
+    if (pipeView === "table") out.compare = fitRows(pipeRows.length, true);
+    if (jcView === "table") out.jcTrend = fitRows((p?.jc_trend?.length || 0) + 1);
+    if (statusView === "table") {
+      out.status = statusFlag ? fitRows(flagRows.length, true) : fitRows((p?.summary || []).length);
+    }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projView, projMetric, groupView, pipeView, missView,
-      p, groupRows.length, pipeRows.length, missTableRows.length]);
+  }, [projView, projMetric, pipeView, jcView, statusView, statusFlag, flagRows.length,
+      p, groupRows.length, pipeRows.length]);
 
   if (loading && !data) return <Loading what="your dashboard" />;
   if (error) return <>{switcher}<ErrorBox msg={error} /></>;
@@ -750,16 +865,19 @@ export default function Dashboard({ session, isAdmin }) {
         </span>
         <SegTabs size="sm" value={metric} onChange={setMetric}
           tabs={[{ id: "qty", label: "KG" }, { id: "value", label: "₹ Value" }]} />
+        <button type="button" className="btn secondary" style={{ display: "inline-flex", gap: 6 }}
+          title="Excel workbook: every chart on the first sheet, each table on its own sheet"
+          disabled={dlAll}
+          onClick={async () => {
+            setDlAll(true);
+            try { await api.myDashboardExport({ ...idParams }); } catch { /* surfaced by the browser */ }
+            setDlAll(false);
+          }}>
+          <Download size={15} /> {dlAll ? "Preparing…" : "Download dashboard"}
+        </button>
       </div>
 
-      <div className="grid cols-4">
-        <div className="card statcard"><div className="ic"><Truck size={22} /></div><Stat value={fmt.num(k.qty)} label="Dispatched (KG, 13 JCs)" /></div>
-        <div className="card statcard amber"><div className="ic"><Wallet size={22} /></div><Stat value={`₹${abbr(k.value)}`} label="Dispatch value (13 JCs)" /></div>
-        <div className="card statcard"><div className="ic"><Handshake size={22} /></div><Stat value={fmt.num(k.customers)} label="Customers served" /></div>
-        <div className="card statcard"><div className="ic"><Package size={22} /></div><Stat value={fmt.num(k.items)} label="Items shipped" /></div>
-      </div>
-
-      {(sel.collector || sel.segment) && (
+      {sel.collector && (
         <div className="pagebar" style={{ marginTop: 12, gap: 8 }}>
           <span style={{ fontSize: 12, color: "var(--muted)" }}>Filtered:</span>
           {sel.collector && (
@@ -767,16 +885,11 @@ export default function Dashboard({ session, isAdmin }) {
               {sel.collector} ✕
             </button>
           )}
-          {sel.segment && (
-            <button className="chip" onClick={() => setSel((s) => ({ ...s, segment: null }))}>
-              {sel.segment} ✕
-            </button>
-          )}
         </div>
       )}
 
       <DashGrid storageKey={layoutKey} defaults={DASH_DEFAULTS}
-        expanded={expandedCards}
+        expanded={expandedCards} renames={{ jcTrend: ["jcQty", "jcAcc", "jcItems"] }}
         remoteLayouts={savedLayout.data?.layouts || null}
         userLayouts={savedLayout.data?.user_layouts || null}
         canSaveDefault={isAdmin}
@@ -784,8 +897,9 @@ export default function Dashboard({ session, isAdmin }) {
         onSaveUser={me ? (l) => api.saveDashboardLayout("mydash", l, me) : undefined}>
         {byColl.length > 1 && (
           <div key="byColl" className="card">
+              <ExportBtn section="collector" idParams={idParams} />
             <div className="supply-dash-cardhead">
-              <div><h3>By collector{sel.segment ? ` · ${sel.segment}` : ""}</h3>
+              <div><h3>By collector</h3>
                 <div className="sub">click a {shape.coll === "bar" ? "bar" : "slice"} to cross-filter</div></div>
               <SegTabs size="sm" value={shape.coll} onChange={setSh("coll")} tabs={SHAPE_DIST} />
             </div>
@@ -793,20 +907,11 @@ export default function Dashboard({ session, isAdmin }) {
           </div>
         )}
 
-        {bySeg.length > 1 && (
-          <div key="bySeg" className="card">
-            <div className="supply-dash-cardhead">
-              <div><h3>Product mix by segment{sel.collector ? ` · ${sel.collector}` : ""}</h3>
-                <div className="sub">click a {shape.seg === "bar" ? "bar" : "slice"} to cross-filter</div></div>
-              <SegTabs size="sm" value={shape.seg} onChange={setSh("seg")} tabs={SHAPE_DIST} />
-            </div>
-            <EChart className="echart-fill" option={segOpt} height="100%" onEvents={segEvents} />
-          </div>
-        )}
 
       {p && (
         <>
           <div key="projCanvas" className="card">
+              <ExportBtn section={projMetric === "accuracy" ? "jc_trend" : "groups"} idParams={idParams} />
             <div className="supply-dash-cardhead">
               <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>{(() => { const M = PROJ_METRICS.find((m) => m.id === projMetric); const I = M?.icon; return <>{I && <I size={16} />} {M?.title}</>; })()}</h3>
                 <div className="sub">
@@ -814,7 +919,7 @@ export default function Dashboard({ session, isAdmin }) {
                   {projMetric === "volume" && <>share of your 3-JC average sales that carries a JC{p.jc} projection</>}
                   {projMetric === "items" && <>selling items with vs without a JC{p.jc} projection</>}
                 </div></div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div className="card-filters">
                 <SegTabs size="sm" value={projMetric} onChange={setProjMetric}
                   tabs={PROJ_METRICS.map((m) => ({ id: m.id, label: m.label }))} />
                 <SegTabs size="sm" value={projView} onChange={setProjView}
@@ -828,67 +933,7 @@ export default function Dashboard({ session, isAdmin }) {
                   : projMetric === "volume" ? volRatioOpt : itemRatioOpt} height="100%" />
               </div>
             ) : projMetric === "accuracy" ? (
-              <div className="tbl-wrap">
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ ...HCELL, textAlign: "left" }}>Job cycle</th>
-                      <th style={{ ...HCELL, textAlign: "left" }}>Period</th>
-                      <th style={{ ...HCELL, textAlign: "right" }}>Projected (KG)</th>
-                      <th style={{ ...HCELL, textAlign: "right" }}>Actual sales (KG)</th>
-                      <th style={{ ...HCELL, textAlign: "right" }}>Items projected</th>
-                      <th style={{ ...HCELL, textAlign: "right" }}>Accuracy (projected)</th>
-                      <th style={{ ...HCELL, textAlign: "right" }}>Accuracy (all items)</th>
-                      <th style={{ ...HCELL, textAlign: "right" }}>Volume projected</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(p.jc_trend || []).map((t, i) => (
-                      <tr key={i}>
-                        <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>
-                          {t.label}{!t.done && <span style={{ fontSize: 10.5, color: "var(--muted)",
-                            fontWeight: 400 }}> · planning</span>}
-                        </td>
-                        <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)", whiteSpace: "nowrap" }}>
-                          {t.from ? `${t.from} → ${t.to}` : "—"}
-                        </td>
-                        <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(t.proj)}</td>
-                        <td style={{ ...CELL, textAlign: "right" }}>
-                          {t.actual == null ? <span style={{ color: "var(--muted)" }}>not dispatched yet</span>
-                            : fmt.num(t.actual)}
-                        </td>
-                        <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(t.items_projected)}</td>
-                        <td style={{ ...CELL, textAlign: "right", fontWeight: 600,
-                          color: t.accuracy_proj == null ? "var(--muted)" : accColor(t.accuracy_proj) }}>
-                          {t.accuracy_proj == null ? "—" : `${t.accuracy_proj}%`}
-                        </td>
-                        <td style={{ ...CELL, textAlign: "right", color: "var(--muted)" }}>
-                          {t.accuracy == null ? "—" : `${t.accuracy}%`}
-                        </td>
-                        <td style={{ ...CELL, textAlign: "right" }}>
-                          {t.coverage_pct == null ? "—" : `${t.coverage_pct}%`}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr>
-                      <td style={{ ...CELL, background: "#f7fafc", fontWeight: 700 }} colSpan={5}>
-                        Overall · completed cycles
-                      </td>
-                      <td style={{ ...CELL, background: "#f7fafc", textAlign: "right", fontWeight: 700,
-                        color: accColor(p.overall_accuracy_proj) }}>
-                        {p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}
-                      </td>
-                      <td style={{ ...CELL, background: "#f7fafc", textAlign: "right", fontWeight: 700,
-                        color: "var(--muted)" }}>
-                        {p.overall_accuracy == null ? "—" : `${p.overall_accuracy}%`}
-                      </td>
-                      <td style={{ ...CELL, background: "#f7fafc", textAlign: "right", fontWeight: 700 }}>
-                        {p.coverage_pct}%
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              <JcTrendTable p={p} metric="accuracy" />
             ) : (
               <>
                 <div className="pagebar" style={{ marginBottom: 10 }}>
@@ -973,110 +1018,144 @@ export default function Dashboard({ session, isAdmin }) {
             )}
           </div>
             {p.jc_trend.length > 0 && (
-              <div key="jcQty" className="card">
+              <div key="jcTrend" className="card">
+              <ExportBtn section="jc_trend" idParams={idParams} />
                 <div className="supply-dash-cardhead">
-                  <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Package size={16} /> Total projection qty by JC</h3>
-                    <div className="sub">projected KG per job cycle vs actual sales · {p.acc_year} · the pale bar is the planning JC{p.jc}</div></div>
+                  <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                    {JC_VIEWS.find((v) => v.id === jcMetric)?.icon} {JC_VIEWS.find((v) => v.id === jcMetric)?.title}</h3>
+                    <div className="sub">
+                      {jcMetric === "qty" && <>projected KG per job cycle vs actual sales · {p.acc_year} · the pale bar is the planning JC{p.jc}</>}
+                      {jcMetric === "accuracy" && <>100 − WMAPE per item · overall <b>{p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}</b> on projected items</>}
+                      {jcMetric === "items" && <>items carrying a projection each cycle vs items that actually sold · the pale bar is the planning JC (not dispatched yet)</>}
+                    </div></div>
+                  <div className="card-filters">
+                    <SegTabs size="sm" value={jcMetric} onChange={setJcMetric}
+                      tabs={JC_VIEWS.map((v) => ({ id: v.id, label: v.label }))} />
+                    <SegTabs size="sm" value={jcView} onChange={setJcView}
+                      tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
+                  </div>
                 </div>
-                <EChart className="echart-fill" option={jcQtyOpt} height="100%" />
-              </div>
-            )}
-
-            {p.jc_trend.length > 0 && (
-              <div key="jcAcc" className="card">
-                <div className="supply-dash-cardhead">
-                  <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Target size={16} /> Projection accuracy by JC</h3>
-                    <div className="sub">100 − WMAPE per item · overall <b>{p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}</b> on projected items</div></div>
-                </div>
-                <EChart className="echart-fill" option={jcAccOpt} height="100%" />
-              </div>
-            )}
-
-            {p.jc_trend.length > 0 && (
-              <div key="jcItems" className="card">
-                <div className="supply-dash-cardhead">
-                  <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><ClipboardList size={16} /> Items projected · every JC</h3>
-                    <div className="sub">items carrying a projection each cycle vs items that actually sold · the pale bar is the planning JC (not dispatched yet)</div></div>
-                </div>
-                <EChart className="echart-fill" option={jcItemsOpt} height="100%" />
+                {jcView === "table" ? <JcTrendTable p={p} metric={jcMetric} /> : (
+                  <EChart className="echart-fill" height="100%"
+                    option={jcMetric === "qty" ? jcQtyOpt : jcMetric === "accuracy" ? jcAccOpt : jcItemsOpt} />
+                )}
               </div>
             )}
 
             <div key="status" className="card">
+              <ExportBtn section={statusFlag ? "items" : "status"} idParams={idParams} />
               <div className="supply-dash-cardhead">
-                <div><h3>Projection status</h3>
-                  <div className="sub">items by flag · same ±20% band as the RM plan</div></div>
-                <SegTabs size="sm" value={shape.proj} onChange={setSh("proj")} tabs={SHAPE_DIST} />
-              </div>
-              <EChart className="echart-fill" option={statusOpt} height="100%" />
-            </div>
-
-            <div key="group" className="card">
-              <div className="supply-dash-cardhead">
-                <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Dna size={16} /> Projection by item group</h3>
-                  <div className="sub">JC{p.jc} projected KG per {groupLevel === "segment2" ? "division (Segment 2)" : "product group (Segment 3)"} · sales, accuracy and gaps in the tooltip</div></div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <SegTabs size="sm" value={groupLevel} onChange={setGroupLevel}
-                    tabs={[{ id: "segment3", label: "Segment 3" }, { id: "segment2", label: "Segment 2" }]} />
-                  <SegTabs size="sm" value={groupView} onChange={setGroupView}
+                <div>
+                  <h3>{statusFlag ? (FLAGS[statusFlag] || {}).label : "Projection status"}</h3>
+                  <div className="sub">
+                    {statusFlag
+                      ? <>{fmt.num(flagItems.length)} item{flagItems.length === 1 ? "" : "s"} · {statusFlag === "new"
+                          ? <>projected for JC{p.jc} but no sales in the last 3 JCs</>
+                          : <>ranked by 3-JC average sales</>}</>
+                      : <>items by flag · same ±20% band as the RM plan · click a slice for the items</>}
+                  </div>
+                </div>
+                <div className="card-filters">
+                  {statusFlag ? (
+                    <button type="button" className="btn secondary" style={{ padding: "4px 10px", fontSize: 12 }}
+                      onClick={() => { setStatusFlag(null); setStatusView("chart"); }}>
+                      ← All statuses
+                    </button>
+                  ) : (
+                    <SegTabs size="sm" value={shape.proj} onChange={setSh("proj")} tabs={SHAPE_DIST} />
+                  )}
+                  <SegTabs size="sm" value={statusView} onChange={setStatusView}
                     tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
                 </div>
               </div>
-              {groupView === "chart" ? (
-                <EChart className="echart-fill" option={groupOpt} height="100%" />
+              {statusView === "chart" ? (
+                statusFlag
+                  ? <EChart className="echart-fill" option={flagOpt} height="100%" />
+                  : <EChart className="echart-fill" option={statusOpt} height="100%" onEvents={statusEvents} />
+              ) : statusFlag ? (
+                <>
+                  <div className="pagebar" style={{ marginBottom: 10 }}>
+                    <SmoothInput className="searchbox" placeholder="Search item code / name…"
+                      value={statusQ} onChange={(e) => setStatusQ(e.target.value)} />
+                    <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
+                      {flagRows.length} of {flagItems.length} items
+                    </span>
+                  </div>
+                  <div className="tbl-wrap">
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr>
+                          <th style={{ ...HCELL, textAlign: "left", width: 56 }}>#</th>
+                          <th style={{ ...HCELL, textAlign: "left" }}>Item Code</th>
+                          <th style={{ ...HCELL, textAlign: "left" }}>Item Name</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales (KG)</th>
+                          <th style={{ ...HCELL, textAlign: "right" }}>Projection (KG)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {flagRows.map((m, i) => (
+                          <tr key={i} onClick={() => setItemPop({ name: m.name, code: m.code })}
+                            style={{ cursor: "pointer" }} title="Click to see this item's JC-wise graph">
+                            <td style={{ ...CELL, color: "var(--muted)" }}>{m.rank}</td>
+                            <td style={{ ...CELL, fontSize: 12, whiteSpace: "nowrap" }}>{m.code || "—"}</td>
+                            <td title={m.name} style={{ ...CELL, maxWidth: 380, overflow: "hidden",
+                              textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600, color: "#1f3a5f" }}>
+                              {m.name}
+                            </td>
+                            <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(m.avg3)}</td>
+                            <td style={{ ...CELL, textAlign: "right",
+                              color: m.proj ? undefined : "#c53030", fontWeight: 600 }}>
+                              {fmt.num(m.proj)}
+                            </td>
+                          </tr>
+                        ))}
+                        {flagRows.length === 0 && (
+                          <tr><td colSpan={5} style={CELL}>No items match the search.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               ) : (
                 <div className="tbl-wrap">
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ ...HCELL, textAlign: "left" }}>Item group</th>
-                      <th style={{ ...HCELL, textAlign: "right" }}>Projected (KG)</th>
-                      <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales (KG)</th>
-                      <th style={{ ...HCELL, textAlign: "right" }}>Items</th>
-                      <th style={{ ...HCELL, textAlign: "right" }}>No projection</th>
-                      <th style={{ ...HCELL, textAlign: "right" }}>Accuracy</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {groupRows.map((g, i) => (
-                      <tr key={i}>
-                        <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>{g.name}</td>
-                        <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(g.proj)}</td>
-                        <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(g.avg3)}</td>
-                        <td style={{ ...CELL, textAlign: "right", color: "var(--muted)" }}>{fmt.num(g.items)}</td>
-                        <td style={{ ...CELL, textAlign: "right",
-                          color: g.missing ? "#c53030" : "var(--muted)", fontWeight: g.missing ? 600 : 400 }}>
-                          {fmt.num(g.missing)}
-                        </td>
-                        <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>
-                          {g.accuracy_proj == null ? "—" : `${g.accuracy_proj}%`}
-                        </td>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...HCELL, textAlign: "left" }}>Status</th>
+                        <th style={{ ...HCELL, textAlign: "right" }}>Items</th>
+                        <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales (KG)</th>
+                        <th style={{ ...HCELL, textAlign: "left" }}></th>
                       </tr>
-                    ))}
-                    {groupRows.length === 0 && <tr><td colSpan={6} style={CELL}>No item groups in scope.</td></tr>}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {(p.summary || []).map((sm, i) => (
+                        <tr key={i} onClick={() => { setStatusFlag(sm.flag); setStatusView("table"); }}
+                          style={{ cursor: "pointer" }} title="Click to see these items">
+                          <td style={{ ...CELL, fontWeight: 600, color: (FLAGS[sm.flag] || {}).color }}>
+                            ● {(FLAGS[sm.flag] || {}).label || sm.flag}
+                          </td>
+                          <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(sm.items)}</td>
+                          <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(sm.kg)}</td>
+                          <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)" }}>view items →</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
 
-            <div key="compare" className="card">
-              <div className="supply-dash-cardhead">
-                <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Target size={16} /> Projection vs 3-JC avg sales</h3>
-                  <div className="sub">
-                    top items by sales · JC{p.jc} {p.acc_year} projection
-                    ({p.basis === "collector" ? "your collectors" : "per item, company-wide"}) vs 3-JC average sales ·
-                    ±20% band · <b>{p.coverage_pct}%</b> of your sales volume has a projection
-                  </div></div>
-              </div>
-              <ProjCompareTable rows={p.compare || []}
-                onItem={(r) => setItemPop({ name: r.name, code: r.code })} />
-            </div>
 
-            <div key="pipeline" className="card">
+            <div key="compare" className="card">
+              <ExportBtn section="pipeline" idParams={idParams} />
               <div className="supply-dash-cardhead">
-                <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><CalendarDays size={16} /> Projection pipeline</h3>
-                  <div className="sub">projected KG for the current and the next two job cycles · your scope</div></div>
+                <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                  <Target size={16} /> Projection vs 3-JC avg sales</h3>
+                  <div className="sub">
+                    {pipeView === "chart"
+                      ? <>projected KG for JC{p.jc} and the two cycles after it · {p.basis === "collector" ? "your collectors" : "per item, company-wide"}</>
+                      : <>each item's 3-JC average sales against its projection for the next three cycles · ±20% band · <b>{p.coverage_pct}%</b> of your sales volume has a projection</>}
+                  </div></div>
                 <SegTabs size="sm" value={pipeView} onChange={setPipeView}
                   tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
               </div>
@@ -1089,127 +1168,16 @@ export default function Dashboard({ session, isAdmin }) {
                       value={pipeQ} onChange={(e) => setPipeQ(e.target.value)} />
                     <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
                       {pipeRows.length} of {(p.pipeline_rows || []).length} products
-                      {(p.pipeline_rows || []).length >= 200 ? " (top 200 by projected volume)" : ""}
+                      {(p.pipeline_rows || []).length >= 200 ? " (top 200 by sales or projection)" : ""}
                     </span>
                   </div>
-                  <div className="tbl-wrap">
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                      <thead>
-                        <tr>
-                          <th style={{ ...HCELL, textAlign: "left" }}>Item Code</th>
-                          <th style={{ ...HCELL, textAlign: "left" }}>Item Name</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>Current · JC{p.jc}</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>Next JC</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>JC after next</th>
-                          <th style={{ ...HCELL, textAlign: "center" }}>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pipeRows.map((r, i) => (
-                          <tr key={i} onClick={() => setItemPop({ name: r.name, code: r.code })}
-                            style={{ cursor: "pointer" }} title="Click to see this item's JC-wise graph">
-                            <td style={{ ...CELL, fontSize: 12, whiteSpace: "nowrap" }}>{r.code || "—"}</td>
-                            <td title={r.name} style={{ ...CELL, maxWidth: 340, overflow: "hidden",
-                              textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</td>
-                            <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(r.avg3)}</td>
-                            <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(r.proj)}</td>
-                            <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(r.next1)}</td>
-                            <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(r.next2)}</td>
-                            <td style={{ ...CELL, textAlign: "center", whiteSpace: "nowrap" }}>
-                              <span style={{ color: (FLAGS[r.flag] || {}).color, fontSize: 12, fontWeight: 600 }}>
-                                ● {(FLAGS[r.flag] || {}).label || r.flag}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                        {pipeRows.length === 0 && (
-                          <tr><td colSpan={7} style={CELL}>No products match the search.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ProjCompareTable rows={pipeRows} jc={p.jc}
+                    onItem={(r) => setItemPop({ name: r.name, code: r.code })} />
                 </>
               )}
             </div>
 
-            <div key="missing" className="card"
-              style={p.missing_total > 0 ? { background: "#FFFBFA" } : undefined}>
-              <div className="supply-dash-cardhead">
-                <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><TriangleAlert size={16} /> Missing projections</h3>
-                  <div className="sub">
-                    selling items with <b>no JC{p.jc} projection</b>
-                    {p.missing_total > 0 && (
-                      <span style={{ color: "#c53030", fontWeight: 600 }}>
-                        {" "}· {p.missing_total} item{p.missing_total > 1 ? "s" : ""} · {abbr(p.missing_kg)} KG/JC unprojected
-                      </span>
-                    )}
-                  </div></div>
-                {p.missing_total > 0 && (
-                  <SegTabs size="sm" value={missView} onChange={setMissView}
-                    tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
-                )}
-              </div>
-              {p.missing_total === 0 ? (
-                <div style={{ padding: "48px 0", textAlign: "center", color: "#2f855a", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
-                  <CircleCheck size={16} /> Every selling item in your scope has a projection for JC{p.jc}.
-                </div>
-              ) : missView === "chart" ? (
-                <>
-                  <EChart className="echart-fill" option={missOpt} height="100%" />
-                  {(p.missing_all || []).length > missChart.length && (
-                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>
-                      Showing the {missChart.length} biggest — switch to <b>Table</b> for all {p.missing_total}.
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="pagebar" style={{ marginBottom: 10 }}>
-                    <SmoothInput className="searchbox" placeholder="Search item code / name…"
-                      value={missQ} onChange={(e) => setMissQ(e.target.value)} />
-                    <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
-                      {missTableRows.length} of {(p.missing_all || []).length} items
-                      {p.missing_total > (p.missing_all || []).length
-                        ? ` (top ${(p.missing_all || []).length} of ${p.missing_total} by volume)` : ""}
-                    </span>
-                  </div>
-                  <div className="tbl-wrap">
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                      <thead>
-                        <tr>
-                          <th style={{ ...HCELL, textAlign: "left", width: 60 }}>#</th>
-                          <th style={{ ...HCELL, textAlign: "left" }}>Item Code</th>
-                          <th style={{ ...HCELL, textAlign: "left" }}>Item Name</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales (KG)</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>Share of gap</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {missTableRows.map((m, i) => (
-                          <tr key={i} onClick={() => setItemPop({ name: m.name, code: m.code })}
-                            style={{ cursor: "pointer" }} title="Click to see this item's JC-wise graph">
-                            <td style={{ ...CELL, color: "var(--muted)" }}>{m.rank}</td>
-                            <td style={{ ...CELL, fontSize: 12, whiteSpace: "nowrap" }}>{m.code || "—"}</td>
-                            <td title={m.name} style={{ ...CELL, maxWidth: 380, overflow: "hidden",
-                              textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600, color: "#1f3a5f" }}>
-                              {m.name}
-                            </td>
-                            <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(m.avg3)}</td>
-                            <td style={{ ...CELL, textAlign: "right", color: "#c53030", fontWeight: 600 }}>
-                              {p.missing_kg ? `${((m.avg3 / p.missing_kg) * 100).toFixed(1)}%` : "—"}
-                            </td>
-                          </tr>
-                        ))}
-                        {missTableRows.length === 0 && (
-                          <tr><td colSpan={5} style={CELL}>No items match the search.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </div>
+
         </>
       )}
       </DashGrid>

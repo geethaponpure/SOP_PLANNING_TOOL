@@ -72,6 +72,13 @@ export const api = {
   myDashboard: ({ username = "", email = "", admin = 0, persona = "" } = {}) =>
     req(`/my-dashboard?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}`),
   myDashboardPersonas: () => req("/my-dashboard/personas"),
+  // section = one card's table; omit it for the whole page (charts + tables)
+  myDashboardExport: ({ section = "", username = "", email = "", admin = 0, persona = "" } = {}) =>
+    downloadFile(
+      `/my-dashboard/export?section=${encodeURIComponent(section)}` +
+      `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}`,
+      section ? `${section}.xlsx` : "My_Dashboard.xlsx"),
   dashboardLayout: (key = "mydash", user = "") =>
     req(`/dashboard-layout?key=${encodeURIComponent(key)}&user=${encodeURIComponent(user)}`),
   // user "" writes the app-level default; a user code writes that person's own

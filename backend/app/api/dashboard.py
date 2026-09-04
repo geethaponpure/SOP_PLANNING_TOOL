@@ -25,7 +25,7 @@ from ..integration.planning_filter import _proj_flag   # the plan's ±20% band
 
 # bump when the payload shape changes so stale precomputed admin payloads
 # (computed_plan.dashboard_admin) are rebuilt instead of served
-_PAYLOAD_V = 8
+_PAYLOAD_V = 11
 
 # broadest scope first — a user holding several personas gets the widest view
 _PERSONA_PRIORITY = ["Division Head", "Business Head", "Technical Head",
@@ -262,12 +262,22 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
 
     # row-by-row product detail for the pipeline table: top items by projected
     # volume (then by sales) — capped so huge scopes don't bloat the payload
+    # Rank by whichever side is bigger — sorting on projected volume alone would
+    # push the biggest UNPROJECTED sellers (the ones worth acting on) past the cap.
     pipeline_rows = sorted(
         (i for i in items if i["proj"] or i["next1"] or i["next2"] or i["avg3"]),
-        key=lambda i: (-(i["proj"] + i["next1"] + i["next2"]), -i["avg3"]))[:200]
+        key=lambda i: -max(i["avg3"], i["proj"], i["next1"], i["next2"]))[:400]
+    # tag each item with the SAME segment expression the dispatch cube groups by,
+    # so drilling into a slice of the segment chart lands on the right items
+    cube_seg: dict = {}
+    for r in (item_jc or []):
+        kk = _norm(r.get("name"))
+        if kk and kk not in cube_seg:
+            cube_seg[kk] = r.get("segment3") or r.get("segment2") or "—"
     pipeline_rows = [{"code": i.get("code"), "name": i["name"], "avg3": i["avg3"],
                       "proj": round(i["proj"], 1), "next1": round(i["next1"], 1),
-                      "next2": round(i["next2"], 1), "flag": i["flag"]}
+                      "next2": round(i["next2"], 1), "flag": i["flag"],
+                      "seg": cube_seg.get(_norm(i["name"]), "—")}
                      for i in pipeline_rows]
 
     for i in items:   # next1/next2 fed the pipeline only — keep the payload lean
@@ -363,6 +373,15 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
                              if done and act_tot > 0 else None),
         })
 
+    # every scoped item grouped by its status, so the status chart can drill
+    # into any slice (biggest seller first; projected-but-not-selling items have
+    # no sales to rank by, so they fall back to projected volume)
+    by_flag: dict = {}
+    for i in sorted(items, key=lambda d: (-(d["avg3"] or 0), -(d["proj"] or 0))):
+        by_flag.setdefault(i["flag"], []).append(
+            {"name": i["name"], "code": i["code"], "avg3": i["avg3"], "proj": i["proj"]})
+    items_by_flag = {k: v[:200] for k, v in by_flag.items()}
+
     missing_all = [{"name": i["name"], "code": i["code"], "avg3": i["avg3"]}
                    for i in with_sales if i["flag"] == "none"][:500]
     return {
@@ -370,6 +389,7 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
         "basis": "collector" if use_rows else "item",
         "coverage_pct": round(covered / total_avg3 * 100, 1),
         "summary": summary,
+        "items_by_flag": items_by_flag,
         "pipeline": pipeline,
         "pipeline_rows": pipeline_rows,
         "compare": with_sales[:12],

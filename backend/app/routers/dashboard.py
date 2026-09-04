@@ -1,6 +1,7 @@
 """My Dashboard page (permission-scoped charts)."""
 from ._deps import *
 from ..api.dashboard import item_detail, my_dashboard, persona_users
+from ..api import dashboard_export as _dx
 
 router = APIRouter()
 
@@ -29,6 +30,21 @@ class LayoutIn(BaseModel):
 
 def _user_key(key: str, user: str) -> str:
     return f"{key}:{(user or '').strip().lower()}"
+
+
+@router.get("/api/my-dashboard/export")
+def export_my_dashboard(username: str = "", email: str = "", admin: int = 0,
+                        persona: str = "", section: str = ""):
+    """Excel of one card's table (``section``) or the whole page (charts + tables),
+    always for the caller's own scope."""
+    if section and section not in _dx.SECTION_TITLES:
+        raise HTTPException(400, f"unknown section '{section}'")
+    payload = my_dashboard(username=username or None, email=email or None,
+                           admin=bool(admin), persona=persona or None)
+    data = _dx.build(payload, section or None)
+    who = (payload.get("persona") or "dashboard").replace(" ", "_")
+    name = f"{_dx.SECTION_TITLES[section].replace(' ', '_')}_{who}.xlsx" if section         else f"My_Dashboard_{who}.xlsx"
+    return _xlsx(data, name)
 
 
 @router.get("/api/dashboard-layout")

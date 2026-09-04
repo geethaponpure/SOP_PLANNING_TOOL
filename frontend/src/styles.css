@@ -1802,6 +1802,43 @@ td.num b { color: var(--navy); }
   box-shadow: inset 0 -1px 0 var(--border);
 }
 
+/* Filter groups in a card header stay on ONE row. When they cannot fit beside
+   the title the header itself wraps them onto their own full-width line, where
+   they still read as a single row of chips. */
+.card-filters { display: flex; gap: 8px; flex-wrap: nowrap; align-items: flex-start; }
+.card-filters .radio-inputs { flex: 0 0 auto; }
+
+/* per-card Excel download, pinned so it never reflows the header */
+.dash-export {
+  position: absolute; top: 14px; right: 14px; z-index: 2;
+  padding: 4px 7px; line-height: 0; opacity: 0.45; transition: opacity 0.15s ease;
+}
+.dash-item:hover .dash-export, .dash-export:focus-visible { opacity: 1; }
+.dash-item > .card > .supply-dash-cardhead {
+  padding-right: 38px;      /* clear of the download button */
+  /* one consistent gap under the WHOLE header — the title block used to supply
+     it via .sub, so a card whose filters were taller than its title had its
+     chart butting straight up against the toggles */
+  margin-bottom: 14px;
+}
+.dash-item > .card > .supply-dash-cardhead .sub { margin-bottom: 0; }
+/* breathing room around the plot itself, and above a table's toolbar */
+.dash-item > .card > .echart-fill { padding: 2px 2px 4px; }
+.dash-item > .card > .pagebar { margin-bottom: 12px; }
+
+/* The projection table carries eight columns; a fixed layout makes them share
+   the card width instead of overflowing it, and long text clips rather than
+   pushing a horizontal scrollbar onto the page. */
+.proj-table { table-layout: fixed; width: 100%; }
+.proj-table th, .proj-table td {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-left: 8px; padding-right: 8px;
+}
+.proj-pill {
+  display: block; font-size: 10.5px; font-weight: 600; border-radius: 999px;
+  padding: 3px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 .react-grid-item.react-grid-placeholder {
   background: var(--navy, #1f3a5f); opacity: 0.12; border-radius: var(--kit-radius, 14px);
 }

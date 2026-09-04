@@ -49,6 +49,9 @@ export default function DashGrid({
   // Cards to blow up to the full row (e.g. a table view). Either a list of ids,
   // or {id: rowUnits} to also give the card a height that fits its content.
   expanded = [],
+  // {newId: [oldId, ...]} — a card that replaced others takes over their slot
+  // so a layout saved before the merge keeps its shape.
+  renames = {},
   remoteLayouts = null,   // the app-level default, once it arrives
   userLayouts = null,     // this user's own saved arrangement, once it arrives
   canSaveDefault = false,
@@ -100,6 +103,11 @@ export default function DashGrid({
     for (const [bp, arr] of Object.entries(base || {})) {
       const cols = COLS[bp] || COLS.lg;
       const known = new Map((arr || []).map((l) => [l.i, l]));
+      for (const [now, before] of Object.entries(renames)) {
+        if (known.has(now)) continue;
+        const from = (Array.isArray(before) ? before : [before]).find((b) => known.has(b));
+        if (from) known.set(now, { ...known.get(from), i: now });
+      }
       const kept = ids.filter((id) => known.has(id)).map((id) => known.get(id));
       const missing = ids.filter((id) => !known.has(id));
       const nextY = kept.reduce((m, l) => Math.max(m, l.y + l.h), 0);
@@ -115,7 +123,7 @@ export default function DashGrid({
         : l));
     }
     return out;
-  }, [base, ids, defaults, expandedSet]);
+  }, [base, ids, defaults, expandedSet, renames]);
 
   const pending = React.useRef(null);
   const save = useCallback((_cur, all) => {
