@@ -963,6 +963,93 @@ def read_user_scope(user_id: int | None = None, email: str | None = None,
         return []
 
 
+# ── order commitments (Commitment-Risk page, see migrate_commit.sql) ──────────
+
+_COMMIT_COLS = ["order_no", "soc_line_id", "order_ref", "soc_date", "customer_id",
+                "customer_name", "collector", "mc_code", "item_code", "item_name",
+                "item_group", "inv_org", "sales_type", "qty", "despatched", "balance",
+                "sched_date", "resched_date", "resched_reason", "confirm_status",
+                "segment2", "segment3", "segment4"]
+
+
+def replace_order_commit(crm_rows: list[dict]) -> int:
+    """Replace stg_order_commit with the open schedule lines. Item segments are
+    denormalized in at sync time (sync item_segments before this source)."""
+    segs = {s["ItemCode"]: s for s in read_item_segments()}
+    data = []
+    for r in (crm_rows or []):
+        code = str(r.get("ItemCode") or "")[:64]
+        sg = segs.get(code) or {}
+        data.append((
+            _int_or_none(r.get("OrderNo")), _int_or_none(r.get("SocLineId")),
+            str(r.get("OrderRef") or "")[:40] or None, _date_or_none(r.get("SocDate")),
+            _int_or_none(r.get("CustomerId")), str(r.get("CustomerName") or "").strip()[:255] or None,
+            str(r.get("Collector") or "")[:120] or None, str(r.get("McCode") or "")[:32] or None,
+            code or None, str(r.get("ItemName") or "")[:255] or None,
+            str(r.get("ItemGroup") or "")[:120] or None, str(r.get("InvOrg") or "")[:120] or None,
+            str(r.get("SalesType") or "")[:32] or None,
+            round(_num(r.get("Qty")), 3), round(_num(r.get("Despatched")), 3),
+            round(_num(r.get("Balance")), 3),
+            _date_or_none(r.get("SchedDate")), _date_or_none(r.get("ReschedDate")),
+            str(r.get("ReschedReason") or "").strip()[:120] or None,
+            str(r.get("ConfirmStatus") or "")[:32] or None,
+            sg.get("Segment2") or None, sg.get("Segment3") or None, sg.get("Segment4") or None,
+        ))
+    return _replace("stg_order_commit", _COMMIT_COLS, data)
+
+
+def _commit_where(flt: dict) -> tuple[list[str], list]:
+    """Persona scope over stg_order_commit. Unlike the dispatch cube this table
+    keys collectors by NAME (the pending-order feed has no collector id), so the
+    collector conditions come from the grants' collector_name column."""
+    where, params = [], []
+    if flt.get("mc_codes"):
+        where.append("mc_code IN (" + ",".join(["%s"] * len(flt["mc_codes"])) + ")")
+        params += list(flt["mc_codes"])
+    if flt.get("collectors"):
+        where.append("collector IN (" + ",".join(["%s"] * len(flt["collectors"])) + ")")
+        params += list(flt["collectors"])
+    if flt.get("customer_ids"):
+        where.append("customer_id IN (" + ",".join(["%s"] * len(flt["customer_ids"])) + ")")
+        params += [int(c) for c in flt["customer_ids"]]
+    if flt.get("segment_grants"):
+        ors = []
+        for g in flt["segment_grants"]:
+            level = g["level"] if g["level"] in _SEG_LEVELS else "segment2"
+            cond = f"{level} = %s"
+            params.append(g["value"])
+            if g.get("collectors"):
+                cond += " AND collector IN (" + ",".join(["%s"] * len(g["collectors"])) + ")"
+                params += list(g["collectors"])
+            ors.append(f"({cond})")
+        where.append("(" + " OR ".join(ors) + ")")
+    return where, params
+
+
+def read_order_commit(flt: dict) -> list[dict]:
+    """Every open committed line in the persona's scope (dates as ISO strings)."""
+    where, params = _commit_where(flt or {})
+    w = (" WHERE " + " AND ".join(where)) if where else ""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT " + ", ".join(_COMMIT_COLS) + f" FROM stg_order_commit{w}",
+                            tuple(params))
+                rows = cur.fetchall()
+                for r in rows:
+                    for k in ("soc_date", "sched_date", "resched_date"):
+                        if r.get(k) is not None:
+                            r[k] = str(r[k])
+                    for k in ("qty", "despatched", "balance"):
+                        r[k] = float(r[k] or 0)
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
 def read_scope_users() -> list[dict]:
     """One row per (persona, user) in stg_user_scope with their grant count —
     feeds the admin 'View as' switcher on the My Dashboard page."""
@@ -1000,6 +1087,7 @@ SYNC_SOURCES = [
     "stock_aged", "vooki_items", "soc_schedule", "projection", "soc_pending",
     "soc_detail", "intransit", "dispatch_jc3", "dispatch_jc13",
     "projection_rows", "projection_accuracy", "user_scope", "dispatch_scope",
+    "order_commit",
 ]
 
 

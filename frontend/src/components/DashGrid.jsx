@@ -127,18 +127,30 @@ export default function DashGrid({
 
   const pending = React.useRef(null);
   const save = useCallback((_cur, all) => {
-    // never bake a temporary full-row expansion into the saved arrangement
-    if (expandedSet.size) return;
-    setLayouts(all);
-    setMine(all);
-    try { localStorage.setItem(storageKey, JSON.stringify(all)); } catch { /* ignore */ }
+    // A temporarily expanded card (table view) must never bake its blown-up
+    // geometry into the arrangement — but the user's OTHER moves still count,
+    // so swap the expanded items back to their un-expanded geometry and save.
+    // (Skipping the save entirely froze layouts on pages whose cards default
+    // to table view, and permanently disabled "Save as default".)
+    let next = all;
+    if (expandedSet.size) {
+      next = {};
+      for (const [bp, arr] of Object.entries(all || {})) {
+        const clean = new Map((((base || {})[bp]) || []).map((l) => [l.i, l]));
+        next[bp] = (arr || []).map((l) =>
+          (expandedSet.has(l.i) && clean.has(l.i) ? { ...clean.get(l.i) } : l));
+      }
+    }
+    setLayouts(next);
+    setMine(next);
+    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
     // persist to this user's own server slot so their layout follows them to
     // another browser or machine; debounced so a drag is one write, not thirty
     if (onSaveUser) {
       clearTimeout(pending.current);
-      pending.current = setTimeout(() => { onSaveUser(all).catch(() => {}); }, 1200);
+      pending.current = setTimeout(() => { onSaveUser(next).catch(() => {}); }, 1200);
     }
-  }, [storageKey, expandedSet, onSaveUser]);
+  }, [storageKey, expandedSet, onSaveUser, base]);
   useEffect(() => () => clearTimeout(pending.current), []);
 
   const saveDefault = useCallback(async () => {
@@ -175,10 +187,8 @@ export default function DashGrid({
         {canSaveDefault && (
           <button type="button" className="btn secondary" onClick={saveDefault}
             style={{ marginLeft: "auto" }}
-            disabled={savedDefault === "saving" || expandedSet.size > 0}
-            title={expandedSet.size
-              ? "Switch the expanded card back to Chart first"
-              : "Make this arrangement the default everyone starts from"}>
+            disabled={savedDefault === "saving"}
+            title="Make this arrangement the default everyone starts from">
             {savedDefault === "saving" ? "Saving…"
               : savedDefault === "saved" ? "✓ Saved as default"
                 : savedDefault === "failed" ? "Save failed — retry" : "Save as default"}

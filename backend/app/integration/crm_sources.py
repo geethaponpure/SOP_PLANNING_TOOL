@@ -644,6 +644,37 @@ def user_scope() -> dict:
     return {"grants": grants, "collectors": collectors}
 
 
+# Open committed order lines (balance still to dispatch) with every date the
+# Commitment-Risk page classifies on. Same base pair as despatch_pending; the
+# lookback keeps the heavy FnOrderDtlPending x FnScheduleDtlPending join sane
+# while still catching long-overdue orders.
+ORDER_COMMIT_SQL = """
+SELECT h.id AS OrderNo, d.SOC_LINE_ID AS SocLineId, h.qid AS OrderRef,
+       CAST(h.soc_date AS date) AS SocDate,
+       h.cid AS CustomerId, h.customer_name AS CustomerName,
+       h.collector AS Collector, h.mc_code AS McCode,
+       h.PRODUCTCODE AS ItemCode, h.PRODUCT AS ItemName, h.PRODUCT_GROUP AS ItemGroup,
+       h.SALES_TYPE AS SalesType, d.INVENTORY_ORG_NAME AS InvOrg,
+       CAST(d.scheduled_qty AS float) AS Qty,
+       CAST(d.despatched_qty AS float) AS Despatched,
+       CAST(d.BALANCE_QTY AS float) AS Balance,
+       CAST(d.SCHEDULE_DATE AS date) AS SchedDate,
+       CAST(d.RESCHEDULE_DATE AS date) AS ReschedDate,
+       d.reschedule_reason AS ReschedReason,
+       d.item_confirm_status AS ConfirmStatus
+FROM FnOrderDtlPending() h
+JOIN FnScheduleDtlPending() d ON h.line_id = d.SOC_LINE_ID AND h.id = d.ORDER_NO
+WHERE CAST(d.scheduled_qty AS float) > 0
+  AND CAST(d.BALANCE_QTY AS float) > 0
+  AND CAST(h.soc_date AS date) >= DATEADD(day, -?, GETDATE())
+"""
+
+
+def order_commit(days_back: int = 120) -> list[dict]:
+    """Open order lines with commitment dates, for the Commitment-Risk page."""
+    return db.crm_query(ORDER_COMMIT_SQL, (int(days_back),))
+
+
 SOURCES = {
     "pto_pts": pto_pts, "soc_pending": soc_pending,
     "quote_details": quote_details, "dispatch_details": dispatch_details,

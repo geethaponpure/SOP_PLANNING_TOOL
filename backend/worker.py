@@ -84,6 +84,12 @@ def sync_user_scope() -> int:
     return _sync("user_scope", crm.user_scope, staging.replace_user_scope)
 
 
+def sync_order_commit() -> int:
+    """Open committed order lines for the Commitment-Risk page (120-day order
+    lookback so long-overdue commitments stay visible)."""
+    return _sync("order_commit", crm.order_commit, staging.replace_order_commit)
+
+
 def sync_dispatch_scope() -> int:
     """Permission-dashboard cube: dispatch per JC x item x customer x collector
     x market-circle over the MSL 13-JC window (see migrate_dashboard.sql)."""
@@ -106,7 +112,7 @@ def sync_dispatch() -> int:
 SYNCS = [sync_item_segments, sync_stock_lots, sync_stock_details,
          sync_item_business, sync_pto_pts,
          sync_stock_aged, sync_vooki_items, sync_soc_schedule, sync_dispatch,
-         sync_user_scope, sync_dispatch_scope]
+         sync_user_scope, sync_dispatch_scope, sync_order_commit]
 
 
 # ── context-keyed sources (content depends on today's planning context) ───────

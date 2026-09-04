@@ -22,14 +22,6 @@ export default function AgedRM() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Aged raw-material → finished-goods.</b> Of the <b>raw materials</b> (<code>{data.rm_filter || "Business = Raw Material"}</code>)
-        <b> aged more than {data.aged_days} days</b> — read live from CRM <code>SPBiStockDetails</code> — these finished goods can be
-        produced (every required RM has aged stock). Because one RM feeds several FGs at different consumption rates, the
-        <b> Recommended</b> plan greedily produces the FGs that consume the most aged inventory, depleting the shared RM pool —
-        to maximise utilisation of slow-moving stock.
-      </div>
-
       <div className="grid cols-4">
         <div className="card statcard"><div className="ic"><Hourglass size={22} /></div><Stat value={fmt.num(s.aged_rm_items)} label={`Aged RM items (> ${data.aged_days}d)`} /></div>
         <div className="card statcard"><div className="ic"><FlaskConical size={22} /></div><Stat value={fmt.num(s.aged_rm_qty)} label="Aged RM qty (KG)" /></div>

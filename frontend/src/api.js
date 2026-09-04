@@ -79,6 +79,15 @@ export const api = {
       `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
       `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}`,
       section ? `${section}.xlsx` : "My_Dashboard.xlsx"),
+  commitRisk: ({ username = "", email = "", admin = 0, persona = "" } = {}) =>
+    req(`/commit-risk?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}`),
+  commitRiskExport: ({ section = "", username = "", email = "", admin = 0, persona = "" } = {}) =>
+    downloadFile(
+      `/commit-risk/export?section=${encodeURIComponent(section)}` +
+      `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}`,
+      section ? `${section}.xlsx` : "Commitment_Risk.xlsx"),
   dashboardLayout: (key = "mydash", user = "") =>
     req(`/dashboard-layout?key=${encodeURIComponent(key)}&user=${encodeURIComponent(user)}`),
   // user "" writes the app-level default; a user code writes that person's own

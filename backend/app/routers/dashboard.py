@@ -1,5 +1,7 @@
 """My Dashboard page (permission-scoped charts)."""
 from ._deps import *
+from ..api import commit_export as _cx
+from ..api.commit import commit_risk, scoped_rows
 from ..api.dashboard import item_detail, my_dashboard, persona_users
 from ..api import dashboard_export as _dx
 
@@ -44,6 +46,30 @@ def export_my_dashboard(username: str = "", email: str = "", admin: int = 0,
     data = _dx.build(payload, section or None)
     who = (payload.get("persona") or "dashboard").replace(" ", "_")
     name = f"{_dx.SECTION_TITLES[section].replace(' ', '_')}_{who}.xlsx" if section         else f"My_Dashboard_{who}.xlsx"
+    return _xlsx(data, name)
+
+
+@router.get("/api/commit-risk")
+def get_commit_risk(username: str = "", email: str = "", admin: int = 0,
+                    persona: str = ""):
+    """The Commitment-Risk page payload, scoped exactly like /api/my-dashboard."""
+    return commit_risk(username=username or None, email=email or None,
+                       admin=bool(admin), persona=persona or None)
+
+
+@router.get("/api/commit-risk/export")
+def export_commit_risk(username: str = "", email: str = "", admin: int = 0,
+                       persona: str = "", section: str = ""):
+    """Excel of one Commitment-Risk card, or the whole page (charts + tables)."""
+    if section and section not in _cx.SECTION_TITLES:
+        raise HTTPException(400, f"unknown section '{section}'")
+    payload = commit_risk(username=username or None, email=email or None,
+                          admin=bool(admin), persona=persona or None)
+    _p, _s, _m, rows = scoped_rows(username=username or None, email=email or None,
+                                   admin=bool(admin), persona=persona or None)
+    data = _cx.build(payload, rows, section or None)
+    who = (payload.get("persona") or "commit").replace(" ", "_")
+    name = f"{_cx.SECTION_TITLES[section].replace(' ', '_')}_{who}.xlsx" if section         else f"Commitment_Risk_{who}.xlsx"
     return _xlsx(data, name)
 
 

@@ -78,13 +78,6 @@ export default function AdhocPlanning() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Adhoc Planning.</b> Open SOC orders received <b>after the freeze date</b> (2nd day of the 3rd JC week) are
-        validated against <b>Projected Qty</b> + <b>Pending SOC</b>: within projection → <b>Covered</b>; beyond projection + pending SOC →
-        the excess is an <b>Exceeds</b> adhoc order; a new line item not in projection → <b>New</b>. Adhoc production is planned from the
-        RM remaining <b>after deducting a saved JC Plan's allocation</b> (no duplicate RM allocation).
-      </div>
-
       <div className="card" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", padding: "12px 14px" }}>
         {[
           [<><CalendarDays size={14} /> Current JC</>, `JC${fz.jc} · ${fz.jc_from} → ${fz.jc_to} · FY ${fz.fy}`],

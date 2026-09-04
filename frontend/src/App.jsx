@@ -7,12 +7,15 @@ import DataFreshness from "./components/DataFreshness.jsx";
 import ProfileMenu from "./components/ProfileMenu.jsx";
 import SupplyInfo from "./components/SupplyInfo.jsx";
 import RMDataInfo from "./components/RMDataInfo.jsx";
+import AdhocInfo from "./components/AdhocInfo.jsx";
+import AgedRMInfo from "./components/AgedRMInfo.jsx";
 import MfgStockInfo from "./components/MfgStockInfo.jsx";
 import VookiInfo from "./components/VookiInfo.jsx";
 import ConfirmModal from "./components/ConfirmModal.jsx";
 import Login from "./pages/Login.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
+import CommitRisk from "./pages/CommitRisk.jsx";
 import Overview from "./pages/Overview.jsx";
 import DataQuality from "./pages/DataQuality.jsx";
 import Validation from "./pages/Validation.jsx";
@@ -126,6 +129,7 @@ export default function App() {
 
   const pages = {
     mydash: <Dashboard session={session} isAdmin={isAdmin} />,
+    commitrisk: <CommitRisk session={session} isAdmin={isAdmin} />,
     overview: <Overview onChange={bump} />,
     dq: <DataQuality />,
     validation: <Validation onChange={bump} />,
@@ -190,6 +194,8 @@ export default function App() {
           <h2>{NAV.find((n) => n.id === page)?.label}</h2>
           {page === "supply" && <SupplyInfo />}
           {page === "supplycards" && <RMDataInfo />}
+          {page === "adhoc" && <AdhocInfo />}
+          {page === "agedrm" && <AgedRMInfo />}
           {page === "mfgstock" && <MfgStockInfo />}
           {page === "vooki" && <VookiInfo />}
           <div className="cycle-pill">
