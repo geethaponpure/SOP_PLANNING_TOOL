@@ -12,6 +12,9 @@ from ..api.competition import scoped_ledger as _comp_ledger
 from ..api import promise_export as _prx
 from ..api.promise import item_timeline, promise_dates
 from ..api.promise import scoped_rows as _promise_rows
+from ..api import action_export as _abx
+from ..api.action_board import action_board, item_supply
+from ..api.action_board import scoped_rows as _action_rows
 
 router = APIRouter()
 
@@ -189,6 +192,43 @@ def export_promise_dates(username: str = "", email: str = "", admin: int = 0,
     cyc = payload.get("jc_label") or ""
     name = f"{_prx.SECTION_TITLES[section].replace(' ', '_')}_{cyc}_{who}.xlsx" if section \
         else f"Promise_Dates_{cyc}_{who}.xlsx"
+    return _xlsx(data, name)
+
+
+@router.get("/api/supply-position")
+def get_supply_position(username: str = "", email: str = "", admin: int = 0,
+                        persona: str = "", jc: int = 0):
+    """My Supply Position — the headline strip plus the customer x item action
+    list, scoped like /api/my-dashboard. ``jc`` defaults to the planning JC."""
+    return action_board(username=username or None, email=email or None,
+                        admin=bool(admin), persona=persona or None,
+                        jc=int(jc) or None)
+
+
+@router.get("/api/supply-position/item")
+def get_supply_position_item(item: str = "", username: str = "", email: str = "",
+                             admin: int = 0, persona: str = "", jc: int = 0):
+    """One item's supply picture behind the board: the dated ladder, the orders
+    consuming it, and where the stock sits."""
+    if not item:
+        raise HTTPException(400, "item is required")
+    return item_supply(item, username=username or None, email=email or None,
+                       admin=bool(admin), persona=persona or None, jc=int(jc) or None)
+
+
+@router.get("/api/supply-position/export")
+def export_supply_position(username: str = "", email: str = "", admin: int = 0,
+                           persona: str = "", jc: int = 0, section: str = ""):
+    """Excel of one block, or the whole board."""
+    if section and section not in _abx.SECTION_TITLES:
+        raise HTTPException(400, f"unknown section '{section}'")
+    payload, rows = _action_rows(username=username or None, email=email or None,
+                                 admin=bool(admin), persona=persona or None,
+                                 jc=int(jc) or None)
+    data = _abx.build(payload, rows, section or None)
+    who = (payload.get("persona") or "supply").replace(" ", "_")
+    cyc = payload.get("jc_label") or ""
+    name = f"{_abx.SECTION_TITLES[section].replace(' ', '_')}_{cyc}_{who}.xlsx" if section         else f"My_Supply_Position_{cyc}_{who}.xlsx"
     return _xlsx(data, name)
 
 

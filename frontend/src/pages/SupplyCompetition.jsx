@@ -205,7 +205,7 @@ function ItemTable({ rows, total, onPick }) {
   return (
     <>
       <div className="card-filters" style={{ marginBottom: 8 }}>
-        <SmoothInput className="searchbox" style={{ maxWidth: 250 }} value={q} onChange={setQ}
+        <SmoothInput className="searchbox" style={{ maxWidth: 250 }} value={q} onChange={(e) => setQ(e.target.value)}
           placeholder="Search item or segment…" />
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
           {fmt.num(shown.length)} of {fmt.num(total ?? rows.length)} items · click a row for the supply picture

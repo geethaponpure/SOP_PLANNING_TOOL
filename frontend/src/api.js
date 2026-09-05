@@ -123,6 +123,19 @@ export const api = {
       `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
       `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`,
       section ? `${section}.xlsx` : "Promise_Dates.xlsx"),
+  supplyPosition: ({ username = "", email = "", admin = 0, persona = "", jc = 0 } = {}) =>
+    req(`/supply-position?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`),
+  supplyPositionItem: ({ item = "", username = "", email = "", admin = 0, persona = "", jc = 0 } = {}) =>
+    req(`/supply-position/item?item=${encodeURIComponent(item)}` +
+      `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`),
+  supplyPositionExport: ({ section = "", username = "", email = "", admin = 0, persona = "", jc = 0 } = {}) =>
+    downloadFile(
+      `/supply-position/export?section=${encodeURIComponent(section)}` +
+      `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`,
+      section ? `${section}.xlsx` : "My_Supply_Position.xlsx"),
   dashboardLayout: (key = "mydash", user = "") =>
     req(`/dashboard-layout?key=${encodeURIComponent(key)}&user=${encodeURIComponent(user)}`),
   // user "" writes the app-level default; a user code writes that person's own

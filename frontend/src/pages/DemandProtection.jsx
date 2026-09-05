@@ -174,7 +174,7 @@ function LineTable({ rows, total }) {
   return (
     <>
       <div className="card-filters" style={{ marginBottom: 8 }}>
-        <SmoothInput className="searchbox" style={{ maxWidth: 260 }} value={q} onChange={setQ}
+        <SmoothInput className="searchbox" style={{ maxWidth: 260 }} value={q} onChange={(e) => setQ(e.target.value)}
           placeholder="Search customer, item or collector…" />
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
           {fmt.num(shown.length)} of {fmt.num(total ?? rows.length)} lines
@@ -253,7 +253,7 @@ function GroupTable({ rows, label, title, extraCol }) {
   return (
     <>
       <div className="card-filters" style={{ marginBottom: 8 }}>
-        <SmoothInput className="searchbox" style={{ maxWidth: 240 }} value={q} onChange={setQ}
+        <SmoothInput className="searchbox" style={{ maxWidth: 240 }} value={q} onChange={(e) => setQ(e.target.value)}
           placeholder={`Search ${title.toLowerCase()}…`} />
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
           {fmt.num(shown.length)} {title.toLowerCase()}

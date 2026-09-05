@@ -55,6 +55,15 @@
         "value": "lato",
         "createdAt": "2026-09-02T10:51:49.918Z",
         "reason": "pre-existing project brand font (not introduced this session); app-wide typeface change is out of scope for the current backend/chart/layout work"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "frontend/src/pages/AdhocPlanning.jsx"
+        ],
+        "createdAt": "2026-09-05T10:17:11.372Z",
+        "reason": "pre-existing data-driven row-status accent (red=exceeds, blue=new) on a TABLE ROW cell, not a card side-tab; predates this session's Adhoc spacing work. Re-scoped: earlier ignore used src/... but the hook reports frontend/src/..."
       }
     ]
   }

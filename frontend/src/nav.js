@@ -2,7 +2,7 @@
 // where each nav entry is a grantable module/menu).
 // Icons are lucide-react components (rendered by App as <n.icon />).
 import {
-  AlarmClock, Gauge, Compass, ShieldCheck, ShieldHalf, Swords, CalendarCheck2, CircleCheck, TrendingUp, Grid3x3, Settings, LayoutGrid,
+  AlarmClock, Gauge, Compass, ShieldCheck, ShieldHalf, Swords, CalendarCheck2, Crosshair, CircleCheck, TrendingUp, Grid3x3, Settings, LayoutGrid,
   Factory, SprayCan, Zap, Hourglass, TrendingDown, Target, Ruler, FlaskConical, Package,
   Microscope, FolderKanban, Award, ArrowLeftRight, CalendarClock, PackageCheck, CalendarRange,
   Sparkles, ChartColumn, Handshake, Settings2, UserCog, Users, History,
@@ -11,6 +11,7 @@ import {
 export const NAV = [
   { id: "mydash", label: "My Dashboard", icon: Gauge },
   { id: "commitrisk", label: "Commitment Risk", icon: AlarmClock },
+  { id: "supplypos", label: "My Supply Position", icon: Crosshair },
   { id: "demandprot", label: "Demand Protection", icon: ShieldHalf },
   { id: "supplycomp", label: "Supply Competition", icon: Swords },
   { id: "promisedates", label: "Promise Dates", icon: CalendarCheck2 },
