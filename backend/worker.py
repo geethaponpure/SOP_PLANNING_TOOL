@@ -202,8 +202,29 @@ def sync_projection_accuracy(ctx) -> int:
         return -1
 
 
+def sync_projection_customer(ctx) -> int:
+    """Demand ledger: the approved projection per customer x item x collector for
+    JC1..planning JC (see db/migrate_demand_ledger.sql). Every JC of the year is
+    staged, not just the planning one, because the protection/conversion trend
+    compares each cycle's projection against what that cycle actually shipped."""
+    run_id = staging.start_run("projection_customer")
+    t0 = time.time()
+    try:
+        acc, cur_jc, total = ctx["acc_year"], int(ctx["plan_jc"] or 0), 0
+        for j in range(1, cur_jc + 1):
+            rows = crm.projection_customer(acc, j) or []
+            total += staging.replace_projection_customer(acc, j, rows)
+        staging.finish_run(run_id, "ok", total)
+        print(f"[sync] projection_customer: {total} rows ({cur_jc} JCs) in {time.time() - t0:.1f}s")
+        return total
+    except Exception as e:   # noqa: BLE001
+        staging.finish_run(run_id, "error", None, str(e))
+        print(f"[sync] projection_customer FAILED: {e}")
+        return 0
+
+
 CONTEXT_SYNCS = [sync_projection, sync_soc_pending, sync_soc_detail, sync_intransit,
-                 sync_projection_rows, sync_projection_accuracy]
+                 sync_projection_rows, sync_projection_customer, sync_projection_accuracy]
 
 
 def compute_rm_planning() -> int:

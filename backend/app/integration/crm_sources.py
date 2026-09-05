@@ -644,35 +644,103 @@ def user_scope() -> dict:
     return {"grants": grants, "collectors": collectors}
 
 
-# Open committed order lines (balance still to dispatch) with every date the
-# Commitment-Risk page classifies on. Same base pair as despatch_pending; the
-# lookback keeps the heavy FnOrderDtlPending x FnScheduleDtlPending join sane
-# while still catching long-overdue orders.
+# Open committed order lines for the Commitment-Risk page.
+#
+# CRM maintains dbo.SocPendingDetails: a daily snapshot of every pending SOC
+# line. Preferred over joining FnOrderDtlPending x FnScheduleDtlPending live
+# because it (a) covers the WHOLE pending book, not just a recent window —
+# more than half of all pending lines are older than 120 days — (b) reads in
+# ~4s instead of ~63s, and (c) already carries the customer-requested date,
+# segments, market circle, sales executive and the warehouse's reschedule note.
+# Checked against the live functions over the same window: 6,160 of ~6,200
+# lines match exactly; the handful that differ are that day's activity since
+# the snapshot was built.
+#
+# customer_id and the quotation number are not in the snapshot, so both are
+# joined in (verified 1:1 — neither join multiplies rows).
 ORDER_COMMIT_SQL = """
-SELECT h.id AS OrderNo, d.SOC_LINE_ID AS SocLineId, h.qid AS OrderRef,
-       CAST(h.soc_date AS date) AS SocDate,
-       h.cid AS CustomerId, h.customer_name AS CustomerName,
-       h.collector AS Collector, h.mc_code AS McCode,
-       h.PRODUCTCODE AS ItemCode, h.PRODUCT AS ItemName, h.PRODUCT_GROUP AS ItemGroup,
-       h.SALES_TYPE AS SalesType, d.INVENTORY_ORG_NAME AS InvOrg,
-       CAST(d.scheduled_qty AS float) AS Qty,
-       CAST(d.despatched_qty AS float) AS Despatched,
-       CAST(d.BALANCE_QTY AS float) AS Balance,
-       CAST(d.SCHEDULE_DATE AS date) AS SchedDate,
-       CAST(d.RESCHEDULE_DATE AS date) AS ReschedDate,
-       d.reschedule_reason AS ReschedReason,
-       d.item_confirm_status AS ConfirmStatus
-FROM FnOrderDtlPending() h
-JOIN FnScheduleDtlPending() d ON h.line_id = d.SOC_LINE_ID AND h.id = d.ORDER_NO
-WHERE CAST(d.scheduled_qty AS float) > 0
-  AND CAST(d.BALANCE_QTY AS float) > 0
-  AND CAST(h.soc_date AS date) >= DATEADD(day, -?, GETDATE())
+SELECT s.ORDER_NO AS OrderNo, s.quotation_id AS SocLineId,
+       h.quotation_number AS OrderRef, s.ORDER_DATE AS SocDate,
+       cm.customer_id AS CustomerId, s.CUSTOMER_NAME AS CustomerName,
+       s.COLLECTOR AS Collector, s.market_circle AS McCode,
+       s.ITEMCODE AS ItemCode, s.item_name AS ItemName, s.Item_group AS ItemGroup,
+       s.INVENTORY_ORG_NAME AS InvOrg, s.category AS SalesType,
+       s.SCHEDULED_QTY AS Qty, s.DESPATCHED_QTY AS Despatched, s.BALANCE_QTY AS Balance,
+       s.SCHEDULE_DATE AS SchedDate, CAST(s.RESCHEDULE_DATE AS date) AS ReschedDate,
+       s.customer_req_date AS CustReqDate,
+       s.RESCHEDULE_REASON AS ReschedReason,
+       s.WH_INCHARGE_RESCHEDULE_COMMENTS AS WhComments,
+       s.EXECUTIVE_NAME AS Executive, s.Dispatch_PER AS DispatchPct,
+       s.SEGMENT2 AS Segment2, s.SEGMENT3 AS Segment3, s.SEGMENT4 AS Segment4,
+       s.SyncDate AS SnapshotAt
+FROM SocPendingDetails s
+LEFT JOIN SaleOrderHdrs h ON h.header_id = s.ORDER_NO
+LEFT JOIN CustomerMasters cm ON cm.customer_number = s.CUSTOMER_NUMBER
+WHERE s.BALANCE_QTY > 0
 """
 
 
-def order_commit(days_back: int = 120) -> list[dict]:
-    """Open order lines with commitment dates, for the Commitment-Risk page."""
-    return db.crm_query(ORDER_COMMIT_SQL, (int(days_back),))
+def order_commit() -> list[dict]:
+    """Every open committed order line, from CRM's pending-SOC snapshot."""
+    return db.crm_query(ORDER_COMMIT_SQL)
+
+
+# ── demand ledger: the projection at the grain CRM actually stores it ────────
+#
+# business_plan_projection_rows() aggregates the plan to item x collector, which
+# loses the customer. The Demand-Protection page needs the customer, because the
+# whole question is "is MY projection for THIS customer covered by a firm order".
+# Same table, same approved-only rule, one level deeper.
+#
+# Two joins are added so the ledger can meet the rest of the warehouse:
+#   mc_code   from the customer's PRIMARY CustomerSites row — the projection
+#             carries no market circle, and the Sales-Executive persona is
+#             scoped by one. Resolves for 100% of projected customers and
+#             agrees with the dispatch cube on 99.0% of customer/MC pairs.
+#   item_code from itemmasters — the plan stores an item NAME; open orders and
+#             the dispatch cube store a CODE. 99.4% of projected items resolve
+#             (100.0% by quantity); the rest stay NULL and join by name.
+PROJECTION_CUSTOMER_SQL = """
+SELECT d.customer_id AS CustomerId, MAX(d.customer_name) AS CustomerName,
+       d.collector_id AS CollectorId, MAX(d.collector) AS Collector,
+       MAX(cs.mc_code) AS McCode,
+       MAX(im.item_code) AS ItemCode, d.item_description AS ItemName,
+       MAX(d.segment2) AS Segment2, MAX(d.segment3) AS Segment3,
+       MAX(d.segment4) AS Segment4,
+       SUM(ISNULL(d.jc{n}_week1_user_dfn_qty, 0)) AS Week1Q,
+       SUM(ISNULL(d.jc{n}_week2_user_dfn_qty, 0)) AS Week2Q,
+       SUM(ISNULL(j.jc_nextmonth1_qty, 0)) AS Next1Q,
+       SUM(ISNULL(j.jc_nextmonth2_qty, 0)) AS Next2Q
+FROM SCBusinessMonthlyPlanDtls d
+JOIN SCBusinessMonthlyPlanHdrs h ON h.header_id = d.header_id
+LEFT JOIN SCBusinessMonthlyPlanJCDtls j
+       ON j.header_id = d.line_id
+      AND j.jc_type = (SELECT TOP 1 line_id FROM JourneyCalendars
+                       WHERE acc_year = h.acc_year AND name = 'JC{n}' AND is_active = 1)
+OUTER APPLY (SELECT TOP 1 s.mc_code FROM CustomerSites s
+             WHERE s.customer_id = d.customer_id AND s.mc_code IS NOT NULL
+             ORDER BY CASE WHEN s.primary_flag = 'Y' THEN 0 ELSE 1 END, s.line_id) cs
+OUTER APPLY (SELECT TOP 1 m.item_code FROM itemmasters m
+             WHERE m.item_description = d.item_description
+               AND m.item_code IS NOT NULL) im
+WHERE h.acc_year = ?
+  {status_filter}
+GROUP BY d.customer_id, d.collector_id, d.item_description
+HAVING SUM(ISNULL(d.jc{n}_week1_user_dfn_qty, 0)
+         + ISNULL(d.jc{n}_week2_user_dfn_qty, 0)) > 0
+"""
+
+
+def projection_customer(acc_year: str, jc_number: int,
+                        approved_only: bool = True) -> list[dict]:
+    """Approved projection for one JC per (customer, item, collector) — the
+    demand-ledger grain. Rows with a zero JC total are dropped at source."""
+    n = int(jc_number)
+    if not 1 <= n <= 13:
+        raise ValueError(f"jc_number out of range (1-13): {jc_number}")
+    return db.crm_query(
+        PROJECTION_CUSTOMER_SQL.format(n=n, status_filter=_status_filter(n, approved_only)),
+        (acc_year,))
 
 
 SOURCES = {

@@ -5,6 +5,8 @@ import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 import { Factory, FlaskConical, BarChart3, Hourglass, CalendarDays } from "lucide-react";
+import PageInfo from "../components/PageInfo.jsx";
+import ProductionGantt from "../components/ProductionGantt.jsx";
 
 // priority -> colour + label (SOC scenario x RM availability) + start-date basis
 const PRIO = {
@@ -17,94 +19,7 @@ const PRIO = {
 };
 const D = (s) => new Date(s + "T00:00:00");
 const dayDiff = (a, b) => Math.round((D(b) - D(a)) / 86400000);
-const iso = (dt) => dt.toISOString().slice(0, 10);
 const fmtD = (s) => new Date(s + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-
-function Gantt({ jobs, from, to, view, jcStart, today }) {
-  const total = Math.max(1, dayDiff(from, to) + 1);
-  const pxDay = view === "week" ? 40 : 11;
-  const width = total * pxDay;
-  const LBL = 150, ROW = 34, BAR = 22;
-
-  const byEq = {};
-  jobs.forEach((j) => (byEq[j.equipment] = byEq[j.equipment] || []).push(j));
-  const equips = Object.keys(byEq).sort();
-
-  // month bands
-  const months = [];
-  let cur = new Date(D(from).getFullYear(), D(from).getMonth(), 1), mi = 0;
-  while (cur <= D(to)) {
-    const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-    months.push({ x0: clamp(dayDiff(from, iso(cur)), 0, total) * pxDay, x1: clamp(dayDiff(from, iso(next)), 0, total) * pxDay,
-      label: cur.toLocaleDateString("en-GB", { month: "long", year: "numeric" }), shade: mi % 2 === 1 });
-    cur = next; mi++;
-  }
-  // grid + tick labels: daily (week view) or weekly (month view)
-  const step = view === "week" ? 1 : 7;
-  const ticks = [];
-  for (let d = 0; d < total; d += step) {
-    const dt = new Date(D(from).getTime() + d * 86400000);
-    ticks.push({ x: d * pxDay, wknd: [0, 6].includes(dt.getDay()),
-      label: view === "week" ? dt.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit" }) : dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) });
-  }
-  const markX = (s) => (s ? dayDiff(from, s) * pxDay : null);
-  const todayX = today && today >= from && today <= to ? markX(today) : null;
-  const jcX = jcStart && jcStart >= from && jcStart <= to ? markX(jcStart) : null;
-
-  const Layer = () => (
-    <>
-      {months.filter((m) => m.shade).map((m, i) => (
-        <div key={"m" + i} style={{ position: "absolute", left: m.x0, width: m.x1 - m.x0, top: 0, bottom: 0, background: "rgba(31,58,95,.035)" }} />
-      ))}
-      {ticks.map((t, i) => (
-        <div key={"t" + i} style={{ position: "absolute", left: t.x, top: 0, bottom: 0, width: 1, background: t.wknd ? "rgba(31,58,95,.10)" : "rgba(0,0,0,.05)" }} />
-      ))}
-      {jcX != null && <div style={{ position: "absolute", left: jcX, top: 0, bottom: 0, width: 2, background: "#1a7d4f" }} />}
-      {todayX != null && <div style={{ position: "absolute", left: todayX, top: 0, bottom: 0, width: 2, background: "#c0392b" }} />}
-    </>
-  );
-
-  return (
-    <div style={{ overflow: "auto", border: "1px solid var(--border)", borderRadius: 8, maxHeight: "62vh", background: "#fff" }}>
-      {/* header */}
-      <div style={{ display: "flex", position: "sticky", top: 0, zIndex: 3 }}>
-        <div style={{ width: LBL, flex: "none", padding: "0 10px", height: 44, lineHeight: "44px", fontSize: 12, fontWeight: 700, color: "#fff", background: "var(--navy)", position: "sticky", left: 0, zIndex: 4, borderRight: "2px solid #fff" }}>Equipment / Vessel</div>
-        <div style={{ position: "relative", width, height: 44, background: "var(--navy)", color: "#fff" }}>
-          {months.map((m, i) => (
-            <div key={i} style={{ position: "absolute", left: m.x0, width: m.x1 - m.x0, top: 0, height: 22, lineHeight: "22px", fontSize: 11, fontWeight: 600, textAlign: "center", borderLeft: "1px solid rgba(255,255,255,.25)", overflow: "hidden" }}>{m.label}</div>
-          ))}
-          {ticks.map((t, i) => (
-            <div key={i} style={{ position: "absolute", left: t.x, top: 24, height: 20, fontSize: 9, color: t.wknd ? "#8fb0d6" : "#cbd5e0", borderLeft: "1px solid rgba(255,255,255,.18)", paddingLeft: 3, whiteSpace: "nowrap" }}>{t.label}</div>
-          ))}
-          {jcX != null && <div title="JC start" style={{ position: "absolute", left: jcX, top: 0, bottom: 0, width: 2, background: "#4ade80" }} />}
-          {todayX != null && <div title="Today" style={{ position: "absolute", left: todayX, top: 0, bottom: 0, width: 2, background: "#f87171" }} />}
-        </div>
-      </div>
-      {/* rows */}
-      {equips.map((eq, r) => (
-        <div key={eq} style={{ display: "flex", borderTop: "1px solid #edf1f6", background: r % 2 ? "#F8FAFC" : "#fff" }}>
-          <div style={{ width: LBL, flex: "none", padding: "0 10px", height: ROW, lineHeight: ROW + "px", fontSize: 12, fontWeight: 600, borderRight: "2px solid var(--border)", position: "sticky", left: 0, background: "inherit", zIndex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{eq}</div>
-          <div style={{ position: "relative", width, height: ROW }}>
-            <Layer />
-            {byEq[eq].map((j, i) => {
-              const left = dayDiff(from, j.start) * pxDay;
-              const w = Math.max(6, dayDiff(j.start, j.end) * pxDay - 1);
-              return (
-                <div key={i} title={`${j.item}\n${j.scenario} (Priority ${j.priority})\n${fmt.num(j.qty)} kg · ${j.batches} batch(es) × ${fmt.num(j.batch_size)} kg · ${j.cycle_hrs}h/batch\n${fmtD(j.start)} → ${fmtD(j.end)}${j.rm_available ? " · RM in stock" : " · RM via lead time " + j.lead_days + "d"}`}
-                  style={{ position: "absolute", left, width: w, top: (ROW - BAR) / 2, height: BAR, background: PRIO[j.priority].c,
-                    borderRadius: 4, color: "#fff", fontSize: 10, lineHeight: BAR + "px", padding: "0 5px", overflow: "hidden",
-                    whiteSpace: "nowrap", cursor: "default", boxShadow: "0 1px 2px rgba(0,0,0,.18)", border: j.rm_available ? "none" : "1px dashed rgba(255,255,255,.7)" }}>
-                  {w > 46 ? `${j.item} · ${j.batches}b` : w > 20 ? `${j.batches}b` : ""}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function ProductionSchedule() {
   const [planId, setPlanId] = useState("");
@@ -130,13 +45,13 @@ export default function ProductionSchedule() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Production Job Scheduling.</b> For a chosen <b>JC plan</b>, each confirmed FG quantity is split into
+      <PageInfo title="Production Job Scheduling">
+        For a chosen <b>JC plan</b>, each confirmed FG quantity is split into
         <b> Pending SOC</b> (schedule ≤ JC start), <b>Future SOC</b> (schedule &gt; JC start) and <b>No SOC</b> (projection balance),
         checked for <b>RM availability</b> (Supply-RM stock logic), sized into batches via <code>vessel_product_mapping</code>
         (batch size + cycle time) and placed on the equipment calendar by a <b>6-level priority</b> (start date driven by JC start /
         SOC schedule date / RM lead time).
-      </div>
+      </PageInfo>
 
       <div className="pagebar">
         <label style={{ display: "flex", alignItems: "center", gap: 6, margin: 0, fontSize: 13 }}>
@@ -238,7 +153,7 @@ export default function ProductionSchedule() {
               <span style={{ marginLeft: 8 }}>dashed border = RM via lead time · hover a bar for details</span>
             </span>
           </div>
-          <Gantt jobs={matches} from={s.date_from} to={s.date_to} view={view} jcStart={data.jc_start} today={data.today} />
+          <ProductionGantt jobs={matches} view={view} today={data.today} />
 
           <div className="section-title" style={{ marginTop: 16, marginBottom: 6 }}>Scheduled jobs ({jobs.length}{(ql || equip) ? ` of ${(data.jobs || []).length}${equip ? ` · ${equip}` : ""}` : ""})</div>
           <div className="tbl-wrap" style={{ maxHeight: "50vh" }}>

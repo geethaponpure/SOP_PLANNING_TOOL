@@ -27,13 +27,19 @@ from ..integration.planning_filter import _squash
 from .dashboard import _norm, _pick_persona, _scope_summary, _segment_grants
 
 # bump when the payload shape changes (stale caches are rebuilt)
-_PAYLOAD_V = 2
+_PAYLOAD_V = 3
 # Detail rows in the page payload are capped PER RISK CLASS, not globally —
 # a flat cap filled up with the most-overdue lines and left the rush / later
 # buckets empty on wide scopes (blank charts and tables). Exports are uncapped.
 _BUCKET_CAP = 150
 
+# More than half the pending book is overdue by MONTHS — orders that were never
+# closed rather than commitments anyone is still chasing. They get their own
+# class so they cannot drown the lines that are actually actionable.
+STALE_DAYS = 90
+
 BUCKETS = [
+    ("stale", f"Overdue > {STALE_DAYS} days"),
     ("overdue7", "Overdue > 7 days"),
     ("overdue", "Overdue"),
     ("today", "Due today"),
@@ -47,6 +53,8 @@ BUCKETS = [
 def _bucket(days) -> str:
     if days is None:
         return "nodate"
+    if days < -STALE_DAYS:
+        return "stale"
     if days < -7:
         return "overdue7"
     if days < 0:
@@ -145,6 +153,9 @@ def _classify(rows: list[dict], today: date, supply: dict) -> list[dict]:
         r["days"] = days
         r["bucket"] = _bucket(days)
         r["pushed"] = bool(r.get("sched_date") and rd and rd > r["sched_date"])
+        # we committed to a different date than the customer asked for
+        cr = r.get("cust_req_date")
+        r["off_request"] = bool(cr and rd and cr != rd)
         avail = supply.get(_squash(r.get("item_name")))
         r["supply_date"] = avail
         # urgent + the plan cannot produce it before the commitment
@@ -188,8 +199,9 @@ def build_payload(rows: list[dict], today: date, supply_plan) -> dict:
     detail = [{k: r.get(k) for k in (
         "order_ref", "order_no", "soc_date", "customer_name", "collector", "mc_code",
         "item_code", "item_name", "inv_org", "balance", "qty",
-        "sched_date", "resched_date", "resched_reason", "confirm_status",
-        "days", "bucket", "pushed", "supply_date", "supply_risk")} for r in detail]
+        "sched_date", "resched_date", "cust_req_date", "resched_reason", "wh_comments",
+        "executive", "days", "bucket", "pushed", "off_request",
+        "supply_date", "supply_risk")} for r in detail]
     capped, used = [], {}
     for r in detail:
         b = r["bucket"]
@@ -198,11 +210,14 @@ def build_payload(rows: list[dict], today: date, supply_plan) -> dict:
             used[b] = used.get(b, 0) + 1
 
     urgent = [r for r in rows if r["bucket"] in ("overdue7", "overdue", "today", "d2")]
+    stale = [r for r in rows if r["bucket"] == "stale"]
     return {
         "kpis": {
             "lines": len(rows), "kg": round(sum(r["balance"] for r in rows)),
             "overdue_lines": sum(1 for r in rows if r["bucket"] in ("overdue7", "overdue")),
             "overdue_kg": round(sum(r["balance"] for r in rows if r["bucket"] in ("overdue7", "overdue"))),
+            "stale_lines": len(stale), "stale_kg": round(sum(r["balance"] for r in stale)),
+            "off_request_lines": sum(1 for r in rows if r.get("off_request")),
             "rush_lines": sum(1 for r in rows if r["bucket"] in ("today", "d2")),
             "rush_kg": round(sum(r["balance"] for r in rows if r["bucket"] in ("today", "d2"))),
             "pushed_lines": len(pushed),

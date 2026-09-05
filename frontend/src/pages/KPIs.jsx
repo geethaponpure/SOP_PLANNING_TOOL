@@ -1,6 +1,7 @@
 import React from "react";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, StatusDot } from "../components/ui.jsx";
+import PageInfo from "../components/PageInfo.jsx";
 
 function fmtVal(k) {
   const v = k.value;
@@ -32,11 +33,11 @@ export default function KPIs() {
 
   return (
     <>
-      <div className="banner info page-intro">
+      <PageInfo title="Governed KPI Framework (Section 11)">
         Governed KPI framework (Section 11). Forecast-quality metrics are back-tested over the last 6 closed
         months; service, inventory and RM metrics derive from the live plan. <b>Balance, not single-metric optimisation</b> —
         a service target met by over-stocking is not a win.
-      </div>
+      </PageInfo>
       <div className="legend">
         <span><StatusDot status="on_target" /> on target</span>
         <span><StatusDot status="watch" /> watch</span>

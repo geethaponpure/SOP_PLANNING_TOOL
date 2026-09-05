@@ -37,7 +37,11 @@ CREATE TABLE IF NOT EXISTS stg_order_commit (
   balance        DECIMAL(18,3) NOT NULL DEFAULT 0,
   sched_date     DATE          NULL,
   resched_date   DATE          NULL,
+  cust_req_date  DATE          NULL,             -- date the CUSTOMER asked for
   resched_reason VARCHAR(120)  NULL,
+  wh_comments    VARCHAR(255)  NULL,             -- warehouse note on the reschedule
+  executive      VARCHAR(120)  NULL,
+  dispatch_pct   DECIMAL(6,2)  NULL,
   confirm_status VARCHAR(32)   NULL,
   segment2       VARCHAR(64)   NULL,
   segment3       VARCHAR(64)   NULL,

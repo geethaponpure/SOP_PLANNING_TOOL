@@ -6,6 +6,7 @@ import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
 import { ClipboardList, History, Mail, Settings, User, Timer, TriangleAlert, Factory, Package, Pause, Ban, Save, Download } from "lucide-react";
+import PageInfo from "../components/PageInfo.jsx";
 
 const ROLES = ["R&D Requester", "Warehouse In-charge", "Warehouse Executive",
   "QA / QC", "R&D Head / Plant Head", "System Administrator"];
@@ -79,11 +80,11 @@ export default function SRDMS({ session, mode = "all" }) {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Sample Request & Dispatch Management (SRDMS).</b> R&D raises sample-material requests to a plant warehouse;
+      <PageInfo title="Sample Request & Dispatch Management (SRDMS)">
+        R&D raises sample-material requests to a plant warehouse;
         the warehouse acknowledges, dispatches (batch + delivery mode), holds or short-closes each line; the requester
         acknowledges receipt. Every step is timestamped for TAT / ageing and fires the email notification matrix (N1–N13).
-      </div>
+      </PageInfo>
 
       {(!lu || canSwitch) && (
         <div className="card" style={{ marginTop: 12, padding: "10px 14px", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>

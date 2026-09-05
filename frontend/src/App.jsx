@@ -12,10 +12,12 @@ import AgedRMInfo from "./components/AgedRMInfo.jsx";
 import MfgStockInfo from "./components/MfgStockInfo.jsx";
 import VookiInfo from "./components/VookiInfo.jsx";
 import ConfirmModal from "./components/ConfirmModal.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Login from "./pages/Login.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import CommitRisk from "./pages/CommitRisk.jsx";
+import DemandProtection from "./pages/DemandProtection.jsx";
 import Overview from "./pages/Overview.jsx";
 import DataQuality from "./pages/DataQuality.jsx";
 import Validation from "./pages/Validation.jsx";
@@ -130,6 +132,7 @@ export default function App() {
   const pages = {
     mydash: <Dashboard session={session} isAdmin={isAdmin} />,
     commitrisk: <CommitRisk session={session} isAdmin={isAdmin} />,
+    demandprot: <DemandProtection session={session} isAdmin={isAdmin} />,
     overview: <Overview onChange={bump} />,
     dq: <DataQuality />,
     validation: <Validation onChange={bump} />,
@@ -196,6 +199,7 @@ export default function App() {
           {page === "supplycards" && <RMDataInfo />}
           {page === "adhoc" && <AdhocInfo />}
           {page === "agedrm" && <AgedRMInfo />}
+          <span id="page-info-slot" className="page-info-slot" />
           {page === "mfgstock" && <MfgStockInfo />}
           {page === "vooki" && <VookiInfo />}
           <div className="cycle-pill">
@@ -218,7 +222,7 @@ export default function App() {
           </div>
         </div>
         <div className="content">
-          {allowed(page) && pages[page] ? pages[page] : (
+          {allowed(page) && pages[page] ? <ErrorBoundary key={page}>{pages[page]}</ErrorBoundary> : (
             <div className="banner warn">
               You don’t have access to this module. {navItems.length === 0
                 ? "No modules are assigned to your account — please contact your administrator."

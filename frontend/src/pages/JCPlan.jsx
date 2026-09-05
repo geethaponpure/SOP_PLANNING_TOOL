@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import Pagination, { usePagination } from "../components/Pagination.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat, Tag } from "../components/ui.jsx";
+import PageInfo from "../components/PageInfo.jsx";
 
 export default function JCPlan() {
   const { data, loading, error } = useAsync(api.jcPlan);
@@ -15,11 +16,11 @@ export default function JCPlan() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Multi-period JC plan (Section 3.2 — MPS / 1–12 week layer).</b> The annual business plan is
+      <PageInfo title="Multi-Period JC Plan (Section 3.2 — MPS)">
+        The annual business plan is
         spread across the 13 JCs of FY 2026-27 (seasonality × working days), then time-phased:
         projected on-hand is carried forward and production is sized per JC. Current cycle: <b>JC{current_jc}</b>.
-      </div>
+      </PageInfo>
 
       <div className="grid cols-4">
         <div className="card"><Stat value={`JC${current_jc}`} label="Current planning cycle" /></div>

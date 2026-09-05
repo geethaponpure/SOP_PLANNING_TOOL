@@ -88,6 +88,15 @@ export const api = {
       `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
       `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}`,
       section ? `${section}.xlsx` : "Commitment_Risk.xlsx"),
+  demandProtection: ({ username = "", email = "", admin = 0, persona = "", jc = 0 } = {}) =>
+    req(`/demand-protection?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`),
+  demandProtectionExport: ({ section = "", username = "", email = "", admin = 0, persona = "", jc = 0 } = {}) =>
+    downloadFile(
+      `/demand-protection/export?section=${encodeURIComponent(section)}` +
+      `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`,
+      section ? `${section}.xlsx` : "Demand_Protection.xlsx"),
   dashboardLayout: (key = "mydash", user = "") =>
     req(`/dashboard-layout?key=${encodeURIComponent(key)}&user=${encodeURIComponent(user)}`),
   // user "" writes the app-level default; a user code writes that person's own

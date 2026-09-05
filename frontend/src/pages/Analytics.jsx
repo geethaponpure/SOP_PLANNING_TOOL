@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import Pagination, { usePagination } from "../components/Pagination.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat, Tag } from "../components/ui.jsx";
+import PageInfo from "../components/PageInfo.jsx";
 
 function WhatIf() {
   const [form, setForm] = useState({ demand_surge_pct: 20, family: "", supplier_outage: "RM-07", capacity_loss_pct: 10 });
@@ -75,10 +76,10 @@ export default function Analytics() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Analytics &amp; Intelligence (Section 12).</b> Layered descriptive → diagnostic → predictive →
+      <PageInfo title="Analytics & Intelligence (Section 12)">
+        Layered descriptive → diagnostic → predictive →
         prescriptive. Every flag ties to a decision and an owner.
-      </div>
+      </PageInfo>
 
       <div className="grid cols-4">
         {maturity.map((m) => (

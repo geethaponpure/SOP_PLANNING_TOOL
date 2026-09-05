@@ -20,7 +20,17 @@ migration plan that keeps the app working at every step.
 | user_scope (6 CRM mapping tables → 8 personas) | stg_user_scope (one row per user × atomic grant; CSV collector lists exploded) | **My Dashboard** (see `db/migrate_user_scope.sql`) |
 | dispatch_scope (FnDespatchDetails, 13-JC window) | stg_dispatch_scope (JC × item × customer × collector × mc_code, qty + value) | **My Dashboard** charts (see `db/migrate_dashboard.sql`; item_segments also gained segment4) |
 | projection_rows (now JC1..current, not just the planning JC) | stg_projection_rows | **My Dashboard** projection-accuracy trend for collector-scoped personas |
-| order_commit (FnOrderDtlPending × FnScheduleDtlPending, 120-day lookback) | stg_order_commit (open committed lines: commitment dates, reschedules, reasons; segments denormalized) | **Commitment Risk** page (see `db/migrate_commit.sql`) |
+| order_commit (**dbo.SocPendingDetails**, CRM's daily pending-SOC snapshot) | stg_order_commit (whole pending book: committed + rescheduled + customer-requested dates, reasons, warehouse note, executive, segments) | **Commitment Risk** page (see `db/migrate_commit.sql`) |
+| projection_customer (SCBusinessMonthlyPlanDtls, JC1..planning JC) | stg_projection_customer (customer × item × collector × JC, week1/week2 split, mc_code from the customer's primary site, item_code from itemmasters) | **Demand Protection** page (see `db/migrate_demand_ledger.sql`) |
+
+**Demand Protection — the cover rule.** A projection counts as protected when
+`min(projection, dispatched_in_cycle + open_SOC_due_in_cycle)`. Dispatch MUST be in
+that sum: a projection that converted and already shipped has no open SOC line left,
+so open orders alone report every successful sale as a failure (JC6 measured 9.6%
+open-SOC-only vs 32.4% including dispatch). Firm demand is attributed to the JC its
+current commitment date falls in; anything already overdue when the cycle opens is
+reported separately as backlog and never counted as cover. CRM's own
+`jc{n}_qty_achieved` is not used — it reports 251% achievement for JC6.
 
 Verified with CRM deliberately unreachable: MFG-Stock, Aged-RM, MSL, Adhoc, and
 **RM-Plan (59 products)** all build entirely from MySQL. The 7.6-minute `soc_pending`

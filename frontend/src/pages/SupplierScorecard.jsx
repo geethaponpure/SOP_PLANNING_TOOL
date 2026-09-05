@@ -5,6 +5,7 @@ import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 import { Factory, Package, TriangleAlert, Star, Globe } from "lucide-react";
+import PageInfo from "../components/PageInfo.jsx";
 
 const scoreColor = (v) => (v >= 75 ? "#1a7d4f" : v >= 50 ? "#8a6d00" : "#a11");
 const scoreBg = (v) => (v >= 75 ? "#E6F6EC" : v >= 50 ? "#FFF4DA" : "#FFE5E5");
@@ -77,15 +78,15 @@ export default function SupplierScorecard() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Supplier Scorecard.</b> RM suppliers rated from the 2-year PO receipts on a weighted 0–100 score:
+      <PageInfo title="Supplier Scorecard">
+        RM suppliers rated from the 2-year PO receipts on a weighted 0–100 score:
         <b> {s.weights}</b>. <b>OTIF</b> = on-time & in-full · <b>OTD</b> = on-time · <b>Fill</b> = received ÷ ordered ·
         <b> Price vs market</b> = supplier price vs the median price across all suppliers (currency-normalised to INR).
         <div style={{ marginTop: 6, fontSize: 12 }}>
           <i>Note:</i> the PO export has no promised-delivery date, so <b>on-time</b> is benchmarked against each item's
           typical lead time (median across suppliers, +25% tolerance) — a relative, peer-based OTD.
         </div>
-      </div>
+      </PageInfo>
 
       <div className="grid cols-4">
         <div className="card statcard"><div className="ic"><Factory size={22} /></div><Stat value={fmt.num(s.suppliers)} label="Suppliers (rated)" /></div>

@@ -1,6 +1,7 @@
 import React from "react";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat, Tag } from "../components/ui.jsx";
+import PageInfo from "../components/PageInfo.jsx";
 
 export default function Forecasting() {
   const { data, loading, error } = useAsync(api.forecasting);
@@ -11,11 +12,11 @@ export default function Forecasting() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Forecasting governance (Section 9).</b> Best-fit method per series, reconciled across the
+      <PageInfo title="Forecasting Governance (Section 9)">
+        Best-fit method per series, reconciled across the
         hierarchy so numbers add up; a challenger must beat the incumbent on back-tested accuracy
         before promotion; demand sensing refines the near weeks from firm-order velocity.
-      </div>
+      </PageInfo>
 
       <div className="grid cols-3">
         <div className="card"><Stat value={fmt.num(reconciliation.total_baseline)} label="Total reconciled baseline (MT)" /></div>

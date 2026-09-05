@@ -6,6 +6,7 @@ import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 import { Package, Factory, Repeat, TrendingDown, CalendarDays, Tag, Save } from "lucide-react";
+import PageInfo from "../components/PageInfo.jsx";
 
 function SortTh({ label, k, sort, setSort, className, title }) {
   const active = sort.key === k;
@@ -63,15 +64,15 @@ export default function MSL() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>MSL — Minimum Stock Level (finished products).</b> Computed from the latest <b>13 JCs</b> (one year) of
+      <PageInfo title="MSL — Minimum Stock Level">
+        Computed from the latest <b>13 JCs</b> (one year) of
         dispatch (CRM <code>FnDespatchDetails</code>); the window slides forward as each JC completes. Per item:
         the <b>average one-JC sales</b>, the <b>movement frequency</b> (how many of the 13 JCs had dispatch), and the
         <b> customer coverage</b> (unique customers served). <b>MSL = 50% of the average one-JC sales.</b> Only items served by
         <b> more than {meta.summary?.min_customers ?? 5} customers</b> and that <b>moved in more than {meta.summary?.min_freq ?? 10} of the 13 JCs</b> qualify.
         Current <b>on-hand stock</b> (Warehouse / Branch) is shown alongside. Split by activity — <b>Manufacturing / Trading / Repack-Relabel</b>.
         Save a snapshot per JC (e.g. <code>{meta.reference}</code>).
-      </div>
+      </PageInfo>
 
       <div className="banner" style={{ background: "#EAF4FF", border: "1px solid #BBD9F5", display: "flex", flexWrap: "wrap", gap: 16, alignItems: "center", fontSize: 13 }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><CalendarDays size={14} /> <b>{meta.jc_label || "—"}</b> · {meta.n_jcs || 13}-JC window <b>{meta.jc_from} → {meta.jc_to}</b> · FY {meta.fy}</span>

@@ -17,6 +17,7 @@ SECTION_TITLES = {
     "lines": "All lines",
     "rush": "Rush - due 48h",
     "emergency": "Emergency - overdue",
+    "stale": "Overdue 90+ days",
     "pushed": "Pushed commitments",
     "reasons": "Push reasons",
 }
@@ -33,6 +34,7 @@ def _line_row(r: dict) -> dict:
             "Item code": r.get("item_code"), "Item": r.get("item_name"),
             "Org": r.get("inv_org"),
             "Balance (KG)": r.get("balance"),
+            "Customer requested": r.get("cust_req_date"),
             "Committed (original)": r.get("sched_date"),
             "Committed (current)": r.get("resched_date"),
             "Days late" if days is not None and days < 0 else "Days to due":
@@ -40,7 +42,8 @@ def _line_row(r: dict) -> dict:
             "Risk": _BL.get(r.get("bucket"), r.get("bucket")),
             "Pushed": "yes" if r.get("pushed") else "",
             "Reschedule reason": r.get("resched_reason") or "",
-            "Confirm status": r.get("confirm_status") or "",
+            "Warehouse note": r.get("wh_comments") or "",
+            "Sales executive": r.get("executive") or "",
             "Plan supply date": r.get("supply_date") or "",
             "Supply risk": "YES" if r.get("supply_risk") else ""}
 
@@ -70,6 +73,9 @@ def section_rows(payload: dict, rows: list[dict], section: str) -> list[dict]:
             {"Metric": "Balance to dispatch (KG)", "Value": k.get("kg")},
             {"Metric": "Overdue lines", "Value": k.get("overdue_lines")},
             {"Metric": "Overdue balance (KG)", "Value": k.get("overdue_kg")},
+            {"Metric": "Overdue 90+ days (likely uncleaned)", "Value": k.get("stale_lines")},
+            {"Metric": "Overdue 90+ days balance (KG)", "Value": k.get("stale_kg")},
+            {"Metric": "Committed off the customer's requested date", "Value": k.get("off_request_lines")},
             {"Metric": "Rush lines (due ≤48h)", "Value": k.get("rush_lines")},
             {"Metric": "Rush balance (KG)", "Value": k.get("rush_kg")},
             {"Metric": "Lines pushed past original commitment", "Value": k.get("pushed_lines")},
@@ -92,6 +98,8 @@ def section_rows(payload: dict, rows: list[dict], section: str) -> list[dict]:
         return [_norm_line(r) for r in rows if r.get("bucket") in ("today", "d2")]
     if section == "emergency":
         return [_norm_line(r) for r in rows if r.get("bucket") in ("overdue7", "overdue")]
+    if section == "stale":
+        return [_norm_line(r) for r in rows if r.get("bucket") == "stale"]
     if section == "pushed":
         return [_norm_line(r) for r in rows if r.get("pushed")]
     return []
@@ -134,7 +142,7 @@ def build(payload: dict, rows: list[dict], section: str | None = None) -> bytes:
 
     counts = {}
     for key in ("summary", "buckets", "timeline", "reasons",
-                "rush", "emergency", "pushed", "lines"):
+                "rush", "emergency", "stale", "pushed", "lines"):
         ws = wb.create_sheet(SECTION_TITLES[key][:31])
         counts[key] = _write(ws, section_rows(payload, rows, key))
 

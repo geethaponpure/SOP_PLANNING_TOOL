@@ -5,6 +5,7 @@ import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 import { Target, ArrowUp, ArrowDown, CircleCheck } from "lucide-react";
+import PageInfo from "../components/PageInfo.jsx";
 
 const FLAG = {
   over: { cls: "pill-buy", label: "Over" },
@@ -68,13 +69,13 @@ export default function ProjectionSales() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Projection vs Sales.</b> The Sales team's projection (<b>current JC = JC{data.planning_jc || 4} WK1+WK2</b>, plus Next 1 / Next 2)
+      <PageInfo title="Projection vs Sales">
+        The Sales team's projection (<b>current JC = JC{data.planning_jc || 4} WK1+WK2</b>, plus Next 1 / Next 2)
         compared to <b>actual dispatched sales</b> averaged over the last {data.n_jc} JCs (CRM <code>SP_DespatchDetailsReport</code>).
         Items are flagged <span className="pill-buy" style={{ background: "#FFE5E5", color: "#a11" }}>Over</span> /
         <span className="pill-buy" style={{ background: "#FFF4DA", color: "#8a6d00" }}>Under</span> /
         <span className="pill-ok">On track</span> when projection deviates beyond ±{data.band_pct}% of trailing sales.
-      </div>
+      </PageInfo>
 
       {(() => {
         const ring = (on, color) => ({ cursor: "pointer", boxShadow: on ? `0 0 0 2px ${color}` : undefined });

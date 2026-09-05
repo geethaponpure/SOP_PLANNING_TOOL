@@ -5,6 +5,7 @@ import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 import { Package, Calculator, CircleCheck } from "lucide-react";
+import PageInfo from "../components/PageInfo.jsx";
 
 const fmtD = (s) => (s ? new Date(s + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" }) : "—");
 
@@ -37,13 +38,13 @@ export default function ItemReceiptSchedule() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Item Receipt Schedule.</b> For a chosen <b>JC plan</b>, each planned FG's <b>warehouse-available date</b> =
+      <PageInfo title="Item Receipt Schedule">
+        For a chosen <b>JC plan</b>, each planned FG's <b>warehouse-available date</b> =
         manufacturing completion <b>+ {data.std_lead_days} days</b> standard lead time (and whether its <b>material is available</b>).
         For <b>branches</b>, the <b>receipt date</b> adds the region's <b>logistic lead time</b>
         {region ? <> (<b>{region} = {data.logistic_lead_days} day{data.logistic_lead_days === 1 ? "" : "s"}</b>)</> : null}.
         Each item is placed in one of the four JC windows <b>W1–W4</b>.
-      </div>
+      </PageInfo>
 
       <div className="pagebar">
         <label style={{ display: "flex", alignItems: "center", gap: 6, margin: 0, fontSize: 13 }}>

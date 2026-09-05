@@ -36,11 +36,6 @@ export default function RoleMaster() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Role Master (admin).</b> Create the <b>roles</b> that can be assigned to users (User Master → SRDMS role).
-        Roles are stored in the database (<code>sc_app_role</code>); until the one-time migration is run they persist to a JSON fallback.
-      </div>
-
       {data && st.db_ready && st.json_roles > 0 && (
         <div className="banner info" style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <button className="btn secondary"

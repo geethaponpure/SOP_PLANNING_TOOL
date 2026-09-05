@@ -8,6 +8,7 @@ import {
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag } from "../components/ui.jsx";
 import { LockOpen, Lock, Search } from "lucide-react";
+import PageInfo from "../components/PageInfo.jsx";
 
 const SALES_FLAG = {
   over: { label: "Over", bg: "#FFE5E5", color: "#a11" },
@@ -91,14 +92,14 @@ export default function Validation({ onChange }) {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Triangulation:</b> each CRM projection is validated against <b>actual dispatched sales</b>
+      <PageInfo title="Validation — Triangulation">
+        each CRM projection is validated against <b>actual dispatched sales</b>
         (CRM <code>SP_DespatchDetailsReport</code>, trailing 3-month avg), the statistical baseline,
         firm Pending SOC, and the LMS signal, then judged against segment tolerance bands (A ±12.5% · B ±22.5% · C ±40%).
         The <b>vs Sales</b> flag marks an item <span className="chip" style={{ background: "#FFE5E5", color: "#a11", borderColor: "transparent" }}>Over</span>-
         or <span className="chip" style={{ background: "#FFF4DA", color: "#8a6d00", borderColor: "transparent" }}>Under</span>-projected
         when the projection deviates beyond the segment band from what actually sells. A projection below Pending SOC breaches the firm-order floor.
-      </div>
+      </PageInfo>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 14px", flexWrap: "wrap" }}>
         {[

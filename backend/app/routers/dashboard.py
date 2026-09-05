@@ -4,6 +4,8 @@ from ..api import commit_export as _cx
 from ..api.commit import commit_risk, scoped_rows
 from ..api.dashboard import item_detail, my_dashboard, persona_users
 from ..api import dashboard_export as _dx
+from ..api import demand_export as _mx
+from ..api.demand import demand_protection, scoped_ledger
 
 router = APIRouter()
 
@@ -70,6 +72,36 @@ def export_commit_risk(username: str = "", email: str = "", admin: int = 0,
     data = _cx.build(payload, rows, section or None)
     who = (payload.get("persona") or "commit").replace(" ", "_")
     name = f"{_cx.SECTION_TITLES[section].replace(' ', '_')}_{who}.xlsx" if section         else f"Commitment_Risk_{who}.xlsx"
+    return _xlsx(data, name)
+
+
+@router.get("/api/demand-protection")
+def get_demand_protection(username: str = "", email: str = "", admin: int = 0,
+                          persona: str = "", jc: int = 0):
+    """Projection vs firm demand for one JC, scoped exactly like /api/my-dashboard.
+    ``jc`` defaults to the planning JC."""
+    return demand_protection(username=username or None, email=email or None,
+                             admin=bool(admin), persona=persona or None,
+                             jc=int(jc) or None)
+
+
+@router.get("/api/demand-protection/export")
+def export_demand_protection(username: str = "", email: str = "", admin: int = 0,
+                             persona: str = "", jc: int = 0, section: str = ""):
+    """Excel of one Demand-Protection card, or the whole page (charts + tables)."""
+    if section and section not in _mx.SECTION_TITLES:
+        raise HTTPException(400, f"unknown section '{section}'")
+    payload = demand_protection(username=username or None, email=email or None,
+                                admin=bool(admin), persona=persona or None,
+                                jc=int(jc) or None)
+    _p, _s, _m, _ay, _jj, rows = scoped_ledger(username=username or None,
+                                               email=email or None, admin=bool(admin),
+                                               persona=persona or None, jc=int(jc) or None)
+    data = _mx.build(payload, rows, section or None)
+    who = (payload.get("persona") or "demand").replace(" ", "_")
+    cyc = payload.get("jc_label") or ""
+    name = f"{_mx.SECTION_TITLES[section].replace(' ', '_')}_{cyc}_{who}.xlsx" if section \
+        else f"Demand_Protection_{cyc}_{who}.xlsx"
     return _xlsx(data, name)
 
 

@@ -6,6 +6,7 @@ import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 import { ArrowDown, Target, Scale, BarChart3, Link2, Package, Factory, CircleCheck, TriangleAlert } from "lucide-react";
+import PageInfo from "../components/PageInfo.jsx";
 
 const pct = (v, d = 1) => (v == null ? "—" : `${Number(v).toFixed(d)}%`);
 const accColor = (v) => (v == null ? "var(--muted)" : v >= 80 ? "var(--green,#2A9D8F)" : v >= 50 ? "#8a6d00" : "var(--red)");
@@ -87,13 +88,13 @@ export default function ProjectionAccuracy() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Projection Accuracy.</b> Received <b>projection</b> (CRM business plan, per JC — the <i>Current</i> WK1+WK2 plan)
+      <PageInfo title="Projection Accuracy">
+        Received <b>projection</b> (CRM business plan, per JC — the <i>Current</i> WK1+WK2 plan)
         vs <b>actual production</b> taken from <code>RM_Consumption</code> (the <b>Output Quantity of each unique Job</b>).
         Joined by item description and rolled up <b>item / division / product</b>. Accuracy is measured on the <b>matched</b>
         set (items both projected and produced); <b>coverage</b> shows how much of production carried a projection.
         Production also includes intermediates / basic chemicals never in the FG demand plan (they appear as <i>Produced, not projected</i>).
-      </div>
+      </PageInfo>
 
       <div className="pagebar" style={{ marginTop: 12, flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <label style={{ display: "inline-flex", flexDirection: "column", gap: 3, fontSize: 11, color: "var(--muted)" }}>

@@ -648,6 +648,149 @@ def read_projection_rows_all(acc_year: str) -> list[dict]:
         return []
 
 
+# ── demand ledger: projection at customer x item (migrate_demand_ledger.sql) ──
+
+_PROJ_CUST_COLS = ["acc_year", "jc", "customer_id", "customer_name", "collector_id",
+                   "collector", "mc_code", "item_code", "item_name",
+                   "segment2", "segment3", "segment4",
+                   "week1_q", "week2_q", "current_q", "next1_q", "next2_q"]
+
+
+def replace_projection_customer(acc_year: str, jc: int, crm_rows: list[dict]) -> int:
+    """Replace one (acc_year, jc) slice of stg_projection_customer."""
+    data = []
+    for r in (crm_rows or []):
+        name = str(r.get("ItemName") or "").strip()
+        if not name:
+            continue
+        w1, w2 = _num(r.get("Week1Q")), _num(r.get("Week2Q"))
+        data.append((
+            acc_year, int(jc), _int_or_none(r.get("CustomerId")),
+            str(r.get("CustomerName") or "")[:255] or None,
+            _int_or_none(r.get("CollectorId")), str(r.get("Collector") or "")[:120] or None,
+            str(r.get("McCode") or "")[:32] or None,
+            str(r.get("ItemCode") or "")[:64] or None, name[:255],
+            str(r.get("Segment2") or "")[:64] or None,
+            str(r.get("Segment3") or "")[:64] or None,
+            str(r.get("Segment4") or "")[:64] or None,
+            round(w1, 3), round(w2, 3), round(w1 + w2, 3),
+            round(_num(r.get("Next1Q")), 3), round(_num(r.get("Next2Q")), 3),
+        ))
+    return _replace("stg_projection_customer", _PROJ_CUST_COLS, data,
+                    where="acc_year=%s AND jc=%s", where_params=(acc_year, int(jc)))
+
+
+def projection_customer_jcs(acc_year: str) -> list[int]:
+    """Which JCs of an accounting year are staged (drives the trend chart)."""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT DISTINCT jc FROM stg_projection_customer "
+                            "WHERE acc_year=%s ORDER BY jc", (acc_year,))
+                return [int(r["jc"]) for r in cur.fetchall()]
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+def read_projection_customer(flt: dict, acc_year: str, jc: int) -> list[dict]:
+    """Scoped projection lines for one JC at customer x item x collector."""
+    where, params = _scope_where(flt or {}, "p")
+    where = ["p.acc_year=%s", "p.jc=%s"] + where
+    params = [acc_year, int(jc)] + params
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT p.customer_id, p.customer_name, p.collector_id, p.collector, "
+                    "p.mc_code, p.item_code, p.item_name, p.segment2, p.segment3, p.segment4, "
+                    "p.week1_q, p.week2_q, p.current_q, p.next1_q, p.next2_q "
+                    "FROM stg_projection_customer p WHERE " + " AND ".join(where),
+                    tuple(params))
+                rows = cur.fetchall()
+                for r in rows:
+                    for k in ("week1_q", "week2_q", "current_q", "next1_q", "next2_q"):
+                        r[k] = float(r[k] or 0)
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+def _cust_in(customer_ids) -> tuple[str, list]:
+    ids = sorted({int(c) for c in (customer_ids or []) if c is not None})
+    if not ids:
+        return "1=0", []
+    return "customer_id IN (" + ",".join(["%s"] * len(ids)) + ")", ids
+
+
+def ledger_open_soc(customer_ids, jc_from: str, jc_to: str) -> list[dict]:
+    """Open committed qty per (customer, item name) for a set of customers, split
+    into the qty committed INSIDE the JC window and the qty already overdue when
+    that window opens. Firm demand is attributed to the JC its CURRENT commitment
+    date falls in — an order promised for October does not protect a September
+    projection — and the backlog is reported separately rather than silently
+    inflating cover."""
+    cin, params = _cust_in(customer_ids)
+    if not params:
+        return []
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT customer_id, UPPER(TRIM(item_name)) AS item_key, "
+                    "       MAX(item_code) AS item_code, "
+                    "       SUM(CASE WHEN COALESCE(resched_date, sched_date) BETWEEN %s AND %s "
+                    "                THEN balance ELSE 0 END) AS in_jc, "
+                    "       SUM(CASE WHEN COALESCE(resched_date, sched_date) < %s "
+                    "                THEN balance ELSE 0 END) AS backlog, "
+                    "       COUNT(*) AS lines_ "
+                    "FROM stg_order_commit WHERE " + cin +
+                    " GROUP BY customer_id, UPPER(TRIM(item_name))",
+                    tuple([jc_from, jc_to, jc_from] + params))
+                rows = cur.fetchall()
+                for r in rows:
+                    r["in_jc"] = float(r["in_jc"] or 0)
+                    r["backlog"] = float(r["backlog"] or 0)
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+def ledger_dispatch(customer_ids, jc_index) -> list[dict]:
+    """Dispatched qty per (customer, item name) inside one JC of the cube."""
+    if jc_index is None:
+        return []
+    cin, params = _cust_in(customer_ids)
+    if not params:
+        return []
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT customer_id, UPPER(TRIM(item_name)) AS item_key, "
+                    "       SUM(qty) AS qty FROM stg_dispatch_scope "
+                    "WHERE jc_index=%s AND " + cin +
+                    " GROUP BY customer_id, UPPER(TRIM(item_name))",
+                    tuple([int(jc_index)] + params))
+                rows = cur.fetchall()
+                for r in rows:
+                    r["qty"] = float(r["qty"] or 0)
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
 # ── dispatch_scope (permission-dashboard cube, see migrate_dashboard.sql) ─────
 
 _DISP_SCOPE_COLS = ["jc_index", "item_code", "item_name", "customer_id", "customer_name",
@@ -683,31 +826,38 @@ def replace_dispatch_scope(crm_rows: list[dict], n_jc: int) -> int:
 _SEG_LEVELS = {"segment2", "segment3", "segment4"}
 
 
-def _dash_where(flt: dict) -> tuple[list[str], list]:
-    """WHERE conditions + params for a persona scope filter over stg_dispatch_scope
-    (see dashboard_datasets for the ``flt`` shapes)."""
+def _scope_where(flt: dict, a: str = "d") -> tuple[list[str], list]:
+    """WHERE conditions + params for a persona scope filter over any table that
+    carries the scope columns (mc_code, collector_id, customer_id, segment2-4).
+    ``a`` is the table alias — stg_dispatch_scope uses "d", the demand ledger "p".
+    See dashboard_datasets for the ``flt`` shapes."""
     where, params = [], []
     if flt.get("mc_codes"):
-        where.append("d.mc_code IN (" + ",".join(["%s"] * len(flt["mc_codes"])) + ")")
+        where.append(f"{a}.mc_code IN (" + ",".join(["%s"] * len(flt["mc_codes"])) + ")")
         params += list(flt["mc_codes"])
     if flt.get("collector_ids"):
-        where.append("d.collector_id IN (" + ",".join(["%s"] * len(flt["collector_ids"])) + ")")
+        where.append(f"{a}.collector_id IN (" + ",".join(["%s"] * len(flt["collector_ids"])) + ")")
         params += [int(c) for c in flt["collector_ids"]]
     if flt.get("customer_ids"):
-        where.append("d.customer_id IN (" + ",".join(["%s"] * len(flt["customer_ids"])) + ")")
+        where.append(f"{a}.customer_id IN (" + ",".join(["%s"] * len(flt["customer_ids"])) + ")")
         params += [int(c) for c in flt["customer_ids"]]
     if flt.get("segment_grants"):
         ors = []
         for g in flt["segment_grants"]:
             level = g["level"] if g["level"] in _SEG_LEVELS else "segment2"
-            cond = f"d.{level} = %s"
+            cond = f"{a}.{level} = %s"
             params.append(g["value"])
             if g.get("collector_ids"):
-                cond += " AND d.collector_id IN (" + ",".join(["%s"] * len(g["collector_ids"])) + ")"
+                cond += f" AND {a}.collector_id IN (" + ",".join(["%s"] * len(g["collector_ids"])) + ")"
                 params += [int(c) for c in g["collector_ids"]]
             ors.append(f"({cond})")
         where.append("(" + " OR ".join(ors) + ")")
     return where, params
+
+
+def _dash_where(flt: dict) -> tuple[list[str], list]:
+    """Scope filter over stg_dispatch_scope (alias "d")."""
+    return _scope_where(flt, "d")
 
 
 def dashboard_item_series(flt: dict, item_code: str | None = None,
@@ -968,18 +1118,31 @@ def read_user_scope(user_id: int | None = None, email: str | None = None,
 _COMMIT_COLS = ["order_no", "soc_line_id", "order_ref", "soc_date", "customer_id",
                 "customer_name", "collector", "mc_code", "item_code", "item_name",
                 "item_group", "inv_org", "sales_type", "qty", "despatched", "balance",
-                "sched_date", "resched_date", "resched_reason", "confirm_status",
+                "sched_date", "resched_date", "cust_req_date", "resched_reason",
+                "wh_comments", "executive", "dispatch_pct",
                 "segment2", "segment3", "segment4"]
 
 
+# CRM stamps EXECUTIVE_NAME as 'No Sales Credit' on 97% of open lines (13,422 of
+# 13,804), so the field is a placeholder far more often than a name. Store NULL
+# for it rather than showing users a column of "No Sales Credit"; the real owner
+# of a line is derived from its collector / market circle via stg_user_scope.
+_EXEC_PLACEHOLDER = {"no sales credit", "no sales credit,", "-", "na", "n/a"}
+
+
+def _exec_name(v) -> str | None:
+    name = str(v or "").strip().rstrip(",").strip()
+    if not name or name.lower() in _EXEC_PLACEHOLDER:
+        return None
+    return name[:120]
+
+
 def replace_order_commit(crm_rows: list[dict]) -> int:
-    """Replace stg_order_commit with the open schedule lines. Item segments are
-    denormalized in at sync time (sync item_segments before this source)."""
-    segs = {s["ItemCode"]: s for s in read_item_segments()}
+    """Replace stg_order_commit with the open committed lines. The CRM snapshot
+    carries its own segments, so nothing needs denormalizing here."""
     data = []
     for r in (crm_rows or []):
         code = str(r.get("ItemCode") or "")[:64]
-        sg = segs.get(code) or {}
         data.append((
             _int_or_none(r.get("OrderNo")), _int_or_none(r.get("SocLineId")),
             str(r.get("OrderRef") or "")[:40] or None, _date_or_none(r.get("SocDate")),
@@ -991,9 +1154,14 @@ def replace_order_commit(crm_rows: list[dict]) -> int:
             round(_num(r.get("Qty")), 3), round(_num(r.get("Despatched")), 3),
             round(_num(r.get("Balance")), 3),
             _date_or_none(r.get("SchedDate")), _date_or_none(r.get("ReschedDate")),
+            _date_or_none(r.get("CustReqDate")),
             str(r.get("ReschedReason") or "").strip()[:120] or None,
-            str(r.get("ConfirmStatus") or "")[:32] or None,
-            sg.get("Segment2") or None, sg.get("Segment3") or None, sg.get("Segment4") or None,
+            str(r.get("WhComments") or "").strip()[:255] or None,
+            _exec_name(r.get("Executive")),
+            round(_num(r.get("DispatchPct")), 2),
+            str(r.get("Segment2") or "")[:64] or None,
+            str(r.get("Segment3") or "")[:64] or None,
+            str(r.get("Segment4") or "")[:64] or None,
         ))
     return _replace("stg_order_commit", _COMMIT_COLS, data)
 
@@ -1038,10 +1206,10 @@ def read_order_commit(flt: dict) -> list[dict]:
                             tuple(params))
                 rows = cur.fetchall()
                 for r in rows:
-                    for k in ("soc_date", "sched_date", "resched_date"):
+                    for k in ("soc_date", "sched_date", "resched_date", "cust_req_date"):
                         if r.get(k) is not None:
                             r[k] = str(r[k])
-                    for k in ("qty", "despatched", "balance"):
+                    for k in ("qty", "despatched", "balance", "dispatch_pct"):
                         r[k] = float(r[k] or 0)
                 return rows
         finally:

@@ -5,6 +5,7 @@ import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat } from "../components/ui.jsx";
 import { Hourglass, Calculator, Wallet, TrendingUp, CalendarDays } from "lucide-react";
+import PageInfo from "../components/PageInfo.jsx";
 
 const inr = (v) => (v == null ? "—" : `₹${Number(v).toLocaleString("en-IN")}`);
 
@@ -45,12 +46,12 @@ export default function PPV() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Purchase Price Variance (PPV).</b> Standard = <b>weighted-average price over FY{data.std_fy}</b>;
+      <PageInfo title="Purchase Price Variance (PPV)">
+        Standard = <b>weighted-average price over FY{data.std_fy}</b>;
         evaluating <b>FY{data.eval_fy}</b> purchases (from {data.eval_from}) JC-wise. Each JC's actual weighted price is
         compared to the standard → <span style={{ color: "#1a7d4f" }}>favourable</span> (bought below)
         or <span style={{ color: "#a11" }}>unfavourable</span> (above). A purchase-team review per JC.
-      </div>
+      </PageInfo>
 
       <div className="grid cols-4">
         <div className="card statcard"><div className="ic"><Calculator size={22} /></div><Stat value={fmt.num(s.std_items)} label="Items with standard" /></div>

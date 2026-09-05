@@ -1,6 +1,7 @@
 import React from "react";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Stat, Tag } from "../components/ui.jsx";
+import PageInfo from "../components/PageInfo.jsx";
 
 const TIER_KIND = { escalation: "hard", action: "soft", info: "light" };
 const GATE_KIND = { complete: "none", in_progress: "soft", blocked: "hard", waiting: "light" };
@@ -14,11 +15,11 @@ export default function Governance() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Governance &amp; Collaboration (Sections 13 &amp; 14).</b> The tool is the communication layer:
+      <PageInfo title="Governance & Collaboration (Sections 13 & 14)">
+        The tool is the communication layer:
         every signal has a sender, receiver, trigger and record. Overrides above {fmt.money(approval_threshold)}
         {" "}value-at-risk require named electronic approval. Maturity path: {maturity_path}.
-      </div>
+      </PageInfo>
 
       <div className="grid cols-4">
         <div className="card"><Stat value={alert_tiers.escalation || 0} label="Escalations (SLA breach / high VaR)" /></div>

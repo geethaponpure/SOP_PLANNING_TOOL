@@ -33,6 +33,10 @@ const HCELL = { ...CELL, background: "#f7fafc", fontSize: 12, color: "#414d55",
 
 // the derived risk classes and their colours (worst first)
 const RISK = {
+  // Orders overdue by months are almost always never-closed paperwork rather
+  // than commitments anyone is chasing, so they are kept visually apart from
+  // the lines that still need action.
+  stale: { label: "Overdue > 90 days", color: "#7b7f87" },
   overdue7: { label: "Overdue > 7 days", color: "#9b2c2c" },
   overdue: { label: "Overdue", color: "#c53030" },
   today: { label: "Due today", color: "#b7791f" },
@@ -158,10 +162,11 @@ function LineTable({ rows, total }) {
       <div className="tbl-wrap">
         <table className="proj-table" style={{ borderCollapse: "collapse", fontSize: 12.5 }}>
           <colgroup>
-            <col style={{ width: "10%" }} /><col style={{ width: "20%" }} />
+            <col style={{ width: "9%" }} /><col style={{ width: "17%" }} />
             <col style={{ width: "20%" }} /><col style={{ width: "9%" }} />
-            <col style={{ width: "9%" }} /><col style={{ width: "7%" }} />
-            <col style={{ width: "14%" }} /><col style={{ width: "11%" }} />
+            <col style={{ width: "9%" }} /><col style={{ width: "9%" }} />
+            <col style={{ width: "6%" }} /><col style={{ width: "12%" }} />
+            <col style={{ width: "9%" }} />
           </colgroup>
           <thead>
             <tr>
@@ -169,6 +174,7 @@ function LineTable({ rows, total }) {
               <th style={{ ...HCELL, textAlign: "left" }}>Customer</th>
               <th style={{ ...HCELL, textAlign: "left" }}>Item</th>
               <th style={{ ...HCELL, textAlign: "right" }} title="Balance still to dispatch (KG)">Bal (KG)</th>
+              <th style={{ ...HCELL, textAlign: "right" }} title="The date the customer asked for">Requested</th>
               <th style={{ ...HCELL, textAlign: "right" }} title="Current committed delivery date">Committed</th>
               <th style={{ ...HCELL, textAlign: "right" }} title="Days late (−) or days left (+)">Days</th>
               <th style={{ ...HCELL, textAlign: "left" }} title="Risk class · reschedule reason when the line was pushed">Risk / reason</th>
@@ -186,6 +192,13 @@ function LineTable({ rows, total }) {
                   <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }} title={m.customer_name}>{m.customer_name}</td>
                   <td style={{ ...CELL }} title={`${m.item_code || ""} ${m.item_name || ""}`}>{m.item_name}</td>
                   <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(m.balance)}</td>
+                  <td style={{ ...CELL, textAlign: "right", whiteSpace: "nowrap",
+                    color: m.off_request ? "#b7791f" : "var(--muted)" }}
+                    title={m.off_request
+                      ? "We committed to a different date than the customer asked for"
+                      : "We committed to the date the customer asked for"}>
+                    {m.cust_req_date || "—"}
+                  </td>
                   <td style={{ ...CELL, textAlign: "right", whiteSpace: "nowrap" }}
                     title={m.pushed ? `pushed from ${m.sched_date}` : "as first committed"}>
                     {m.resched_date || "—"}{m.pushed ? " ↷" : ""}
@@ -194,9 +207,13 @@ function LineTable({ rows, total }) {
                     color: m.days == null ? "var(--muted)" : m.days < 0 ? "#c53030" : m.days <= 2 ? "#b7791f" : "inherit" }}>
                     {m.days == null ? "—" : m.days < 0 ? `${m.days}d` : `+${m.days}d`}
                   </td>
-                  <td style={{ ...CELL }} title={m.resched_reason || rk.label}>
+                  <td style={{ ...CELL }}
+                    title={[rk.label, m.resched_reason, m.wh_comments, m.executive && `exec: ${m.executive}`]
+                      .filter(Boolean).join(" · ")}>
                     <span style={{ color: rk.color, fontWeight: 600, fontSize: 11.5 }}>● {rk.label}</span>
-                    {m.resched_reason ? <span style={{ color: "var(--muted)", fontSize: 11 }}> · {m.resched_reason}</span> : null}
+                    {(m.resched_reason || m.wh_comments)
+                      ? <span style={{ color: "var(--muted)", fontSize: 11 }}> · {m.resched_reason || m.wh_comments}</span>
+                      : null}
                   </td>
                   <td style={{ ...CELL, textAlign: "right", fontSize: 11.5, whiteSpace: "nowrap",
                     color: m.supply_risk ? "#9b2c2c" : "var(--muted)", fontWeight: m.supply_risk ? 700 : 400 }}
@@ -206,7 +223,7 @@ function LineTable({ rows, total }) {
                 </tr>
               );
             })}
-            {shown.length === 0 && <tr><td colSpan={8} style={CELL}>No lines match.</td></tr>}
+            {shown.length === 0 && <tr><td colSpan={9} style={CELL}>No lines match.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -527,6 +544,9 @@ export default function CommitRisk({ session, isAdmin }) {
               <Flame size={16} /> Emergency — commitment broken</h3>
               <div className="sub">
                 {fmt.num(k.overdue_lines)} overdue line{k.overdue_lines === 1 ? "" : "s"} · {abbr(k.overdue_kg)} KG
+                {k.stale_lines > 0
+                  ? <span style={{ color: "var(--muted)" }}> · {fmt.num(k.stale_lines)} more overdue by 90+ days, shown separately</span>
+                  : null}
                 {k.supply_risk_lines > 0 && data.supply_plan
                   ? <span style={{ color: "#9b2c2c", fontWeight: 600 }}> · {fmt.num(k.supply_risk_lines)} with no plan supply in time</span>
                   : null}

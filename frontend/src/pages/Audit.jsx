@@ -1,6 +1,7 @@
 import React from "react";
 import { api } from "../api";
 import { useAsync, Loading, ErrorBox, Tag } from "../components/ui.jsx";
+import PageInfo from "../components/PageInfo.jsx";
 
 const ACTION_LABEL = {
   cycle_initialised: "Cycle initialised",
@@ -16,10 +17,10 @@ export default function Audit({ version }) {
 
   return (
     <>
-      <div className="banner info page-intro">
+      <PageInfo title="Audit Trail (Section 13.3)">
         Single audit trail (Section 13.3) — who changed which number, when, and why (reason code).
         Permanently recorded for governance and accuracy learning.
-      </div>
+      </PageInfo>
       <div className="card">
         <table>
           <thead>

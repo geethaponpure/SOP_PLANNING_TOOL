@@ -5,6 +5,7 @@ import IconButton from "../components/IconButton.jsx";
 import { api } from "../api";
 import { Loading, ErrorBox } from "../components/ui.jsx";
 import { SprayCan, TrendingUp, FlaskConical, Package, Factory, Building2, Plus, Ban } from "lucide-react";
+import PageInfo from "../components/PageInfo.jsx";
 
 function Toggle({ checked, onChange }) {
   return (
@@ -219,11 +220,11 @@ export default function PlanningSetting() {
 
   return (
     <>
-      <div className="banner info page-intro">
-        <b>Planning Setting (admin).</b> Choose which filtration elements drive the
+      <PageInfo title="Planning Setting (admin)">
+        Choose which filtration elements drive the
         <b> Supply &amp; RM Planning Filtration Technique</b> and edit the organization / sub-inventory lists.
         Settings persist; saving recomputes the Supply &amp; RM page.
-      </div>
+      </PageInfo>
 
       <div className="set-summary">
         <span className="pill">JCs: {["current", "next1", "next2"].filter((k) => form[`plan_${k}`]).map((k) => ({ current: "Current", next1: "Next1", next2: "Next2" }[k])).join(", ") || "none"}</span>

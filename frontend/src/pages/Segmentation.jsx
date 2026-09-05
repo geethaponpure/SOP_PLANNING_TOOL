@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag } from "../components/ui.jsx";
+import PageInfo from "../components/PageInfo.jsx";
 
 const ABC = ["A", "B", "C"];
 const XYZ = ["X", "Y", "Z"];
@@ -13,11 +14,11 @@ export default function Segmentation() {
 
   return (
     <>
-      <div className="banner info page-intro">
+      <PageInfo title="Segmentation Policy (Section 6)">
         Differentiated policy by segment (Section 6). Finished goods and raw materials are classified
         independently: a commodity RM feeding a PTS product can still be bought to order, and a long-lead
         single-source RM feeding a PTO product can still be stocked strategically.
-      </div>
+      </PageInfo>
 
       <div className="grid cols-2">
         <div className="card">
