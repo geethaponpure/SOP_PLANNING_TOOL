@@ -97,6 +97,19 @@ export const api = {
       `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
       `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`,
       section ? `${section}.xlsx` : "Demand_Protection.xlsx"),
+  supplyCompetition: ({ username = "", email = "", admin = 0, persona = "", jc = 0 } = {}) =>
+    req(`/supply-competition?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`),
+  supplyCompetitionItem: ({ item = "", username = "", email = "", admin = 0, persona = "", jc = 0 } = {}) =>
+    req(`/supply-competition/item?item=${encodeURIComponent(item)}` +
+      `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`),
+  supplyCompetitionExport: ({ section = "", username = "", email = "", admin = 0, persona = "", jc = 0 } = {}) =>
+    downloadFile(
+      `/supply-competition/export?section=${encodeURIComponent(section)}` +
+      `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`,
+      section ? `${section}.xlsx` : "Supply_Competition.xlsx"),
   dashboardLayout: (key = "mydash", user = "") =>
     req(`/dashboard-layout?key=${encodeURIComponent(key)}&user=${encodeURIComponent(user)}`),
   // user "" writes the app-level default; a user code writes that person's own

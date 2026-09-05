@@ -1957,20 +1957,21 @@ td.num b { color: var(--navy); }
 .dash-item:hover > .react-resizable-handle { opacity: 0.9; }
 
 
-/* ---- production Gantt, frappe-gantt (components/ProductionGantt.jsx) ---- */
-.prod-gantt { border: 1px solid var(--border); border-radius: 10px; background: #fff; overflow: hidden; max-height: 62vh; overflow-y: auto; }
-.prod-gantt .gantt-container { border-radius: 10px; }
-.prod-gantt .bar-wrapper.p1 .bar, .prod-gantt .bar-wrapper.p1-lead .bar { fill: #1a7d4f; }
-.prod-gantt .bar-wrapper.p2 .bar, .prod-gantt .bar-wrapper.p2-lead .bar { fill: #2a9d8f; }
-.prod-gantt .bar-wrapper.p3 .bar, .prod-gantt .bar-wrapper.p3-lead .bar { fill: #d68910; }
-.prod-gantt .bar-wrapper.p4 .bar, .prod-gantt .bar-wrapper.p4-lead .bar { fill: #e67e22; }
-.prod-gantt .bar-wrapper.p5 .bar, .prod-gantt .bar-wrapper.p5-lead .bar { fill: #1768c4; }
-.prod-gantt .bar-wrapper.p6 .bar, .prod-gantt .bar-wrapper.p6-lead .bar { fill: #c0392b; }
-/* dashed outline = RM only arrives via lead time */
-.prod-gantt .bar-wrapper[class*="-lead"] .bar {
-  stroke: rgba(255, 255, 255, .9); stroke-width: 1.5; stroke-dasharray: 4 3;
+
+
+/* ---- production Gantt, DHTMLX Gantt Community/MIT (components/ProductionGantt.jsx) ---- */
+.prod-gantt { border: 1px solid var(--border); border-radius: 10px; background: #fff; overflow: hidden; }
+/* dashed outline = the RM only arrives via lead time */
+.prod-gantt .gantt_task_line.rm-lead { border: 1px dashed rgba(255, 255, 255, .9); }
+/* Today / JC-start columns (the marker extension is Pro-only) */
+.prod-gantt .gantt_task_cell.pg-col-today, .prod-gantt .gantt_scale_cell.pg-col-today {
+  background: rgba(192, 57, 43, .07); box-shadow: inset 2px 0 0 #c0392b;
 }
-.prod-gantt .bar-progress { fill: transparent; }
-.prod-gantt .bar-label { fill: #fff; font-size: 11px; font-weight: 600; }
-/* frappe pushes the label outside when the bar is too narrow — recolour it there */
-.prod-gantt .bar-label.big { fill: #33415c; font-weight: 600; }
+.prod-gantt .gantt_task_cell.pg-col-jc, .prod-gantt .gantt_scale_cell.pg-col-jc {
+  background: rgba(26, 125, 79, .07); box-shadow: inset 2px 0 0 #1a7d4f;
+}
+.prod-gantt .gantt_scale_cell.pg-col-today { color: #c0392b; font-weight: 700; }
+.prod-gantt .gantt_scale_cell.pg-col-jc { color: #1a7d4f; font-weight: 700; }
+.prod-gantt .gantt_grid_head_cell { font-weight: 700; color: #33415c; }
+.prod-gantt .gantt_task_content { font-size: 10.5px; font-weight: 600; }
+.prod-gantt .gantt_task_line { border-radius: 4px; }

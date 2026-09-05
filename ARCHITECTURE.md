@@ -23,6 +23,41 @@ migration plan that keeps the app working at every step.
 | order_commit (**dbo.SocPendingDetails**, CRM's daily pending-SOC snapshot) | stg_order_commit (whole pending book: committed + rescheduled + customer-requested dates, reasons, warehouse note, executive, segments) | **Commitment Risk** page (see `db/migrate_commit.sql`) |
 | projection_customer (SCBusinessMonthlyPlanDtls, JC1..planning JC) | stg_projection_customer (customer × item × collector × JC, week1/week2 split, mc_code from the customer's primary site, item_code from itemmasters) | **Demand Protection** page (see `db/migrate_demand_ledger.sql`) |
 
+**Supply Competition — the ATP rule.** Per item, company-wide:
+`atp = on_hand - firm_total - msl` and `atp_for_me = on_hand - firm_others - msl`;
+a persona's exposure is `max(0, my_unprotected - max(0, atp_for_me))`. Three things
+this depends on, each measured rather than assumed:
+
+* **On-hand counts the orgs that SELL** — the 96 that appear on open committed
+  lines — not the planning `warehouse_orgs` list (22 MFG/trading orgs that feed the
+  RM plan). Using `warehouse_orgs` hides the branch and port stock the orders draw
+  from and drops item coverage from 89% to 45%.
+* **The stale book never consumes supply.** Lines overdue by 90+ days (38.6M KG of
+  71.1M) are uncleared paperwork; counting them shows almost everything as oversold.
+  They are reported separately.
+* **A negative ATP is normal.** Across the live order book on-hand covers only part
+  of committed demand — this is a make-to-order manufacturer, so production fills
+  the book. Incoming production (from the newest saved JC plan) is what separates
+  "at risk, recoverable" from "high risk".
+
+Item keys are the SQUASHED name everywhere. `commit_by_item` groups on the squashed
+key in SQL rather than `UPPER(TRIM(...))`: 40 names differ only by punctuation, and
+grouping the looser way let the caller's dict silently drop 2.6M KG of firm demand.
+
+`stg_order_commit` carries collector NAMES only, so the order book is scoped with
+`_commit_flt` while the projection ledger uses `_scope_flt` (collector ids). Passing
+the projection filter to the order book would leave a collector-scoped persona
+unrestricted — it would show them the whole company's book as their own.
+
+Competing customers are named only inside the caller's own scope; everything else
+rolls up by collector and market circle (`SHOW_ALL_HOLDERS` widens this). CRM cannot
+name the competing executive at all — `EXECUTIVE_NAME` is "No Sales Credit" on 97%
+of open lines, so it is nulled at ingest.
+
+The production schedule behind `incoming` is cached on the PLAN id, not the sync
+stamp: it costs ~18s to build against ~1.4s for the rest of the supply picture, and
+only changes when someone saves a new plan.
+
 **Demand Protection — the cover rule.** A projection counts as protected when
 `min(projection, dispatched_in_cycle + open_SOC_due_in_cycle)`. Dispatch MUST be in
 that sum: a projection that converted and already shipped has no open SOC line left,

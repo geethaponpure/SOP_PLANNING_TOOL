@@ -153,7 +153,7 @@ export default function ProductionSchedule() {
               <span style={{ marginLeft: 8 }}>dashed border = RM via lead time · hover a bar for details</span>
             </span>
           </div>
-          <ProductionGantt jobs={matches} view={view} today={data.today} />
+          <ProductionGantt jobs={matches} view={view} today={data.today} jcStart={data.jc_start} prio={PRIO} />
 
           <div className="section-title" style={{ marginTop: 16, marginBottom: 6 }}>Scheduled jobs ({jobs.length}{(ql || equip) ? ` of ${(data.jobs || []).length}${equip ? ` · ${equip}` : ""}` : ""})</div>
           <div className="tbl-wrap" style={{ maxHeight: "50vh" }}>

@@ -791,6 +791,141 @@ def ledger_dispatch(customer_ids, jc_index) -> list[dict]:
         return []
 
 
+# ── supply competition: firm demand rolled up over the WHOLE order book ───────
+#
+# The Demand-Protection reads above are always scoped to one persona. The
+# competition view also needs the company-wide totals — a sales executive cannot
+# see who else committed the stock unless we aggregate outside their scope — so
+# ``flt=None`` here means "the whole book" rather than "no access".
+
+def _commit_scope_where(flt) -> tuple[list[str], list]:
+    """Scope conditions over stg_order_commit (collector by NAME — the pending
+    order feed carries no collector id). flt None/{} = the whole book."""
+    where, params = [], []
+    if not flt:
+        return where, params
+    if flt.get("mc_codes"):
+        where.append("mc_code IN (" + ",".join(["%s"] * len(flt["mc_codes"])) + ")")
+        params += list(flt["mc_codes"])
+    if flt.get("collectors"):
+        where.append("collector IN (" + ",".join(["%s"] * len(flt["collectors"])) + ")")
+        params += list(flt["collectors"])
+    if flt.get("collector_ids"):
+        # the dashboard filter shape carries ids; the commit table has none, so a
+        # caller passing ids gets no extra restriction here (the customer / mc /
+        # segment predicates alongside it still apply)
+        pass
+    if flt.get("customer_ids"):
+        where.append("customer_id IN (" + ",".join(["%s"] * len(flt["customer_ids"])) + ")")
+        params += [int(c) for c in flt["customer_ids"]]
+    if flt.get("segment_grants"):
+        ors = []
+        for g in flt["segment_grants"]:
+            level = g["level"] if g["level"] in _SEG_LEVELS else "segment2"
+            cond = f"{level} = %s"
+            params.append(g["value"])
+            if g.get("collectors"):
+                cond += " AND collector IN (" + ",".join(["%s"] * len(g["collectors"])) + ")"
+                params += list(g["collectors"])
+            ors.append(f"({cond})")
+        where.append("(" + " OR ".join(ors) + ")")
+    return where, params
+
+
+def commit_orgs() -> list[dict]:
+    """The dispatch orgs that appear on open committed lines — the orgs that
+    actually sell, used to decide which stock is available to promise."""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT DISTINCT inv_org FROM stg_order_commit "
+                            "WHERE inv_org IS NOT NULL AND inv_org <> ''")
+                return cur.fetchall()
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+def commit_by_item(flt, stale_cutoff: str) -> list[dict]:
+    """Open committed balance per item name. ``flt`` None = the whole company.
+    Lines whose commitment date is older than ``stale_cutoff`` are counted in
+    ``stale`` and kept OUT of ``balance`` — they are never-closed paperwork, not
+    live claims on stock."""
+    where, params = _commit_scope_where(flt)
+    w = (" WHERE " + " AND ".join(where)) if where else ""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                # Group on the SQUASHED name (the key the ledger joins on), not on
+                # UPPER(TRIM(...)): 40 item names differ only by punctuation and
+                # would arrive as separate rows, so the caller's dict would keep
+                # just one of each and silently drop 2.6M KG of firm demand.
+                cur.execute(
+                    "SELECT REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', '') AS item_key, "
+                    "       MAX(item_name) AS item_name, MAX(item_code) AS item_code, "
+                    "       SUM(CASE WHEN COALESCE(resched_date, sched_date) IS NULL "
+                    "             OR COALESCE(resched_date, sched_date) >= %s "
+                    "            THEN balance ELSE 0 END) AS balance, "
+                    "       SUM(CASE WHEN COALESCE(resched_date, sched_date) < %s "
+                    "            THEN balance ELSE 0 END) AS stale, "
+                    "       COUNT(*) AS lines_, COUNT(DISTINCT customer_id) AS customers "
+                    "FROM stg_order_commit" + w +
+                    " GROUP BY REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', '')",
+                    tuple([stale_cutoff, stale_cutoff] + params))
+                rows = cur.fetchall()
+                for r in rows:
+                    r["balance"] = float(r["balance"] or 0)
+                    r["stale"] = float(r["stale"] or 0)
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+def commit_holders(item_keys, stale_cutoff: str) -> list[dict]:
+    """Who holds the live committed balance on these items — one row per
+    (item, customer, collector, market circle). Deliberately UNSCOPED: the point
+    is to show demand competing from outside the caller's own book. The API layer
+    decides which of these may be shown by name."""
+    keys = [str(k) for k in (item_keys or []) if k]
+    if not keys:
+        return []
+    # the ledger keys on the squashed name; match on the same shape in SQL by
+    # comparing the upper-cased name after stripping non-alphanumerics
+    ph = ",".join(["%s"] * len(keys))
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', '') AS item_key, "
+                    "       MAX(item_name) AS item_name, customer_id, "
+                    "       MAX(customer_name) AS customer_name, collector, mc_code, "
+                    "       SUM(balance) AS balance, COUNT(*) AS lines_, "
+                    "       MIN(COALESCE(resched_date, sched_date)) AS due "
+                    "FROM stg_order_commit "
+                    "WHERE (COALESCE(resched_date, sched_date) IS NULL "
+                    "       OR COALESCE(resched_date, sched_date) >= %s) "
+                    "  AND REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', '') IN (" + ph + ") "
+                    "GROUP BY REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', ''), "
+                    "         customer_id, collector, mc_code",
+                    tuple([stale_cutoff] + keys))
+                rows = cur.fetchall()
+                for r in rows:
+                    r["balance"] = float(r["balance"] or 0)
+                    if r.get("due") is not None:
+                        r["due"] = str(r["due"])[:10]
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
 # ── dispatch_scope (permission-dashboard cube, see migrate_dashboard.sql) ─────
 
 _DISP_SCOPE_COLS = ["jc_index", "item_code", "item_name", "customer_id", "customer_name",

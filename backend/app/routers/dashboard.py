@@ -6,6 +6,9 @@ from ..api.dashboard import item_detail, my_dashboard, persona_users
 from ..api import dashboard_export as _dx
 from ..api import demand_export as _mx
 from ..api.demand import demand_protection, scoped_ledger
+from ..api import competition_export as _cpx
+from ..api.competition import item_competition, supply_competition
+from ..api.competition import scoped_ledger as _comp_ledger
 
 router = APIRouter()
 
@@ -102,6 +105,48 @@ def export_demand_protection(username: str = "", email: str = "", admin: int = 0
     cyc = payload.get("jc_label") or ""
     name = f"{_mx.SECTION_TITLES[section].replace(' ', '_')}_{cyc}_{who}.xlsx" if section \
         else f"Demand_Protection_{cyc}_{who}.xlsx"
+    return _xlsx(data, name)
+
+
+@router.get("/api/supply-competition")
+def get_supply_competition(username: str = "", email: str = "", admin: int = 0,
+                           persona: str = "", jc: int = 0):
+    """Per-item supply position and competing firm demand, scoped like
+    /api/my-dashboard. ``jc`` defaults to the planning JC."""
+    return supply_competition(username=username or None, email=email or None,
+                              admin=bool(admin), persona=persona or None,
+                              jc=int(jc) or None)
+
+
+@router.get("/api/supply-competition/item")
+def get_supply_competition_item(item: str = "", username: str = "", email: str = "",
+                                admin: int = 0, persona: str = "", jc: int = 0):
+    """One item's full picture: my requirement, the supply position, and who
+    holds the competing commitments (names only within the caller's scope)."""
+    if not item:
+        raise HTTPException(400, "item is required")
+    return item_competition(item, username=username or None, email=email or None,
+                            admin=bool(admin), persona=persona or None,
+                            jc=int(jc) or None)
+
+
+@router.get("/api/supply-competition/export")
+def export_supply_competition(username: str = "", email: str = "", admin: int = 0,
+                              persona: str = "", jc: int = 0, section: str = ""):
+    """Excel of one Supply-Competition card, or the whole page."""
+    if section and section not in _cpx.SECTION_TITLES:
+        raise HTTPException(400, f"unknown section '{section}'")
+    payload = supply_competition(username=username or None, email=email or None,
+                                 admin=bool(admin), persona=persona or None,
+                                 jc=int(jc) or None)
+    _p, _s, _m, _ay, _jj, rows = _comp_ledger(username=username or None,
+                                              email=email or None, admin=bool(admin),
+                                              persona=persona or None, jc=int(jc) or None)
+    data = _cpx.build(payload, rows, section or None)
+    who = (payload.get("persona") or "supply").replace(" ", "_")
+    cyc = payload.get("jc_label") or ""
+    name = f"{_cpx.SECTION_TITLES[section].replace(' ', '_')}_{cyc}_{who}.xlsx" if section \
+        else f"Supply_Competition_{cyc}_{who}.xlsx"
     return _xlsx(data, name)
 
 
