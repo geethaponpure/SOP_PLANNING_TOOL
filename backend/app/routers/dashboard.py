@@ -9,6 +9,9 @@ from ..api.demand import demand_protection, scoped_ledger
 from ..api import competition_export as _cpx
 from ..api.competition import item_competition, supply_competition
 from ..api.competition import scoped_ledger as _comp_ledger
+from ..api import promise_export as _prx
+from ..api.promise import item_timeline, promise_dates
+from ..api.promise import scoped_rows as _promise_rows
 
 router = APIRouter()
 
@@ -147,6 +150,45 @@ def export_supply_competition(username: str = "", email: str = "", admin: int = 
     cyc = payload.get("jc_label") or ""
     name = f"{_cpx.SECTION_TITLES[section].replace(' ', '_')}_{cyc}_{who}.xlsx" if section \
         else f"Supply_Competition_{cyc}_{who}.xlsx"
+    return _xlsx(data, name)
+
+
+@router.get("/api/promise-dates")
+def get_promise_dates(username: str = "", email: str = "", admin: int = 0,
+                      persona: str = "", jc: int = 0):
+    """When each item can be promised, and when its stock runs out. Scoped like
+    /api/my-dashboard; ``jc`` defaults to the planning JC."""
+    return promise_dates(username=username or None, email=email or None,
+                         admin=bool(admin), persona=persona or None,
+                         jc=int(jc) or None)
+
+
+@router.get("/api/promise-dates/item")
+def get_promise_item(item: str = "", username: str = "", email: str = "",
+                     admin: int = 0, persona: str = "", jc: int = 0):
+    """One item's supply timeline: every dated source, the orders burning it
+    down, and the running balance behind the promise and risk dates."""
+    if not item:
+        raise HTTPException(400, "item is required")
+    return item_timeline(item, username=username or None, email=email or None,
+                         admin=bool(admin), persona=persona or None,
+                         jc=int(jc) or None)
+
+
+@router.get("/api/promise-dates/export")
+def export_promise_dates(username: str = "", email: str = "", admin: int = 0,
+                         persona: str = "", jc: int = 0, section: str = ""):
+    """Excel of one Promise-Dates card, or the whole page."""
+    if section and section not in _prx.SECTION_TITLES:
+        raise HTTPException(400, f"unknown section '{section}'")
+    payload, rows = _promise_rows(username=username or None, email=email or None,
+                                  admin=bool(admin), persona=persona or None,
+                                  jc=int(jc) or None)
+    data = _prx.build(payload, rows, section or None)
+    who = (payload.get("persona") or "promise").replace(" ", "_")
+    cyc = payload.get("jc_label") or ""
+    name = f"{_prx.SECTION_TITLES[section].replace(' ', '_')}_{cyc}_{who}.xlsx" if section \
+        else f"Promise_Dates_{cyc}_{who}.xlsx"
     return _xlsx(data, name)
 
 

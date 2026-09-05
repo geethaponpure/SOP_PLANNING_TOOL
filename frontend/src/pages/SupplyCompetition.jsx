@@ -19,7 +19,11 @@ import { Boxes, Download, Factory, Layers, PartyPopper, ShieldCheck,
 const TT = {
   backgroundColor: "#fff", borderColor: "#e2e8f0", borderWidth: 1, padding: [8, 11],
   textStyle: { color: "#1a202c", fontSize: 12 },
-  extraCssText: "box-shadow:0 12px 30px rgba(15,23,42,.16);border-radius:10px;",
+  // keep the tooltip inside the chart box and let long hint text wrap instead of
+  // stretching into one very wide line that escapes the card
+  confine: true,
+  extraCssText: "box-shadow:0 12px 30px rgba(15,23,42,.16);border-radius:10px;"
+    + "max-width:300px;white-space:normal;line-height:1.45;",
 };
 const ANIM = { animationDuration: 650, animationEasing: "cubicOut" };
 const abbr = (v) => {
@@ -51,7 +55,6 @@ const RISK_ORDER = ["critical", "high", "at_risk", "safe", "covered"];
 
 const SUPPLY_METRICS = [
   { id: "risk", label: "Risk", icon: ShieldCheck, title: "Supply risk on my projection" },
-  { id: "exposure", label: "Exposure", icon: TriangleAlert, title: "Most exposed items" },
   { id: "balance", label: "Supply vs demand", icon: Layers, title: "Supply against claims" },
 ];
 const HOLDER_METRICS = [
@@ -83,8 +86,9 @@ function riskDonut(buckets) {
   };
 }
 
-function exposureOption(rows) {
-  const top = rows.filter((r) => r.exposure > 0).slice(0, 14).slice().reverse();
+// `top` is the already-prepared, reversed row slice — the caller keeps the same
+// array so a click can map dataIndex straight back to the row.
+function exposureOption(top) {
   return {
     ...ANIM,
     tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
@@ -114,8 +118,7 @@ function exposureOption(rows) {
 }
 
 // On-hand against the claims on it, for the items the caller is most exposed on.
-function balanceOption(rows) {
-  const top = rows.filter((r) => r.exposure > 0).slice(0, 12).slice().reverse();
+function balanceOption(top) {
   const series = [
     { name: "On hand", key: "on_hand", color: "#2f855a" },
     { name: "Safety level", key: "msl", color: "#90a1ac" },
@@ -131,7 +134,8 @@ function balanceOption(rows) {
         return `<b>${r.item || "—"}</b><br/>`
           + ps.map((x) => `${x.marker} ${x.seriesName}: <b>${fmt.num(x.value)}</b> KG`).join("<br/>")
           + `<br/><span style="color:#90a1ac">left for me ${fmt.num(r.atp_for_me)} KG`
-          + ` · exposed ${fmt.num(r.exposure)} KG</span>`;
+          + ` · exposed ${fmt.num(r.exposure)} KG</span>`
+          + `<br/><span style="color:#90a1ac">click for the full supply picture</span>`;
       } },
     legend: { bottom: 0, icon: "circle", itemWidth: 9, itemHeight: 9, type: "scroll",
       textStyle: { color: "#414d55", fontSize: 11 } },
@@ -235,7 +239,17 @@ function ItemTable({ rows, total, onPick }) {
                   title="Open the full supply picture for this item">
                   <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}
                     title={`${r.item_code || ""} ${r.item}`}>{r.item}</td>
-                  <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(r.my_projection)}</td>
+                  <td style={{ ...CELL, textAlign: "right" }}
+                    title={`${fmt.num(r.all_projection)} KG projected company-wide by `
+                      + `${r.all_customers} customer${r.all_customers === 1 ? "" : "s"} across `
+                      + `${r.all_collectors} collector${r.all_collectors === 1 ? "" : "s"}`}>
+                    {fmt.num(r.my_projection)}
+                    {r.all_projection > r.my_projection && (
+                      <span style={{ fontSize: 10.5, color: "var(--muted)" }}>
+                        {" "}/ {abbr(r.all_projection)}
+                      </span>
+                    )}
+                  </td>
                   <td style={{ ...CELL, textAlign: "right", fontWeight: 600,
                     color: r.my_unprotected > 0 ? "#b7791f" : "var(--muted)" }}>
                     {r.my_unprotected > 0 ? fmt.num(r.my_unprotected) : "0"}
@@ -386,6 +400,23 @@ function ItemModal({ target, idParams, onClose }) {
                 <Fig label="Incoming production" value={r.incoming} color="#3182ce"
                   hint={r.incoming_date ? `earliest available ${r.incoming_date}` : "no production planned this cycle"} />
               </div>
+              <h4 style={{ margin: "0 0 8px", fontSize: 13 }}>
+                Everyone chasing this item
+                <span style={{ fontWeight: 400, fontSize: 11.5, color: "var(--muted)" }}>
+                  {" "}— total demand across the company, not just your book
+                </span>
+              </h4>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                <Fig label="Projected by everyone" value={r.all_projection}
+                  hint="Approved projection for this cycle across every executive" />
+                <Fig label="Of that, yours" value={r.my_projection} />
+                <Fig label="Firm orders against it" value={r.firm_total} color="#3182ce" />
+                <Fig label="Still unfirm company-wide" value={r.all_unprotected} color="#b7791f"
+                  hint="Projected but not yet converted to an order by anyone — this is what competes for the same supply" />
+                <Fig label="Customers projecting" value={r.all_customers} unit="" />
+                <Fig label="Collectors projecting" value={r.all_collectors} unit="" />
+              </div>
+
               {r.exposure > 0 && (
                 <div className="banner warn" style={{ marginBottom: 16 }}>
                   <b>{fmt.num(r.exposure)} KG of your projection is exposed.</b>{" "}
@@ -553,9 +584,14 @@ export default function SupplyCompetition({ session, isAdmin }) {
     () => (riskSel ? rows.filter((r) => r.risk === riskSel) : []), [rows, riskSel]);
   const exposedRows = useMemo(() => rows.filter((r) => r.exposure > 0), [rows]);
 
+  // the exact row slices the charts draw — reused by the click handlers so a
+  // clicked bar maps back to its item
+  const expTop = useMemo(() => exposedRows.slice(0, 14).slice().reverse(), [exposedRows]);
+  const balTop = useMemo(() => exposedRows.slice(0, 12).slice().reverse(), [exposedRows]);
+
   const riskOpt = useMemo(() => riskDonut(k?.buckets), [k]);
-  const expOpt = useMemo(() => exposureOption(rows), [rows]);
-  const balOpt = useMemo(() => balanceOption(rows), [rows]);
+  const expOpt = useMemo(() => exposureOption(expTop), [expTop]);
+  const balOpt = useMemo(() => balanceOption(balTop), [balTop]);
   const collOpt = useMemo(() => holderOption(data?.by_collector, "collector", "#c53030"), [data]);
   const mcOpt = useMemo(() => holderOption(data?.by_mc, "mc_code", "#805ad5"), [data]);
 
@@ -567,8 +603,7 @@ export default function SupplyCompetition({ session, isAdmin }) {
     const out = {};
     if (supView === "table") {
       out.supplyCanvas = fitRows(
-        supMetric === "risk" ? (riskSel ? riskRows.length : rows.length)
-          : supMetric === "exposure" ? exposedRows.length : exposedRows.length);
+        supMetric === "risk" ? (riskSel ? riskRows.length : rows.length) : exposedRows.length);
     }
     if (holdView === "table") {
       out.holderCanvas = fitRows(
@@ -662,7 +697,7 @@ export default function SupplyCompetition({ session, isAdmin }) {
 
         <div key="supplyCanvas" className="card">
           <ExportBtn idParams={idParams}
-            section={supMetric === "risk" && !riskSel ? "risk" : supMetric === "balance" ? "exposed" : "exposed"} />
+            section={supMetric === "risk" && !riskSel ? "risk" : "exposed"} />
           <div className="supply-dash-cardhead">
             <div>
               <h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
@@ -673,10 +708,9 @@ export default function SupplyCompetition({ session, isAdmin }) {
                   ? <>{fmt.num(riskRows.length)} item{riskRows.length === 1 ? "" : "s"} · {(RISK[riskSel] || {}).hint}</>
                   : <>{data.jc_label} · will the stock still be there for the projection you have not
                     converted yet · click a slice for the items</>)}
-                {supMetric === "exposure" &&
-                  <>projected quantity with no supply left once everyone else’s firm orders are met</>}
                 {supMetric === "balance" &&
-                  <>on-hand against the claims on it, for the items you are most exposed on</>}
+                  <>on-hand against the claims on it, for the items you are most exposed on ·
+                    click a bar for the full supply picture</>}
               </div>
             </div>
             <div className="card-filters">
@@ -712,12 +746,11 @@ export default function SupplyCompetition({ session, isAdmin }) {
             <AllClear icon={ShieldCheck} title="Nothing is exposed"
               note="Every item you projected has supply available after the other confirmed orders." />
           ) : supView === "chart" ? (
-            <EChart className="echart-fill" option={supMetric === "exposure" ? expOpt : balOpt} height="100%"
-              onEvents={supMetric === "exposure" ? { click: (p) => {
-                const top = exposedRows.slice(0, 14).slice().reverse();
-                const hit = top[p.dataIndex];
+            <EChart className="echart-fill" option={balOpt} height="100%"
+              onEvents={{ click: (p) => {
+                const hit = balTop[p.dataIndex];
                 if (hit) setPick(hit);
-              } } : undefined} />
+              } }} />
           ) : (
             <ItemTable rows={exposedRows} total={exposedRows.length} onPick={setPick} />
           )}
@@ -755,8 +788,7 @@ export default function SupplyCompetition({ session, isAdmin }) {
             ) : holdView === "chart" ? (
               <EChart className="echart-fill" option={expOpt} height="100%"
                 onEvents={{ click: (p) => {
-                  const top = exposedRows.slice(0, 14).slice().reverse();
-                  const hit = top[p.dataIndex];
+                  const hit = expTop[p.dataIndex];
                   if (hit) setPick(hit);
                 } }} />
             ) : (

@@ -30,6 +30,10 @@ def _item_row(r: dict) -> dict:
             "My firm orders (KG)": r.get("my_firm"),
             "My unprotected (KG)": r.get("my_unprotected"),
             "My customers": r.get("my_customers"),
+            "Projected company-wide (KG)": r.get("all_projection"),
+            "Unfirm company-wide (KG)": r.get("all_unprotected"),
+            "Customers projecting": r.get("all_customers"),
+            "Collectors projecting": r.get("all_collectors"),
             "On hand (KG)": r.get("on_hand"),
             "Safety level MSL (KG)": r.get("msl"),
             "Firm orders, company (KG)": r.get("firm_total"),
@@ -58,6 +62,9 @@ def section_rows(payload: dict, rows: list[dict], section: str) -> list[dict]:
             {"Metric": "My projection (KG)", "Value": k.get("my_projection")},
             {"Metric": "My firm orders (KG)", "Value": k.get("my_firm")},
             {"Metric": "My unprotected projection (KG)", "Value": k.get("my_unprotected")},
+            {"Metric": "Projected company-wide (KG)", "Value": k.get("all_projection")},
+            {"Metric": "Unfirm company-wide — competes for the same supply (KG)",
+             "Value": k.get("all_unprotected")},
             {"Metric": "On hand at selling orgs (KG)", "Value": k.get("on_hand")},
             {"Metric": "Firm orders, whole company (KG)", "Value": k.get("firm_total")},
             {"Metric": "  of which held by others (KG)", "Value": k.get("firm_others")},
@@ -151,7 +158,11 @@ def build(payload: dict, rows: list[dict], section: str | None = None) -> bytes:
         ch.type = "bar"
         ch.title = "Most exposed items"
         ch.legend = None
-        ch.add_data(Reference(sheet("exposed"), min_col=19, min_row=1, max_row=n + 1),
+        # "Exposure (KG)" — recomputed from the header so added columns cannot
+        # silently repoint this chart at the wrong series
+        hdr = [c.value for c in next(sheet("exposed").iter_rows(min_row=1, max_row=1))]
+        col = hdr.index("Exposure (KG)") + 1
+        ch.add_data(Reference(sheet("exposed"), min_col=col, min_row=1, max_row=n + 1),
                     titles_from_data=True)
         ch.set_categories(Reference(sheet("exposed"), min_col=2, min_row=2, max_row=n + 1))
         ch.height, ch.width = 9, 16

@@ -19,6 +19,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import CommitRisk from "./pages/CommitRisk.jsx";
 import DemandProtection from "./pages/DemandProtection.jsx";
 import SupplyCompetition from "./pages/SupplyCompetition.jsx";
+import PromiseDates from "./pages/PromiseDates.jsx";
 import Overview from "./pages/Overview.jsx";
 import DataQuality from "./pages/DataQuality.jsx";
 import Validation from "./pages/Validation.jsx";
@@ -135,6 +136,7 @@ export default function App() {
     commitrisk: <CommitRisk session={session} isAdmin={isAdmin} />,
     demandprot: <DemandProtection session={session} isAdmin={isAdmin} />,
     supplycomp: <SupplyCompetition session={session} isAdmin={isAdmin} />,
+    promisedates: <PromiseDates session={session} isAdmin={isAdmin} />,
     overview: <Overview onChange={bump} />,
     dq: <DataQuality />,
     validation: <Validation onChange={bump} />,

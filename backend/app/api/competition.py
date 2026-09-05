@@ -52,7 +52,7 @@ from ..integration import staging
 from .commit import _commit_flt
 from .dashboard import _pick_persona, _scope_flt, _scope_summary
 
-_PAYLOAD_V = 1
+_PAYLOAD_V = 3
 _ROW_CAP = 400
 # Open lines older than this are dead paperwork, not claims on stock (see above).
 STALE_DAYS = 90
@@ -128,6 +128,19 @@ def _msl_levels() -> tuple[dict, str | None]:
 
 
 _INCOMING: dict = {}
+_ALL_PROJ: dict = {}
+
+
+def _all_projection(acc_year: str, jc: int) -> dict:
+    """{item key: {qty, customers, collectors}} projected by EVERYONE for this
+    cycle. Cached per cycle against the projection sync."""
+    stamp = str((staging.last_sync("projection_customer") or {}).get("finished_at") or "")
+    ck = (acc_year, int(jc), stamp)
+    if _ALL_PROJ.get("key") == ck:
+        return _ALL_PROJ["map"]
+    out = {_key(r["item_key"]): r for r in staging.projection_by_item(acc_year, jc)}
+    _ALL_PROJ.update({"key": ck, "map": out})
+    return out
 
 
 def _incoming() -> tuple[dict, int | None]:
@@ -219,10 +232,14 @@ def _ledger(flt: dict, flt_c: dict, acc_year: str, jc: int) -> list[dict]:
         if not k:
             continue
         a = proj.setdefault(k, {"item": r.get("item_name"), "item_code": r.get("item_code"),
-                                "segment3": r.get("segment3"), "qty": 0.0, "customers": set()})
+                                "segment3": r.get("segment3"), "qty": 0.0,
+                                "week1": 0.0, "week2": 0.0, "customers": set()})
         a["qty"] += r["current_q"]
+        a["week1"] += r["week1_q"]
+        a["week2"] += r["week2_q"]
         a["customers"].add(r.get("customer_id"))
 
+    everyone = _all_projection(acc_year, jc)
     mine: dict = {}
     for r in staging.commit_by_item(flt_c, cutoff):
         k = _key(r["item_key"])
@@ -245,6 +262,8 @@ def _ledger(flt: dict, flt_c: dict, acc_year: str, jc: int) -> list[dict]:
         firm_others = round(firm_total - firm_mine, 1)
         my_proj = round(float(p.get("qty") or 0), 1)
         my_unprot = round(max(0.0, my_proj - firm_mine), 1)
+        ev = everyone.get(k) or {}
+        all_proj = round(float(ev.get("qty") or 0), 1)
         atp = round(on_hand - firm_total - msl, 1)
         atp_me = round(on_hand - firm_others - msl, 1)
         row = {
@@ -256,6 +275,16 @@ def _ledger(flt: dict, flt_c: dict, acc_year: str, jc: int) -> list[dict]:
             "my_firm": firm_mine,
             "my_unprotected": my_unprot,
             "my_customers": len(p.get("customers") or ()),
+            # the projection's only requirement-date signal: which half of the
+            # cycle the planner put the quantity in (there is no day-level date)
+            "my_week1": round(float(p.get("week1") or 0), 1),
+            "my_week2": round(float(p.get("week2") or 0), 1),
+            # section 9: the same item as the whole company sees it
+            "all_projection": all_proj,
+            "all_customers": int(ev.get("customers") or 0),
+            "all_collectors": int(ev.get("collectors") or 0),
+            # unfirm demand nobody has converted yet, company-wide
+            "all_unprotected": round(max(0.0, all_proj - firm_total), 1),
             "on_hand": on_hand, "msl": msl,
             "firm_total": firm_total, "firm_others": firm_others,
             "other_customers": int(f.get("customers") or 0) - int(m.get("customers") or 0),
@@ -286,6 +315,8 @@ def _totals(rows: list[dict]) -> dict:
         "my_projection": round(sum(r["my_projection"] for r in rows), 1),
         "my_firm": round(sum(r["my_firm"] for r in rows), 1),
         "my_unprotected": round(sum(r["my_unprotected"] for r in rows), 1),
+        "all_projection": round(sum(r["all_projection"] for r in rows), 1),
+        "all_unprotected": round(sum(r["all_unprotected"] for r in rows), 1),
         "exposure": round(sum(r["exposure"] for r in rows), 1),
         "exposed_items": len(exposed),
         "on_hand": round(sum(r["on_hand"] for r in rows), 1),

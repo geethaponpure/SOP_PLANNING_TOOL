@@ -886,6 +886,65 @@ def commit_by_item(flt, stale_cutoff: str) -> list[dict]:
         return []
 
 
+def projection_by_item(acc_year: str, jc: int) -> list[dict]:
+    """Company-wide projected quantity per item for one JC — deliberately
+    UNSCOPED. The supply-competition view needs total unfirm demand across every
+    executive (proposal section 9: total projection vs firm SOC vs available
+    supply), which a persona-scoped read cannot give. Grouped on the squashed
+    name, the key the ledger joins on."""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', '') AS item_key, "
+                    "       SUM(current_q) AS qty, "
+                    "       COUNT(DISTINCT customer_id) AS customers, "
+                    "       COUNT(DISTINCT collector_id) AS collectors "
+                    "FROM stg_projection_customer WHERE acc_year=%s AND jc=%s "
+                    "GROUP BY REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', '')",
+                    (acc_year, int(jc)))
+                rows = cur.fetchall()
+                for r in rows:
+                    r["qty"] = float(r["qty"] or 0)
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+def commit_schedule(stale_cutoff: str) -> list[dict]:
+    """Live committed balance per (item key, commitment date) across the WHOLE
+    company — the dated demand a supply timeline is burnt down against. Supply is
+    consumed by everyone's orders, not just the caller's, so this is unscoped.
+    Lines with no date fall back to the order date; stale lines are excluded."""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', '') AS item_key, "
+                    "       COALESCE(resched_date, sched_date) AS due, "
+                    "       SUM(balance) AS qty, COUNT(*) AS lines_ "
+                    "FROM stg_order_commit "
+                    "WHERE balance > 0 "
+                    "  AND (COALESCE(resched_date, sched_date) IS NULL "
+                    "       OR COALESCE(resched_date, sched_date) >= %s) "
+                    "GROUP BY REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', ''), "
+                    "         COALESCE(resched_date, sched_date)",
+                    (stale_cutoff,))
+                rows = cur.fetchall()
+                for r in rows:
+                    r["qty"] = float(r["qty"] or 0)
+                    r["due"] = str(r["due"])[:10] if r.get("due") else None
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
 def commit_holders(item_keys, stale_cutoff: str) -> list[dict]:
     """Who holds the live committed balance on these items — one row per
     (item, customer, collector, market circle). Deliberately UNSCOPED: the point

@@ -110,6 +110,19 @@ export const api = {
       `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
       `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`,
       section ? `${section}.xlsx` : "Supply_Competition.xlsx"),
+  promiseDates: ({ username = "", email = "", admin = 0, persona = "", jc = 0 } = {}) =>
+    req(`/promise-dates?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`),
+  promiseItem: ({ item = "", username = "", email = "", admin = 0, persona = "", jc = 0 } = {}) =>
+    req(`/promise-dates/item?item=${encodeURIComponent(item)}` +
+      `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`),
+  promiseDatesExport: ({ section = "", username = "", email = "", admin = 0, persona = "", jc = 0 } = {}) =>
+    downloadFile(
+      `/promise-dates/export?section=${encodeURIComponent(section)}` +
+      `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}&jc=${jc || 0}`,
+      section ? `${section}.xlsx` : "Promise_Dates.xlsx"),
   dashboardLayout: (key = "mydash", user = "") =>
     req(`/dashboard-layout?key=${encodeURIComponent(key)}&user=${encodeURIComponent(user)}`),
   // user "" writes the app-level default; a user code writes that person's own
