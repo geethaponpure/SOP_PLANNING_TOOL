@@ -103,12 +103,13 @@ def build(username=None, email=None, admin=False, persona=None, jc=None) -> dict
         shortfall = round(max(0.0, unprot - max(0.0, atp)), 1)
         required = w2_req if ln.get("week2", 0) > 0 else w1_req
         ctp = risk_date = None
+        breaches = False
         if unprot > 0:
             w = _prom._walk(float(it.get("on_hand") or 0),
                             (prod.get(k) or []) + (po.get(k) or []),
                             sched.get(k) or [], today, unprot,
                             float(it.get("msl") or 0))
-            ctp, risk_date = w["ctp"], w["risk_date"]
+            ctp, risk_date, breaches = w["ctp"], w["risk_date"], w["breaches_msl"]
         cls = _cls(unprot, shortfall, ctp, required)
         rows.append({
             "key": f"{ln['customer_id']}|{k}",
@@ -120,6 +121,12 @@ def build(username=None, email=None, admin=False, persona=None, jc=None) -> dict
             "soc": round(ln["dispatched"] + ln["soc"], 1),
             "my_soc": ln["soc"], "dispatched": ln["dispatched"],
             "protected": ln["covered"], "unprotected": unprot,
+            # firm orders for this customer+item committed BEFORE the cycle —
+            # still owed, but they cannot protect a cycle they predate
+            "backlog": ln.get("backlog", 0.0),
+            # the promise can only be met by dipping below the safety level,
+            # which is usually why ATP reads negative while a date still exists
+            "breaches_msl": bool(breaches),
             "other_soc": round(float(it.get("firm_others") or 0), 1),
             "other_customers": int(it.get("other_customers") or 0),
             "on_hand": round(float(it.get("on_hand") or 0), 1),
@@ -137,6 +144,33 @@ def build(username=None, email=None, admin=False, persona=None, jc=None) -> dict
             "silent": bool(ln.get("silent")),
         })
 
+    # ── the caller's own order book, split by where each line is dated ───────
+    # SOC only counts orders committed INSIDE the cycle. A book full of overdue
+    # lines therefore shows as SOC ~ 0, which looks like "you have no orders"
+    # unless the rest of the book is shown alongside it.
+    my_book = staging.read_order_commit(flt_c)
+    my_customers = {c["customer_id"] for c in my_book if c.get("customer_id") is not None}
+    jc_from, jc_to = base["jc_from"] or "", base["jc_to"] or ""
+
+    def _due(c):
+        return str(c.get("resched_date") or c.get("sched_date") or "")
+
+    book = {"lines": len(my_book), "in_cycle": 0.0, "in_cycle_lines": 0,
+            "overdue": 0.0, "overdue_lines": 0, "later": 0.0, "later_lines": 0}
+    for c in my_book:
+        d, q = _due(c), float(c.get("balance") or 0)
+        if jc_from and d and d < jc_from:
+            book["overdue"] += q
+            book["overdue_lines"] += 1
+        elif jc_to and d and d > jc_to:
+            book["later"] += q
+            book["later_lines"] += 1
+        else:
+            book["in_cycle"] += q
+            book["in_cycle_lines"] += 1
+    for f in ("in_cycle", "overdue", "later"):
+        book[f] = round(book[f], 1)
+
     # Headline — the tiles are exactly the row classes rolled up, so the colour a
     # user sees on a line is the tile its quantity landed in.
     projection = sum(r["projection"] for r in rows)
@@ -152,6 +186,10 @@ def build(username=None, email=None, admin=False, persona=None, jc=None) -> dict
         "projection": round(projection, 1),
         "soc": round(sum(r["soc"] for r in rows), 1),
         "protected": round(protected, 1),
+        "backlog": round(sum(r["backlog"] for r in rows), 1),
+        "backlog_lines": sum(1 for r in rows if r["backlog"] > 0),
+        "below_msl": sum(1 for r in rows if r["breaches_msl"]),
+        "book": book,
         "at_risk": at_risk,
         "critical": critical,
         "unprotected": round(unprot_tot, 1),
@@ -204,8 +242,6 @@ def build(username=None, email=None, admin=False, persona=None, jc=None) -> dict
     exposed_keys = [r["key"] for r in item_rows if r["exposure"] > 0][:400]
     competing_coll, competing_mc = [], []
     if exposed_keys:
-        my_customers = {c["customer_id"] for c in staging.read_order_commit(flt_c)
-                        if c.get("customer_id") is not None}
         holders = [h for h in staging.commit_holders(exposed_keys, sup["cutoff"])
                    if h.get("customer_id") not in my_customers]
         for h in holders:

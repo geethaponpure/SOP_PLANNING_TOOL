@@ -4,7 +4,7 @@ import * as echarts from "echarts";
 // Thin React wrapper around Apache ECharts: init on mount, setOption on change,
 // auto-resize with the container, and clean up on unmount. `onEvents` is a map of
 // echarts event name → handler (e.g. { click: (p) => ... }).
-export default function EChart({ option, height = 300, className, onEvents, notMerge = true }) {
+export default function EChart({ option, height = 300, className, style, onEvents, notMerge = true }) {
   const elRef = useRef(null);
   const chartRef = useRef(null);
   const eventsRef = useRef(onEvents);
@@ -45,5 +45,5 @@ export default function EChart({ option, height = 300, className, onEvents, notM
     return () => entries.forEach(([ev]) => chart.off(ev));
   }, [onEvents]);
 
-  return <div ref={elRef} className={className} style={{ width: "100%", height }} />;
+  return <div ref={elRef} className={className} style={{ width: "100%", height, minWidth: 0, ...style }} />;
 }

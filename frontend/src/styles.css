@@ -1909,6 +1909,15 @@ td.num b { color: var(--navy); }
   padding: 4px 7px; line-height: 0; opacity: 0.45; transition: opacity 0.15s ease;
 }
 .dash-item:hover .dash-export, .dash-export:focus-visible { opacity: 1; }
+/* any card carrying a .dash-export needs the same top-right clearance, not just
+   dashboard tiles — otherwise the Chart/Table toggles slide under the button */
+.card > .supply-dash-cardhead { padding-right: 38px; }
+/* the title block must be allowed to shrink so the filters can never overflow */
+.supply-dash-cardhead > div:first-child { min-width: 0; }
+.supply-dash-cardhead .sub { overflow-wrap: anywhere; }
+/* hover-reveal works on any card, not only .dash-item */
+.card:hover .dash-export { opacity: 1; }
+
 .dash-item > .card > .supply-dash-cardhead {
   padding-right: 38px;      /* clear of the download button */
   /* one consistent gap under the WHOLE header — the title block used to supply

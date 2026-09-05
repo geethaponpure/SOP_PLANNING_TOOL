@@ -871,10 +871,17 @@ def commit_by_item(flt, stale_cutoff: str) -> list[dict]:
                     "            THEN balance ELSE 0 END) AS balance, "
                     "       SUM(CASE WHEN COALESCE(resched_date, sched_date) < %s "
                     "            THEN balance ELSE 0 END) AS stale, "
-                    "       COUNT(*) AS lines_, COUNT(DISTINCT customer_id) AS customers "
+                    "       COUNT(*) AS lines_, "
+                    # customers must be counted over the SAME rows the balance is:
+                    # a customer whose only orders are stale contributes no
+                    # quantity, so counting them produced "Other SOC —" beside
+                    # "1 customers outside your book"
+                    "       COUNT(DISTINCT CASE WHEN COALESCE(resched_date, sched_date) IS NULL "
+                    "              OR COALESCE(resched_date, sched_date) >= %s "
+                    "             THEN customer_id END) AS customers "
                     "FROM stg_order_commit" + w +
                     " GROUP BY REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', '')",
-                    tuple([stale_cutoff, stale_cutoff] + params))
+                    tuple([stale_cutoff, stale_cutoff, stale_cutoff] + params))
                 rows = cur.fetchall()
                 for r in rows:
                     r["balance"] = float(r["balance"] or 0)

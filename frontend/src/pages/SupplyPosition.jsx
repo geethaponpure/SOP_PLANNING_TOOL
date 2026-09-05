@@ -18,12 +18,12 @@ import { ArrowRight, Boxes, CircleAlert, Download, FileCheck2, Hourglass,
 
 // DashGrid slot geometry — the arrangement everyone starts from. Users drag and
 // resize from here and can save their own; an admin can save a new app default.
+// (the headline strip and the action list render outside the grid — they are
+//  fixed, not movable/resizable; only the cards below are arrangeable)
 const DASH_DEFAULTS = {
-  headline: { x: 0, y: 0, w: 12, h: 5 },
-  action: { x: 0, y: 5, w: 12, h: 12 },
-  exposure: { x: 0, y: 17, w: 6, h: 11 },
-  supply: { x: 6, y: 17, w: 6, h: 11 },
-  competing: { x: 0, y: 28, w: 12, h: 10 },
+  exposure: { x: 0, y: 0, w: 6, h: 11 },
+  supply: { x: 6, y: 0, w: 6, h: 11 },
+  competing: { x: 0, y: 11, w: 12, h: 10 },
 };
 
 const CELL = { border: "1px solid var(--border)", padding: "7px 9px", verticalAlign: "middle" };
@@ -132,7 +132,7 @@ function GroupTable({ rows, label, title, extraCol }) {
           {fmt.num(shown.length)} {title.toLowerCase()}
         </span>
       </div>
-      <div className="tbl-wrap" style={{ maxHeight: 340 }}>
+      <div className="tbl-wrap">
         <table className="proj-table" style={{ borderCollapse: "collapse", fontSize: 12.5 }}>
           <thead>
             <tr>
@@ -191,7 +191,7 @@ function SilentTable({ rows, onPick }) {
           {fmt.num(shown.length)} lines · click one to see why
         </span>
       </div>
-      <div className="tbl-wrap" style={{ maxHeight: 340 }}>
+      <div className="tbl-wrap">
         <table className="proj-table" style={{ borderCollapse: "collapse", fontSize: 12.5 }}>
           <thead>
             <tr>
@@ -280,9 +280,8 @@ function ExposureCard({ data, rows, idParams, onPick, metric, setMetric, view, s
           </div>
         </div>
       ) : view === "chart" ? (
-        <EChart className="echart-fill" style={{ height: 300 }}
-          option={metric === "collectors" ? collOpt : metric === "items" ? itemOpt : custOpt}
-          height={300} />
+        <EChart className="echart-fill" height="100%"
+          option={metric === "collectors" ? collOpt : metric === "items" ? itemOpt : custOpt} />
       ) : metric === "collectors" ? (
         <GroupTable rows={data.by_collector} label="collector" title="Collector" />
       ) : metric === "items" ? (
@@ -468,7 +467,7 @@ function SupplyCard({ items, idParams, onPick, metric, setMetric, view, setView 
           note="Every item you projected has supply available after the other confirmed orders." />;
       }
       return view === "chart"
-        ? <EChart className="echart-fill" style={{ height: 320 }} option={supOpt} height={320}
+        ? <EChart className="echart-fill" height="100%" option={supOpt}
             onEvents={{ click: (e) => {
               const hit = exposed.slice(0, 12).slice().reverse()[e.dataIndex];
               if (hit) onPick(hit);
@@ -481,7 +480,7 @@ function SupplyCard({ items, idParams, onPick, metric, setMetric, view, setView 
           note="Committed orders stay within available supply right across the horizon." />;
       }
       return view === "chart"
-        ? <EChart className="echart-fill" style={{ height: 320 }} option={runOpt} height={320}
+        ? <EChart className="echart-fill" height="100%" option={runOpt}
             onEvents={{ click: (e) => {
               const hit = runList.slice(0, 14).slice().reverse()[e.dataIndex];
               if (hit) onPick(hit);
@@ -516,7 +515,7 @@ function ItemSupplyTable({ rows, onPick }) {
           {fmt.num(shown.length)} items · click one for its supply picture
         </span>
       </div>
-      <div className="tbl-wrap" style={{ maxHeight: 340 }}>
+      <div className="tbl-wrap">
         <table className="proj-table" style={{ borderCollapse: "collapse", fontSize: 12.5 }}>
           <thead>
             <tr>
@@ -580,9 +579,9 @@ function CompetingCard({ data, idParams, metric, setMetric, view, setView }) {
         <Empty title="No competing demand"
           note="Nobody outside your book holds firm orders on the items you are exposed on — either nothing is exposed, or your scope already covers every order on those items." />
       ) : view === "chart" ? (
-        <EChart className="echart-fill" style={{ height: 300 }} option={opt} height={300} />
+        <EChart className="echart-fill" height="100%" option={opt} />
       ) : (
-        <div className="tbl-wrap" style={{ maxHeight: 340 }}>
+        <div className="tbl-wrap">
           <table className="proj-table" style={{ borderCollapse: "collapse", fontSize: 12.5 }}>
             <thead>
               <tr>
@@ -611,7 +610,19 @@ function CompetingCard({ data, idParams, metric, setMetric, view, setView }) {
   );
 }
 
-function Headline({ k, jcLabel }) {
+function Headline({ k, jcLabel, jcFrom, jcTo }) {
+  const b = k.book || {};
+  // SOC only counts orders committed INSIDE the cycle, so a book of overdue
+  // lines reads as "no orders" unless the rest of it is shown alongside.
+  const tip = (id) => {
+    if (id === "soc") {
+      return `${fmt.num(k.soc || 0)} KG committed inside ${jcFrom} to ${jcTo}`
+        + `\nYour open book: ${fmt.num(b.in_cycle || 0)} KG in this cycle`
+        + ` (${fmt.num(b.in_cycle_lines || 0)} lines), ${fmt.num(b.overdue || 0)} KG overdue`
+        + ` (${fmt.num(b.overdue_lines || 0)}), ${fmt.num(b.later || 0)} KG later`;
+    }
+    return `${fmt.num(k[id] || 0)} KG`;
+  };
   return (
     <div className="card" style={{ padding: "18px 20px 16px" }}>
       <div style={{ textAlign: "center", fontSize: 13, fontWeight: 700, letterSpacing: ".06em",
@@ -625,7 +636,7 @@ function Headline({ k, jcLabel }) {
               textTransform: "uppercase", letterSpacing: ".04em" }}>{t.label}</div>
             <div style={{ fontSize: 26, fontWeight: 700, color: t.color, lineHeight: 1.25,
               fontVariantNumeric: "tabular-nums" }}
-              title={`${fmt.num(k[t.id] || 0)} KG`}>
+              title={tip(t.id)}>
               {abbr(k[t.id])}
             </div>
             <div style={{ fontSize: 15, color: "var(--muted)", lineHeight: 1 }}>↑</div>
@@ -634,8 +645,16 @@ function Headline({ k, jcLabel }) {
         ))}
       </div>
       <div style={{ marginTop: 12, textAlign: "center", fontSize: 11.5, color: "var(--muted)" }}>
-        Protected + At Risk + Critical = Projection · SOC counts firm orders and what has
-        already shipped this cycle
+        Protected + At Risk + Critical = Projection · SOC counts orders committed
+        <b> inside {jcFrom} to {jcTo}</b> plus anything already shipped in it
+        {b.overdue > 0 && (
+          <>
+            <br />
+            Your book also holds <b>{fmt.num(b.overdue)} KG</b> on {fmt.num(b.overdue_lines)} line
+            {b.overdue_lines === 1 ? "" : "s"} committed <b>before</b> this cycle — still owed, but
+            they cannot protect a cycle they predate.
+          </>
+        )}
       </div>
     </div>
   );
@@ -705,21 +724,45 @@ function ActionTable({ rows, total, onPick }) {
                   <td style={{ ...CELL }} title={`${r.customer} · ${r.collector || ""}`}>{r.customer}</td>
                   <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(r.projection)}</td>
                   <td style={{ ...CELL, textAlign: "right",
-                    color: r.soc > 0 ? "#3182ce" : "var(--muted)" }}>{fmt.num(r.soc)}</td>
+                    color: r.soc > 0 ? "#3182ce" : "var(--muted)" }}
+                    title={r.backlog > 0
+                      ? `${fmt.num(r.soc)} KG committed inside this cycle. A further `
+                        + `${fmt.num(r.backlog)} KG is on orders committed BEFORE it — owed, `
+                        + "but not protection for this cycle."
+                      : "Open orders committed inside this cycle, plus anything already shipped in it"}>
+                    {fmt.num(r.soc)}
+                    {r.backlog > 0 && (
+                      <span style={{ fontSize: 10.5, color: "#b7791f" }}> +{abbr(r.backlog)}</span>
+                    )}
+                  </td>
                   <td style={{ ...CELL, textAlign: "right",
                     color: r.other_soc > 0 ? "#c53030" : "var(--muted)" }}
                     title={r.other_customers ? `${r.other_customers} customers outside your book` : ""}>
                     {r.other_soc > 0 ? fmt.num(r.other_soc) : "—"}
                   </td>
                   <td style={{ ...CELL, textAlign: "right",
-                    color: r.atp < 0 ? "#c53030" : "#2f855a" }}>{fmt.num(r.atp)}</td>
+                    color: r.atp < 0 ? "#c53030" : "#2f855a" }}
+                    title={r.atp < 0
+                      ? "On hand minus everyone else's firm orders minus the safety level. "
+                        + "Negative usually means stock is below the safety level rather than "
+                        + "sold out — a date can still be promised by dipping into it."
+                      : "On hand minus everyone else's firm orders minus the safety level"}>
+                    {fmt.num(r.atp)}
+                  </td>
                   <td style={{ ...CELL, textAlign: "right", whiteSpace: "nowrap",
                     color: r.commit_date ? (r.delay_days > 0 ? "#c53030" : "#2f855a") : "var(--muted)",
                     fontWeight: r.commit_date ? 600 : 400 }}
                     title={r.commit_date
                       ? (r.delay_days > 0 ? `${r.delay_days} days after it is needed` : "in time")
+                        + (r.breaches_msl
+                          ? " — but only by taking stock below the safety level, which is why ATP reads negative"
+                          : "")
                       : "no production job and no open PO — no date can be given"}>
                     {r.commit_date || "no date"}
+                    {r.commit_date && r.breaches_msl && (
+                      <span style={{ color: "#b7791f", fontWeight: 700 }}
+                        title="Meeting this dips below the safety level"> *</span>
+                    )}
                   </td>
                   <td style={{ ...CELL }} title={rk.hint}>
                     <span style={{ color: rk.color, fontWeight: 600, fontSize: 11.5 }}>
@@ -1281,31 +1324,37 @@ export default function SupplyPosition({ session, isAdmin }) {
           </div>
         </div>
       ) : (
-        <DashGrid storageKey={`supplypos_layout_v1:${me || "anon"}`} defaults={DASH_DEFAULTS}
-          expanded={expandedCards}
-          remoteLayouts={savedLayout.data?.layouts || null}
-          userLayouts={savedLayout.data?.user_layouts || null}
-          canSaveDefault={isAdmin}
-          onSaveDefault={(l) => api.saveDashboardLayout("supplypos", l)}
-          onSaveUser={me ? (l) => api.saveDashboardLayout("supplypos", l, me) : undefined}>
-
-          <div key="headline"><Headline k={k} jcLabel={data.jc_label} /></div>
-          <div key="action">
+        <>
+          {/* fixed section — deliberately OUTSIDE the grid so these two cannot be
+              dragged or resized; the movable cards start below them */}
+          <div style={{ marginBottom: 14 }}>
+            <Headline k={k} jcLabel={data.jc_label}
+              jcFrom={data.jc_from} jcTo={data.jc_to} />
+          </div>
+          <div style={{ marginBottom: 14 }}>
             <ActionTable rows={rows} total={data.total_rows} onPick={setSel} />
           </div>
-          <div key="exposure">
-            <ExposureCard data={data} rows={rows} idParams={idParams} onPick={setSel}
-              metric={expMetric} setMetric={setExpMetric} view={expView} setView={setExpView} />
-          </div>
-          <div key="supply">
-            <SupplyCard items={items} idParams={idParams} onPick={setItem}
-              metric={supMetric} setMetric={setSupMetric} view={supView} setView={setSupView} />
-          </div>
-          <div key="competing">
-            <CompetingCard data={data} idParams={idParams}
-              metric={cmpMetric} setMetric={setCmpMetric} view={cmpView} setView={setCmpView} />
-          </div>
-        </DashGrid>
+
+          <DashGrid storageKey={`supplypos_layout_v1:${me || "anon"}`} defaults={DASH_DEFAULTS}
+            expanded={expandedCards}
+            remoteLayouts={savedLayout.data?.layouts || null}
+            userLayouts={savedLayout.data?.user_layouts || null}
+            canSaveDefault={isAdmin}
+            onSaveDefault={(l) => api.saveDashboardLayout("supplypos", l)}
+            onSaveUser={me ? (l) => api.saveDashboardLayout("supplypos", l, me) : undefined}>
+
+          {/* the card must be the DIRECT grid child: every sizing rule is
+              .dash-item > .card, so an extra wrapper stops the card (and with it
+              the chart inside) from stretching to the resized slot */}
+          <ExposureCard key="exposure" data={data} rows={rows} idParams={idParams}
+            onPick={setSel} metric={expMetric} setMetric={setExpMetric}
+            view={expView} setView={setExpView} />
+          <SupplyCard key="supply" items={items} idParams={idParams} onPick={setItem}
+            metric={supMetric} setMetric={setSupMetric} view={supView} setView={setSupView} />
+          <CompetingCard key="competing" data={data} idParams={idParams}
+            metric={cmpMetric} setMetric={setCmpMetric} view={cmpView} setView={setCmpView} />
+          </DashGrid>
+        </>
       )}
       <WhyModal r={sel} onClose={() => setSel(null)} />
       <ItemModal target={item} idParams={idParams} onClose={() => setItem(null)} />
@@ -1316,7 +1365,9 @@ export default function SupplyPosition({ session, isAdmin }) {
         projecting that item is competing for the same pool, so the headline counts each
         item's available supply once. Commit dates built on an open purchase order are
         estimated from its order date plus our own average lead time; CRM holds no expected
-        arrival date. Required dates are accurate to a half-cycle.
+        arrival date. Required dates are accurate to a half-cycle. A commit date marked
+        <b> *</b> can only be met by taking stock below the safety level — that is usually why
+        ATP reads negative on the same row.
       </div>
     </>
   );
