@@ -23,6 +23,34 @@ migration plan that keeps the app working at every step.
 | order_commit (**dbo.SocPendingDetails**, CRM's daily pending-SOC snapshot) | stg_order_commit (whole pending book: committed + rescheduled + customer-requested dates, reasons, warehouse note, executive, segments) | **Commitment Risk** page (see `db/migrate_commit.sql`) |
 | projection_customer (SCBusinessMonthlyPlanDtls, JC1..planning JC) | stg_projection_customer (customer × item × collector × JC, week1/week2 split, mc_code from the customer's primary site, item_code from itemmasters) | **Demand Protection** page (see `db/migrate_demand_ledger.sql`) |
 
+**Promise Dates — the supply timeline.** Per item, every dated supply event goes on
+one ladder and the company's dated firm orders burn it down: stock on hand today,
+production (saved-plan job end + `receipt_std_lead_days`), and open POs. From the walk:
+`ctp` (first date the running balance covers what is needed), `risk_date` (first date it
+goes negative), `days_to_risk`, and `slip_days = ctp - required`.
+
+Four rules that are easy to get wrong:
+
+* **A node is always evaluated at TODAY.** Seeding the promise from the opening balance
+  ignored orders already past due — they are applied today and must consume stock before
+  anything can be promised out of it. Getting this wrong wrongly promised 16 items
+  "available now".
+* **Inbound PO arrival is MODELLED, never promised.** `BiPoDetails` has no
+  expected-arrival column, so arrival = po_date + the item's average lead time from our
+  own receipt history (median 14 days). Every such event carries `estimate=True` and the
+  UI marks the date `~`.
+* **MSL is a warning here, not a wall.** Phase 2's ATP subtracts it ("how much is safe to
+  plan against"); a promise date answers "when can we physically deliver", and 45% of
+  exposed items already sit below their safety level. The promise is made and
+  `breaches_msl` is flagged.
+* **The requirement is dated to a half-cycle.** A projection carries no day-level date —
+  only which half of the JC the planner used. Day-level slippage exists only where a
+  CUSTOMER requested date does, and that lives on order lines.
+
+Coverage ceiling: only 83 of 347 exposed items carry any forward supply (34 production,
+49 inbound). The rest are reported as "no dated supply" rather than given an invented
+date — nothing planned is visible to us, which is not the same as cannot be supplied.
+
 **Supply Competition — the ATP rule.** Per item, company-wide:
 `atp = on_hand - firm_total - msl` and `atp_for_me = on_hand - firm_others - msl`;
 a persona's exposure is `max(0, my_unprotected - max(0, atp_for_me))`. Three things
