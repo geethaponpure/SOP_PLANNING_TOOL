@@ -9,13 +9,14 @@ import "react-resizable/css/styles.css";
 // keeps its place across reloads (and across cards being added or removed).
 // The saved arrangement lives in localStorage per `storageKey`, per breakpoint.
 //
-// Dragging is by the card header; anything interactive (chart canvas, table,
-// button, input) is excluded via draggableCancel so cross-filter clicks, table
-// scrolling and the Chart/Table toggles keep working normally.
+// Dragging is by a thin band around the card's EDGES only (the four strips
+// below). Making the whole header a handle meant the move cursor followed the
+// pointer over every title and number and text could not be selected or
+// copied — so the card interior is now left completely alone.
 
 const COLS = { lg: 12, md: 8, sm: 4, xs: 2 };
 const BREAKPOINTS = { lg: 1280, md: 960, sm: 680, xs: 0 };
-const CANCEL = "button, a, input, select, textarea, canvas, table, .tbl-wrap, .searchbox";
+const HANDLE = ".dash-drag";
 
 const keyOf = (child) => String(child.key ?? "").replace(/^\.\$/, "");
 
@@ -28,6 +29,46 @@ function flatten(nodes) {
     if (c.type === React.Fragment) out.push(...flatten(c.props.children));
     else out.push(c);
   });
+  return out;
+}
+
+// Reconcile a saved layout with the cards actually on screen, then apply any
+// expansion. Pure and exported so the behaviour can be tested without a DOM:
+// an expanded card takes the FULL row (x:0, w:cols) and the height its content
+// needs, while every other card keeps its saved place.
+export function computeLayout(arr, ids, defaults, cols, expandedH = {}) {
+  const known = new Map((arr || []).map((l) => [l.i, l]));
+  const kept = ids.filter((id) => known.has(id)).map((id) => known.get(id));
+  const missing = ids.filter((id) => !known.has(id));
+  const nextY = kept.reduce((m, l) => Math.max(m, l.y + l.h), 0);
+  const all = [
+    ...kept,
+    ...buildLayout(missing, defaults, cols).map((l) => ({ ...l, y: l.y + nextY })),
+  ];
+
+  // Expanding a card must KEEP IT IN ITS ROW and move its row-mate down. Doing
+  // this explicitly matters for a right-hand card: widening it to the full row
+  // puts it at x:0 on top of its left neighbour, and the grid's own collision
+  // resolution is just as likely to push the EXPANDED card below the one the
+  // user just clicked — so it would appear to jump rows.
+  let out = all;
+  for (const [id, want] of Object.entries(expandedH)) {
+    const me = out.find((l) => l.i === id);
+    if (!me) continue;
+    const grown = { ...me, x: 0, w: cols, h: want || Math.max(me.h, 13) };
+    const bottom = grown.y + grown.h;
+    // Everything not entirely above the expanded card moves as ONE BLOCK, so
+    // the rows below keep their spacing. (Clamping each card to `bottom`
+    // instead would stack separate rows on top of each other.)
+    const displaced = out.filter((l) => l.i !== id && l.y + l.h > grown.y);
+    const delta = displaced.length
+      ? bottom - Math.min(...displaced.map((l) => l.y)) : 0;
+    out = out.map((l) => {
+      if (l.i === id) return grown;
+      if (l.y + l.h <= grown.y) return l;          // entirely above — untouched
+      return { ...l, y: l.y + delta };             // in the row or below — shifts down
+    });
+  }
   return out;
 }
 
@@ -108,22 +149,10 @@ export default function DashGrid({
         const from = (Array.isArray(before) ? before : [before]).find((b) => known.has(b));
         if (from) known.set(now, { ...known.get(from), i: now });
       }
-      const kept = ids.filter((id) => known.has(id)).map((id) => known.get(id));
-      const missing = ids.filter((id) => !known.has(id));
-      const nextY = kept.reduce((m, l) => Math.max(m, l.y + l.h), 0);
-      out[bp] = [
-        ...kept,
-        ...buildLayout(missing, defaults, cols).map((l) => ({ ...l, y: l.y + nextY })),
-      ].map((l) => (expandedSet.has(l.i)
-        // A card switched to its table view takes the whole row so the columns
-        // are readable, and only as much HEIGHT as its rows need — forcing a
-        // fixed height left a short table stranded in a mostly empty card.
-        // The user's own size comes back when they switch to the chart.
-        ? { ...l, x: 0, w: cols, h: expandedH[l.i] || Math.max(l.h, 13) }
-        : l));
+      out[bp] = computeLayout([...known.values()], ids, defaults, cols, expandedH);
     }
     return out;
-  }, [base, ids, defaults, expandedSet, renames]);
+  }, [base, ids, defaults, expandedH, renames]);
 
   const pending = React.useRef(null);
   const save = useCallback((_cur, all) => {
@@ -181,7 +210,7 @@ export default function DashGrid({
     <>
       <div className="dash-grid-bar">
         <span>
-          Drag a card by its header to move it · drag its bottom-right corner to resize ·
+          Drag a card by its edges to move it · drag its bottom-right corner to resize ·
           your arrangement saves automatically
         </span>
         {canSaveDefault && (
@@ -209,12 +238,20 @@ export default function DashGrid({
         rowHeight={30}
         margin={[14, 14]}
         containerPadding={[0, 0]}
-        draggableCancel={CANCEL}
+        draggableHandle={HANDLE}
         onLayoutChange={save}
         useCSSTransforms
       >
         {items.map((child) => (
-          <div key={keyOf(child)} className="dash-item">{child}</div>
+          <div key={keyOf(child)} className="dash-item">
+            {/* the only draggable surface: a narrow band on each edge, sitting
+                inside the card's padding so it never covers content or text */}
+            <span className="dash-drag dash-drag-t" aria-hidden />
+            <span className="dash-drag dash-drag-r" aria-hidden />
+            <span className="dash-drag dash-drag-b" aria-hidden />
+            <span className="dash-drag dash-drag-l" aria-hidden />
+            {child}
+          </div>
         ))}
       </ResponsiveGridLayout>
       )}

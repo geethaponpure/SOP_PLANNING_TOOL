@@ -6,7 +6,8 @@ import SmoothInput from "../components/SmoothInput.jsx";
 import DashGrid from "../components/DashGrid.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
-import { AlarmClock, CalendarDays, Download, Flame, Undo2, Zap } from "lucide-react";
+import { AlarmClock, CalendarCheck, CalendarDays, Download, Flame, PartyPopper,
+  ShieldCheck, Undo2, Zap } from "lucide-react";
 
 // Commitment Risk — every open order line the business has promised a date on,
 // classified purely by how that date stands against today. Same persona scoping,
@@ -112,6 +113,22 @@ function topLinesOption(rows) {
         return { value: m.balance, itemStyle: { borderRadius: [0, 6, 6, 0], color: grad(c + "66", c) } };
       }) }],
   };
+}
+
+// An empty risk card means nothing is late / nothing is due — that is the
+// outcome the page exists to produce, so it gets a proper "all clear" panel
+// rather than a blank chart or an empty table.
+export function AllClear({ icon: Icon, title, note, tone = "good" }) {
+  const c = tone === "good" ? "#2f855a" : "#3182ce";
+  return (
+    <div className="commit-allclear">
+      <span className="commit-allclear-badge" style={{ background: `${c}14`, color: c }}>
+        <Icon size={30} strokeWidth={1.8} />
+      </span>
+      <span className="commit-allclear-title" style={{ color: c }}>{title}</span>
+      <span className="commit-allclear-note">{note}</span>
+    </div>
+  );
 }
 
 // one table shape for every drill-down list on this page (self-contained search)
@@ -245,13 +262,15 @@ export default function CommitRisk({ session, isAdmin }) {
     () => api.commitRisk(idParams), [viewAs.username, viewAs.persona]);
 
   const [bucketSel, setBucketSel] = useState(null);           // risk drill-down
-  const [views, setViews] = useState({ risk: "chart", timeline: "chart",
-    rush: "table", emergency: "table", pushed: "chart" });
+  // every card opens as a CHART; the user switches the ones they want as tables
+  const CHART_VIEWS = { risk: "chart", timeline: "chart", rush: "chart",
+    emergency: "chart", pushed: "chart" };
+  const [views, setViews] = useState(CHART_VIEWS);
   const setView = (k) => (v) => setViews((s) => ({ ...s, [k]: v }));
   const [dlAll, setDlAll] = useState(false);
   useEffect(() => {
     setBucketSel(null);
-    setViews({ risk: "chart", timeline: "chart", rush: "table", emergency: "table", pushed: "chart" });
+    setViews(CHART_VIEWS);
   }, [viewAs.username, viewAs.persona]);
 
   const me = (u.user_code || u.username || "").trim();
@@ -399,12 +418,20 @@ export default function CommitRisk({ session, isAdmin }) {
                 tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
             </div>
           </div>
-          {views.risk === "chart" ? (
+          {k.lines === 0 ? (
+            <AllClear icon={PartyPopper}
+              title="No open commitments"
+              note="Every committed order line in your scope has been dispatched." />
+          ) : views.risk === "chart" ? (
             bucketSel
               ? <EChart className="echart-fill" option={bucketOpt} height="100%" />
               : <EChart className="echart-fill" option={riskOpt} height="100%" onEvents={riskEvents} />
           ) : bucketSel ? (
-            <LineTable rows={bucketRows} total={bucketTotal} />
+            bucketTotal === 0
+              ? <AllClear icon={ShieldCheck} tone="calm"
+                  title={`No lines are ${(RISK[bucketSel] || {}).label?.toLowerCase()}`}
+                  note="Nothing in your scope falls into this risk class right now." />
+              : <LineTable rows={bucketRows} total={bucketTotal} />
           ) : (
             <div className="tbl-wrap">
               <table className="proj-table" style={{ borderCollapse: "collapse", fontSize: 13 }}>
@@ -481,9 +508,15 @@ export default function CommitRisk({ session, isAdmin }) {
             <SegTabs size="sm" value={views.rush} onChange={setView("rush")}
               tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
           </div>
-          {views.rush === "chart"
-            ? <EChart className="echart-fill" option={rushOpt} height="100%" />
-            : <LineTable rows={rushRows} total={k.rush_lines} />}
+          {k.rush_lines === 0 ? (
+            <AllClear icon={CalendarCheck} tone="calm"
+              title="Nothing due in the next 48 hours"
+              note="No open line is committed for today or tomorrow — the dispatch desk has room to breathe." />
+          ) : views.rush === "chart" ? (
+            <EChart className="echart-fill" option={rushOpt} height="100%" />
+          ) : (
+            <LineTable rows={rushRows} total={k.rush_lines} />
+          )}
         </div>
 
         <div key="emergency" className="card"
@@ -501,9 +534,15 @@ export default function CommitRisk({ session, isAdmin }) {
             <SegTabs size="sm" value={views.emergency} onChange={setView("emergency")}
               tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
           </div>
-          {views.emergency === "chart"
-            ? <EChart className="echart-fill" option={emergencyOpt} height="100%" />
-            : <LineTable rows={emergencyRows} total={k.overdue_lines} />}
+          {k.overdue_lines === 0 ? (
+            <AllClear icon={PartyPopper}
+              title="Every commitment is being met"
+              note="Not a single open order line has passed its committed date — nothing is late in your scope." />
+          ) : views.emergency === "chart" ? (
+            <EChart className="echart-fill" option={emergencyOpt} height="100%" />
+          ) : (
+            <LineTable rows={emergencyRows} total={k.overdue_lines} />
+          )}
         </div>
 
         <div key="pushed" className="card">
@@ -517,9 +556,15 @@ export default function CommitRisk({ session, isAdmin }) {
             <SegTabs size="sm" value={views.pushed} onChange={setView("pushed")}
               tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
           </div>
-          {views.pushed === "chart"
-            ? <EChart className="echart-fill" option={reasonsOpt} height="100%" />
-            : <LineTable rows={pushedRows} total={k.pushed_lines} />}
+          {k.pushed_lines === 0 ? (
+            <AllClear icon={ShieldCheck}
+              title="No commitment has been moved"
+              note="Every open line still sits on the date it was first promised." />
+          ) : views.pushed === "chart" ? (
+            <EChart className="echart-fill" option={reasonsOpt} height="100%" />
+          ) : (
+            <LineTable rows={pushedRows} total={k.pushed_lines} />
+          )}
         </div>
       </DashGrid>
     </>

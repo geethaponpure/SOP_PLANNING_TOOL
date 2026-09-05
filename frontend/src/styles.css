@@ -1224,6 +1224,25 @@ tr.expander > td { background: #f7fafc; }
 .smooth-input:focus-within { outline: 2px solid rgba(42, 157, 143, 0.35); outline-offset: 1px; }
 .pagebar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 12px; }
 
+/* ── Adhoc Planning: one consistent vertical rhythm for the whole page ──────── */
+.adhoc-page { display: flex; flex-direction: column; gap: 16px; }
+.adhoc-page > .pagebar,
+.adhoc-page > .grid,
+.adhoc-page > .sub { margin: 0; }
+/* control bar: freeze-info chips on the left, JC-plan selector + run on the right */
+.adhoc-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 18px; }
+.adhoc-bar-actions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.adhoc-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--supply-wash, #f6f9fc); border: 1px solid var(--supply-line, #d7e2ed);
+  border-radius: 9px; padding: 7px 12px; font-size: 12.5px;
+}
+.adhoc-chip .k { color: var(--muted); font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.adhoc-chip .v { color: var(--navy); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* tabular figures so numeric columns align across every data table */
+td.num, th.num { font-variant-numeric: tabular-nums; }
+
 /* ---- stat cards with icon chip (status carried by the tinted icon, kit-style) ---- */
 .statcard { display: flex; align-items: center; gap: 14px; }
 .statcard .ic { width: 44px; height: 44px; border-radius: 11px; display: flex; align-items: center;
@@ -1786,7 +1805,21 @@ td.num b { color: var(--navy); }
 }
 /* the lift-on-hover would fight the grid's own transform — drop it in here */
 .dash-item > .card:hover { transform: none; }
-.dash-item .supply-dash-cardhead { cursor: move; }
+/* Only these four edge strips start a drag, so every bit of card content —
+   titles, numbers, table cells — stays selectable and copyable. They sit inside
+   the card's 20px padding, so they never overlap text. */
+.dash-drag { position: absolute; z-index: 3; cursor: move; }
+.dash-drag::after {          /* a faint tint on hover so the band is findable */
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: var(--navy, #1f3a5f); opacity: 0; transition: opacity 0.15s ease;
+}
+.dash-drag:hover::after { opacity: 0.05; }
+.dash-drag-t { top: 0; left: 0; right: 0; height: 14px; border-radius: var(--kit-radius, 14px) var(--kit-radius, 14px) 0 0; }
+.dash-drag-b { bottom: 0; left: 0; right: 0; height: 14px; border-radius: 0 0 var(--kit-radius, 14px) var(--kit-radius, 14px); }
+.dash-drag-l { top: 0; bottom: 0; left: 0; width: 14px; }
+.dash-drag-r { top: 0; bottom: 0; right: 0; width: 14px; }
+/* the resize corner must stay clickable through the bottom/right strips */
+.dash-item > .react-resizable-handle { z-index: 4; }
 /* header, toolbars and footnotes keep their natural height; the chart or table
    takes whatever is left, so resizing the card really does resize the chart */
 .dash-item > .card > * { flex: 0 0 auto; }
@@ -1794,6 +1827,11 @@ td.num b { color: var(--navy); }
 /* Tables size to their CONTENT and shrink (with a scrollbar) when the card is
    too short — stretching them left a tall empty box under a handful of rows. */
 .dash-item > .card > .tbl-wrap { flex: 0 1 auto; min-height: 0; max-height: none; }
+/* Switching a card to its table renders up to a few hundred rows in one go.
+   Letting the browser skip layout/paint for rows that are scrolled out of view
+   keeps that switch from dropping frames. Ignored by browsers without support. */
+.dash-item .tbl-wrap tbody tr { content-visibility: auto; contain-intrinsic-size: auto 34px; }
+
 /* headers stay put while the rows scroll inside the card */
 /* border-collapse drops the border on a sticky cell in some browsers, so the
    separating line is painted as an inset shadow instead */
@@ -1807,6 +1845,32 @@ td.num b { color: var(--navy); }
    they still read as a single row of chips. */
 .card-filters { display: flex; gap: 8px; flex-wrap: nowrap; align-items: flex-start; }
 .card-filters .radio-inputs { flex: 0 0 auto; }
+
+/* "all clear" panel — shown when a risk card has nothing to report */
+.commit-allclear {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; padding: 24px 16px; text-align: center;
+}
+/* Must match the specificity of `.dash-item > .card > *` (which sets
+   flex: 0 0 auto on every card child) — otherwise the panel keeps its natural
+   height, stays pinned to the top of the card and never centres. */
+.dash-item > .card > .commit-allclear { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.commit-allclear-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 62px; height: 62px; border-radius: 50%; margin-bottom: 6px;
+  animation: allclear-in 0.42s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+.commit-allclear-title { font-size: 15px; font-weight: 700; }
+.commit-allclear-note {
+  font-size: 12.5px; color: var(--muted); max-width: 46ch; line-height: 1.5;
+}
+@keyframes allclear-in {
+  from { opacity: 0; transform: scale(0.86); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .commit-allclear-badge { animation: none; }
+}
 
 /* per-card Excel download, pinned so it never reflows the header */
 .dash-export {
@@ -1838,6 +1902,19 @@ td.num b { color: var(--navy); }
   display: block; font-size: 10.5px; font-weight: 600; border-radius: 999px;
   padding: 3px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* react-grid-layout transitions `transform, width, height`. Animating the BOX
+   SIZE forces a layout + repaint of the card's contents on every frame — a
+   150-row table or a chart canvas — which is what made a right-hand card
+   stutter as it slid left and widened at the same time. Only the position
+   glides now (compositor-only); the size change lands immediately.
+   Selector is deliberately more specific than RGL's own so cascade order
+   between the two stylesheets cannot matter. */
+.dash-grid .dash-item.react-grid-item { transition-property: transform; }
+.dash-grid .dash-item.react-grid-item.react-draggable-dragging,
+.dash-grid .dash-item.react-grid-item.resizing { transition: none; }
+/* the card is briefly wider than its slot while it slides into place */
+.dash-grid { overflow-x: clip; }
 
 .react-grid-item.react-grid-placeholder {
   background: var(--navy, #1f3a5f); opacity: 0.12; border-radius: var(--kit-radius, 14px);

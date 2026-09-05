@@ -5,7 +5,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
-import { CalendarDays, Receipt, ArrowUp, BadgePlus, ShoppingCart } from "lucide-react";
+import { CalendarDays, Receipt, ArrowUp, BadgePlus, ShoppingCart, Play, Download } from "lucide-react";
 
 const NetCell = ({ v }) => <span className={v > 0 ? "num-pos" : "num-zero"}>{fmt.num(v)}</span>;
 
@@ -77,32 +77,33 @@ export default function AdhocPlanning() {
     .map((p) => p.segment3).filter(Boolean))].sort();
 
   return (
-    <>
-      <div className="card" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", padding: "12px 14px" }}>
+    <section className="adhoc-page">
+      <div className="card adhoc-bar">
         {[
           [<><CalendarDays size={14} /> Current JC</>, `JC${fz.jc} · ${fz.jc_from} → ${fz.jc_to} · FY ${fz.fy}`],
           [<><Receipt size={14} /> Pending-SOC window</>, `${fz.pending_from} → ${fz.pending_to}`],
         ].map(([k, v], i) => (
-          <span key={i} style={{ display: "inline-flex", gap: 6, alignItems: "baseline", background: "#F0F6FF",
-            border: "1px solid #CFE0FB", borderRadius: 8, padding: "5px 11px", fontSize: 12.5 }}>
-            <span style={{ color: "var(--muted)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>{k}</span>
-            <b style={{ color: "var(--navy)" }}>{v}</b>
+          <span key={i} className="adhoc-chip">
+            <span className="k">{k}</span>
+            <b className="v">{v}</b>
           </span>
         ))}
-        <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, margin: 0, fontSize: 13 }}>
-          Deduct RM from JC Plan:
-          <SelectBox className="searchbox" style={{ maxWidth: 260 }} value={planId} onChange={(e) => setPlanId(e.target.value)} disabled={!data.mysql_ready}>
-            <option value="">None (full stock)</option>
-            {plans.map((p) => <option key={p.plan_id} value={p.plan_id}>#{p.plan_id} · JC{p.jc_number} · {p.plan_datetime} · RM {fmt.num(p.planned_rm_qty)}</option>)}
-          </SelectBox>
-        </label>
-        <button className="btn" disabled={running || !data.mysql_ready}
-          title="Run adhoc evaluation and log each item to ADHOC_EVALUATION"
-          onClick={async () => { setRunning(true); try { const r = await api.adhocPlanningRun(planId || null); alert(`✓ Adhoc evaluation logged: ${r.logged?.written ?? 0} items to ADHOC_EVALUATION.`); } catch (e) { alert(e.message); } finally { setRunning(false); } }}>
-          {running ? "Running…" : "▶ Run & Log"}
-        </button>
+        <div className="adhoc-bar-actions">
+          <label style={{ display: "flex", alignItems: "center", gap: 8, margin: 0, fontSize: 13, color: "var(--muted)" }}>
+            Deduct RM from JC Plan
+            <SelectBox className="searchbox" style={{ maxWidth: 260 }} value={planId} onChange={(e) => setPlanId(e.target.value)} disabled={!data.mysql_ready}>
+              <option value="">None (full stock)</option>
+              {plans.map((p) => <option key={p.plan_id} value={p.plan_id}>#{p.plan_id} · JC{p.jc_number} · {p.plan_datetime} · RM {fmt.num(p.planned_rm_qty)}</option>)}
+            </SelectBox>
+          </label>
+          <button className="btn" disabled={running || !data.mysql_ready}
+            title="Run adhoc evaluation and log each item to ADHOC_EVALUATION"
+            onClick={async () => { setRunning(true); try { const r = await api.adhocPlanningRun(planId || null); alert(`✓ Adhoc evaluation logged: ${r.logged?.written ?? 0} items to ADHOC_EVALUATION.`); } catch (e) { alert(e.message); } finally { setRunning(false); } }}>
+            {running ? "Running…" : <><Play size={15} /> Run &amp; Log</>}
+          </button>
+        </div>
       </div>
-      {!data.mysql_ready && <div className="banner warn">MySQL store not ready — JC-plan deduction & logging need <code>backend/db/migrate_adhoc.sql</code> (run as root). Adhoc still evaluates on full stock.</div>}
+      {!data.mysql_ready && <div className="banner warn">MySQL store not ready — JC-plan deduction &amp; logging need <code>backend/db/migrate_adhoc.sql</code> (run as root). Adhoc still evaluates on full stock.</div>}
 
       <div className="grid cols-4">
         <div className="card statcard"><div className="ic"><Receipt size={22} /></div><Stat value={fmt.num(s.soc_items)} label="Post-freeze SOC items" /></div>
@@ -111,7 +112,7 @@ export default function AdhocPlanning() {
         <div className="card statcard amber"><div className="ic"><ShoppingCart size={22} /></div><Stat value={`${fmt.num(s.rms_to_buy)} · ${fmt.num(s.total_buy_qty)}`} label="Adhoc RMs to buy · KG" /></div>
       </div>
 
-      <div style={{ margin: "16px 0 8px" }}>
+      <div>
         <SegTabs value={mode}
           onChange={(m) => { setMode(m); setQ(""); if (m !== "product") { setSeg2(""); setSeg3(""); } }}
           tabs={[{ id: "product", label: "By SOC item" }, { id: "consolidated", label: "Consolidated RM (adhoc)" }]} />
@@ -142,7 +143,7 @@ export default function AdhocPlanning() {
         </span>
         <button className="btn" disabled={exporting}
           onClick={async () => { setExporting(true); try { await api.adhocPlanningExport(planId || null); } catch (e) { alert(e.message); } finally { setExporting(false); } }}>
-          {exporting ? "Exporting…" : "⤓ Download (Excel)"}
+          {exporting ? "Exporting…" : <><Download size={15} /> Download (Excel)</>}
         </button>
       </div>
 
@@ -238,7 +239,7 @@ export default function AdhocPlanning() {
           <Pagination {...pgP} />
         </div>
       )}
-      <div className="sub" style={{ marginTop: 8 }}>{s.adhoc_items} adhoc items ({fmt.num(s.adhoc_soc_qty)} KG SOC); consolidated to {s.consolidated_rms} RMs, {s.rms_to_buy} to buy.</div>
-    </>
+      <div className="sub">{s.adhoc_items} adhoc items ({fmt.num(s.adhoc_soc_qty)} KG SOC); consolidated to {s.consolidated_rms} RMs, {s.rms_to_buy} to buy.</div>
+    </section>
   );
 }
