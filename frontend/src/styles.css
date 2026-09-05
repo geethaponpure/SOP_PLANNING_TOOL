@@ -1240,6 +1240,14 @@ tr.expander > td { background: #f7fafc; }
 .adhoc-chip .k { color: var(--muted); font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .adhoc-chip .v { color: var(--navy); font-weight: 700; font-variant-numeric: tabular-nums; }
 
+/* filter bar stays on ONE row: the search flexes, everything else keeps its size */
+.adhoc-page .pagebar { flex-wrap: nowrap; }
+.adhoc-page .pagebar .smooth-input.searchbox { flex: 1 1 140px; width: auto; min-width: 110px; }
+.adhoc-page .pagebar .selectbox.searchbox { flex: 0 0 auto; }
+.adhoc-page .pagebar > label,
+.adhoc-page .pagebar > span,
+.adhoc-page .pagebar > .btn { flex: 0 0 auto; white-space: nowrap; }
+
 /* tabular figures so numeric columns align across every data table */
 td.num, th.num { font-variant-numeric: tabular-nums; }
 
