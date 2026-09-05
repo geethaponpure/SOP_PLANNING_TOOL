@@ -1246,7 +1246,31 @@ tr.expander > td { background: #f7fafc; }
 .adhoc-page .pagebar .selectbox.searchbox { flex: 0 0 auto; }
 .adhoc-page .pagebar > label,
 .adhoc-page .pagebar > span,
-.adhoc-page .pagebar > .btn { flex: 0 0 auto; white-space: nowrap; }
+.adhoc-page .pagebar > button { flex: 0 0 auto; white-space: nowrap; }
+
+/* clean on/off filter toggle (replaces a raw checkbox) */
+.filter-toggle {
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  padding: 8px 13px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+  background: #fff; color: var(--navy); border: 1px solid var(--border);
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.filter-toggle:hover { background: #f8fafc; border-color: #cbd5e0; }
+.filter-toggle .tick {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid var(--border);
+  color: transparent; background: #fff; transition: inherit;
+}
+.filter-toggle.on { background: #eaf4ec; border-color: #b7e1c4; color: var(--green); }
+.filter-toggle.on .tick { background: var(--green); border-color: var(--green); color: #fff; }
+
+/* count pill shown at the right of a filter bar */
+.count-pill {
+  display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap;
+  padding: 5px 11px; border-radius: 999px; font-size: 12px;
+  background: var(--supply-wash, #f6f9fc); border: 1px solid var(--supply-line, #e2e8f0); color: var(--muted);
+}
+.count-pill b { color: var(--navy); font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* tabular figures so numeric columns align across every data table */
 td.num, th.num { font-variant-numeric: tabular-nums; }

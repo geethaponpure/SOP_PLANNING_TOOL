@@ -5,7 +5,7 @@ import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox, Tag, Stat } from "../components/ui.jsx";
-import { CalendarDays, Receipt, ArrowUp, BadgePlus, ShoppingCart, Play, Download } from "lucide-react";
+import { CalendarDays, Receipt, ArrowUp, BadgePlus, ShoppingCart, Play, Download, Check } from "lucide-react";
 
 const NetCell = ({ v }) => <span className={v > 0 ? "num-pos" : "num-zero"}>{fmt.num(v)}</span>;
 
@@ -133,13 +133,15 @@ export default function AdhocPlanning() {
           </SelectBox>
         )}
         {mode === "product" && (
-          <label style={{ display: "flex", alignItems: "center", gap: 6, margin: 0, fontSize: 13 }}>
-            <input type="checkbox" style={{ width: "auto" }} checked={onlyAdhoc} onChange={(e) => setOnlyAdhoc(e.target.checked)} />
-            Adhoc only (exclude covered)
-          </label>
+          <button type="button" className={"filter-toggle" + (onlyAdhoc ? " on" : "")}
+            aria-pressed={onlyAdhoc} onClick={() => setOnlyAdhoc((v) => !v)}
+            title="Show only adhoc items (hide covered)">
+            <span className="tick"><Check size={12} /></span>
+            Adhoc only <span style={{ fontWeight: 400, color: "var(--muted)" }}>(exclude covered)</span>
+          </button>
         )}
-        <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
-          {mode === "product" ? `${products.length} items` : `${cons.length} RMs`}
+        <span className="count-pill" style={{ marginLeft: "auto" }}>
+          {mode === "product" ? <><b>{products.length}</b> items</> : <><b>{cons.length}</b> RMs</>}
         </span>
         <button className="btn" disabled={exporting}
           onClick={async () => { setExporting(true); try { await api.adhocPlanningExport(planId || null); } catch (e) { alert(e.message); } finally { setExporting(false); } }}>
