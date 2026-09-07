@@ -8,6 +8,7 @@ import { NAV, HIDDEN } from "../nav";
 import { api } from "../api";
 import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
 import { Users, Plus, User, KeyRound, Save } from "lucide-react";
+import Pagination, { usePagination } from "../components/Pagination.jsx";
 
 // grantable modules = the navigable pages (incl. User Master itself, so admins can be
 // created); hidden/non-navigable pages are not offered.
@@ -20,6 +21,10 @@ export default function UserMaster() {
   const [approver, setApprover] = useState(() => localStorage.getItem("um_approver") || "");
   const saveApprover = (v) => { setApprover(v); localStorage.setItem("um_approver", v); };
   const [tab, setTab] = useState("approved");   // "approved" | "crm"
+  // the two expanders live in the same button row as the tabs, so the parent owns
+  // their open state and the child components render only their panels
+  const [openDepts, setOpenDepts] = useState(false);
+  const [openLog, setOpenLog] = useState(false);
   const [pickFor, setPickFor] = useState(null); // user_code whose avatar picker is open
   const [expanded, setExpanded] = useState(null); // user_code whose detail row is open
 
@@ -69,14 +74,30 @@ export default function UserMaster() {
       </div>
 
       <div className="pagebar" style={{ marginTop: 12, gap: 8 }}>
-        <button className={tab === "approved" ? "chip active" : "chip"} style={{ display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => setTab("approved")}><Users size={15} /> Approved users ({approved.length})</button>
-        <button className={tab === "crm" ? "chip active" : "chip"} style={{ display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => setTab("crm")}><Plus size={15} /> Add CRM users</button>
+        <button className={"um-btn" + (tab === "approved" ? " is-active" : "")} onClick={() => setTab("approved")}>
+          <Users size={14} className="svg-icon" />
+          <span className="lable">Approved users ({approved.length})</span>
+        </button>
+        <button className={"um-btn" + (tab === "crm" ? " is-active" : "")} onClick={() => setTab("crm")}>
+          <Plus size={14} className="svg-icon" />
+          <span className="lable">Add CRM users</span>
+        </button>
+        {tab === "crm" && (
+          <button className={"um-btn" + (openDepts ? " is-active" : "")} onClick={() => setOpenDepts((o) => !o)}>
+            <span className="svg-icon" aria-hidden>{openDepts ? "▾" : "▸"}</span>
+            <span className="lable">Eligible departments ({(deptsA.data?.allowed || []).length})</span>
+          </button>
+        )}
+        <button className={"um-btn" + (openLog ? " is-active" : "")} onClick={() => setOpenLog((o) => !o)}>
+          <span className="svg-icon" aria-hidden>{openLog ? "▾" : "▸"}</span>
+          <span className="lable">User access change log (audit)</span>
+        </button>
       </div>
 
-      {tab === "crm" && <>
-        <AllowedDepartments deptsA={deptsA} onSaved={bump} />
-        <CrmPicker ver={ver} approver={approver} onAdded={bump} />
-      </>}
+      {tab === "crm" && <AllowedDepartments deptsA={deptsA} onSaved={bump} open={openDepts} />}
+      <AccessLog ver={ver} open={openLog} />
+
+      {tab === "crm" && <CrmPicker ver={ver} approver={approver} onAdded={bump} />}
 
       {tab === "approved" && <>
       {usersA.loading && <Loading what="approved users" />}
@@ -217,13 +238,11 @@ export default function UserMaster() {
         );
       })()}
 
-      <AccessLog ver={ver} />
     </>
   );
 }
 
-function AccessLog({ ver }) {
-  const [open, setOpen] = useState(false);
+function AccessLog({ ver, open }) {
   const { data, loading, error } = useAsync(() => (open ? api.userMaster.accessLog() : Promise.resolve({ log: [] })), [ver, open]);
   const ACTION = {
     approved: ["#E6F6EC", "Approved"], removed: ["#FFE5E5", "Removed"], status: ["#FFF4DA", "Status"],
@@ -231,14 +250,13 @@ function AccessLog({ ver }) {
     role: ["#E6E6FA", "SRDMS role"], password_set: ["#F3F0E8", "Password set"], password_reset: ["#F3F0E8", "Password reset"],
   };
   return (
-    <div style={{ marginTop: 20 }}>
-      <button className="chip" onClick={() => setOpen((o) => !o)}>{open ? "▾" : "▸"} User access change log (audit)</button>
+    <div style={{ marginTop: open ? 14 : 0 }}>
       {open && (
         <div style={{ marginTop: 6 }}>
           {loading && <Loading what="access log" />}
           {error && <ErrorBox msg={error} />}
           {data && (
-            <div className="tbl-wrap" style={{ maxHeight: 360, overflow: "auto" }}>
+            <div className="tbl-wrap" style={{ maxHeight: "56vh", overflow: "auto" }}>
               <table><thead><tr>
                 <th>When</th><th>User (id)</th><th>Action</th><th>Detail</th><th>Changed by</th>
               </tr></thead><tbody>
@@ -264,8 +282,7 @@ function AccessLog({ ver }) {
   );
 }
 
-function AllowedDepartments({ deptsA, onSaved }) {
-  const [open, setOpen] = useState(false);
+function AllowedDepartments({ deptsA, onSaved, open }) {
   const d = deptsA.data || { allowed: [], all: [] };
   const [sel, setSel] = useState(null);
   const allowed = sel ?? d.allowed;
@@ -277,13 +294,12 @@ function AllowedDepartments({ deptsA, onSaved }) {
   const save = async () => { try { await api.userMaster.setAllowedDepartments(allowed); setSel(null); onSaved(); alert("Eligible departments saved."); } catch (e) { alert(e.message); } };
   return (
     <div style={{ marginTop: 12 }}>
-      <button className="chip" onClick={() => setOpen((o) => !o)}>{open ? "▾" : "▸"} Eligible departments ({d.allowed.length})</button>
       {open && (
         <div className="card" style={{ padding: 12, marginTop: 6 }}>
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Only CRM users in these departments are offered for approval. Click to toggle.</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {(d.all.length ? d.all.map((x) => x.department) : d.allowed).map((name) => (
-              <span key={name} className={`chip ${allowed.includes(name) ? "active" : ""}`} onClick={() => toggle(name)}>
+              <span key={name} className={`dept-chip ${allowed.includes(name) ? "is-active" : ""}`} onClick={() => toggle(name)}>
                 {name}{d.all.length ? ` (${(d.all.find((x) => x.department === name) || {}).n})` : ""}
               </span>
             ))}
@@ -318,6 +334,9 @@ function CrmPicker({ ver, approver, onAdded }) {
     return () => { alive = false; };
   }, [ver, q]);
 
+  // 1200+ CRM users would render as one huge table, so page them client-side
+  const pg = usePagination(data?.users || [], [data, q], 50);
+
   const add = async (u) => {
     setBusy(u.user_code);
     try {
@@ -350,7 +369,7 @@ function CrmPicker({ ver, approver, onAdded }) {
           <table><thead><tr>
             <th>Name</th><th>Username</th><th>Code</th><th>Dept</th><th>Designation</th><th>Email</th><th>Mobile</th><th></th>
           </tr></thead><tbody>
-            {data.users.map((u, i) => (
+            {pg.pageRows.map((u, i) => (
               <tr key={u.line_id ?? u.user_code ?? i}>
                 <td><b>{u.name}</b></td><td style={{ fontSize: 12 }}>{u.username}</td><td style={{ fontSize: 12 }}>{u.user_code || "—"}</td>
                 <td style={{ fontSize: 12 }}>{u.department}</td><td style={{ fontSize: 12 }}>{u.designation}</td>
@@ -363,6 +382,7 @@ function CrmPicker({ ver, approver, onAdded }) {
             ))}
             {data.users.length === 0 && <tr><td colSpan={8}>No CRM users match.</td></tr>}
           </tbody></table>
+          <Pagination {...pg} />
         </div>
       )}
     </div>

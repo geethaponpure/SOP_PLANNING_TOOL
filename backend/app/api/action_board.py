@@ -33,9 +33,17 @@ from . import competition as _comp
 from . import demand as _dem
 from . import promise as _prom
 
-_PAYLOAD_V = 1
-# rows returned to the page; the export is uncapped
-_ROW_CAP = 300
+_PAYLOAD_V = 2
+# Rows returned to the page. The table's search and risk filters run in the
+# browser over exactly these rows, so anything trimmed here is invisible to them
+# while still appearing in the export — keep this generous enough to cover a real
+# persona in full (the largest carries ~600 action lines, ~400 KB of JSON).
+# Only Admin, which sees every persona at once, can still hit it.
+_ROW_CAP = 2000
+# item-level rows behind the supply card (its table is searchable too)
+_ITEM_CAP = 1000
+# roll-ups behind the exposure card
+_GROUP_CAP = 500
 
 RISK = [
     ("critical", "Critical"),
@@ -260,10 +268,11 @@ def build(username=None, email=None, admin=False, persona=None, jc=None) -> dict
     return {**base, "scope": _comp._scope_summary(persona_name, stype, mine),
             "kpis": kpis, "rows": action, "total_rows": len(action),
             "all_lines": len(rows),
-            "by_collector": by_collector[:60],
-            "by_item": by_item[:200],
-            "by_customer": by_customer[:200],
-            "items": item_rows[:200],
+            "by_collector": by_collector[:_GROUP_CAP],
+            "by_item": by_item[:_GROUP_CAP],
+            "by_customer": by_customer[:_GROUP_CAP],
+            "items": item_rows[:_ITEM_CAP],
+            "total_items": len(item_rows),
             "competing_by_collector": competing_coll,
             "competing_by_mc": competing_mc}
 

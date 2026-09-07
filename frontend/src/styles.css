@@ -416,6 +416,7 @@ body {
 .um-table-wrap {
   background: #fff; border: 1px solid var(--kit-hairline); border-radius: 10px; overflow: hidden;
   box-shadow: var(--kit-shadow);
+  margin-top: 14px;          /* clear of the button row above */
 }
 .um-table { width: 100%; border-collapse: collapse; font-family: "Lato", "Segoe UI", system-ui, sans-serif; }
 .um-table thead th {
@@ -1984,3 +1985,65 @@ td.num b { color: var(--navy); }
 .prod-gantt .gantt_grid_head_cell { font-weight: 700; color: #33415c; }
 .prod-gantt .gantt_task_content { font-size: 10.5px; font-weight: 600; }
 .prod-gantt .gantt_task_line { border-radius: 4px; }
+
+/* ---- User Master action/tab buttons ---- */
+.um-btn {
+  display: inline-flex; justify-content: center; align-items: center;
+  padding: 0 13px; gap: 7px;
+  height: 32px;
+  border: 1px solid #d9e0ea; background: #f7f9fc; border-radius: 16px; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.um-btn .lable {
+  line-height: 1; font-size: 12.5px; font-weight: 600; color: #33415c;
+  font-family: inherit; letter-spacing: .2px; white-space: nowrap;
+}
+.um-btn .svg-icon { color: #8497ad; flex: none; line-height: 1; font-size: 11px; }
+.um-btn:hover { background: #eef3f9; border-color: #c3d1e2; }
+.um-btn:hover .svg-icon { animation: flickering 2s linear infinite; }
+.um-btn:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+.um-btn:disabled { opacity: .55; cursor: not-allowed; }
+.um-btn.is-active { background: var(--navy); border-color: var(--navy); }
+.um-btn.is-active .lable, .um-btn.is-active .svg-icon { color: #fff; }
+
+@keyframes flickering {
+  0%   { opacity: 1; }
+  50%  { opacity: 1; }
+  52%  { opacity: 1; }
+  54%  { opacity: 0; }
+  56%  { opacity: 1; }
+  90%  { opacity: 1; }
+  92%  { opacity: 0; }
+  94%  { opacity: 1; }
+  96%  { opacity: 0; }
+  98%  { opacity: 1; }
+  99%  { opacity: 0; }
+  100% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .um-btn:hover .svg-icon { animation: none; } }
+
+/* ---- eligible-department toggle chips ---- */
+.dept-chip {
+  width: fit-content; min-width: 72px; height: 30px; padding: 0 10px;
+  border-radius: 5px;
+  border: 1.5px solid #E0E1E4;
+  box-shadow: 0px 0px 20px -20px;
+  cursor: pointer;
+  background-color: white;
+  transition: all 0.2s ease-in-out 0ms;
+  user-select: none;
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px; color: #33415c;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.dept-chip:hover { background-color: #F2F2F2; box-shadow: 0px 0px 20px -18px; }
+.dept-chip:active { transform: scale(0.95); }
+/* selected = included department — light blue fill so it reads at a glance */
+.dept-chip.is-active {
+  background-color: #E4EFFD;
+  border-color: #7FADE8;
+  color: #1B4F8F;
+  font-weight: 600;
+}
+.dept-chip.is-active:hover { background-color: #D5E6FB; border-color: #5E97DF; }
+@media (prefers-reduced-motion: reduce) { .dept-chip { transition: none; } }

@@ -452,7 +452,8 @@ function CardShell({ icon: Icon, title, sub, section, idParams, tabs, metric, se
   );
 }
 
-function SupplyCard({ items, idParams, onPick, metric, setMetric, view, setView }) {
+function SupplyCard({ items, idParams, onPick, metric, setMetric, view, setView,
+  totalItems = 0 }) {
   const M = SUPPLY_METRICS.find((x) => x.id === metric) || SUPPLY_METRICS[0];
   const supOpt = useMemo(() => supplyOption(items || []), [items]);
   const runOpt = useMemo(() => runoutOption(items || []), [items]);
@@ -472,7 +473,7 @@ function SupplyCard({ items, idParams, onPick, metric, setMetric, view, setView 
               const hit = exposed.slice(0, 12).slice().reverse()[e.dataIndex];
               if (hit) onPick(hit);
             } }} />
-        : <ItemSupplyTable rows={exposed} onPick={onPick} />;
+        : <ItemSupplyTable rows={exposed} onPick={onPick} totalItems={totalItems} />;
     }
     if (metric === "runout") {
       if (!runList.length) {
@@ -485,7 +486,7 @@ function SupplyCard({ items, idParams, onPick, metric, setMetric, view, setView 
               const hit = runList.slice(0, 14).slice().reverse()[e.dataIndex];
               if (hit) onPick(hit);
             } }} />
-        : <ItemSupplyTable rows={runList} onPick={onPick} />;
+        : <ItemSupplyTable rows={runList} onPick={onPick} totalItems={totalItems} />;
     }
     return <Empty title="Nothing in scope" note="No items to date for this cycle." />;
   };
@@ -499,7 +500,7 @@ function SupplyCard({ items, idParams, onPick, metric, setMetric, view, setView 
   );
 }
 
-function ItemSupplyTable({ rows, onPick }) {
+function ItemSupplyTable({ rows, onPick, totalItems = 0 }) {
   const [q, setQ] = useState("");
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -513,6 +514,10 @@ function ItemSupplyTable({ rows, onPick }) {
           placeholder="Search item…" />
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
           {fmt.num(shown.length)} items · click one for its supply picture
+          {totalItems > rows.length && (
+            <b style={{ color: "#b7791f" }}> · search covers the {fmt.num(rows.length)} shown
+              of {fmt.num(totalItems)}</b>
+          )}
         </span>
       </div>
       <div className="tbl-wrap">
@@ -779,8 +784,10 @@ function ActionTable({ rows, total, onPick }) {
         </table>
       </div>
       {total > rows.length && (
-        <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--muted)" }}>
-          Showing the {fmt.num(rows.length)} most exposed of {fmt.num(total)} — download for all.
+        <div style={{ marginTop: 8, fontSize: 11.5, color: "#b7791f", fontWeight: 600 }}>
+          Showing the {fmt.num(rows.length)} most exposed of {fmt.num(total)} lines — the search
+          and risk filters above only look at these {fmt.num(rows.length)}. Download for the
+          complete list.
         </div>
       )}
     </div>
@@ -1350,6 +1357,7 @@ export default function SupplyPosition({ session, isAdmin }) {
             onPick={setSel} metric={expMetric} setMetric={setExpMetric}
             view={expView} setView={setExpView} />
           <SupplyCard key="supply" items={items} idParams={idParams} onPick={setItem}
+            totalItems={data.total_items || items.length}
             metric={supMetric} setMetric={setSupMetric} view={supView} setView={setSupView} />
           <CompetingCard key="competing" data={data} idParams={idParams}
             metric={cmpMetric} setMetric={setCmpMetric} view={cmpView} setView={setCmpView} />
