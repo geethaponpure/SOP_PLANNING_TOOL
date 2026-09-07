@@ -70,8 +70,9 @@ function OrgEditor({ label, hint, value, onChange, allOrgs }) {
       <div className="sub">{list.length} organization{list.length === 1 ? "" : "s"} · {hint}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "8px 0", minHeight: 26 }}>
         {list.map((o) => (
-          <span key={o} className="chip" style={{ cursor: "default", fontSize: 11 }}>
-            {o} <span style={{ cursor: "pointer", color: "var(--red)", fontWeight: 700 }} title="remove" onClick={() => remove(o)}>×</span>
+          <span key={o} className="dept-chip is-active" style={{ cursor: "default" }}>
+            {o}
+            <span className="dept-chip-x" title="remove" onClick={() => remove(o)}>×</span>
           </span>
         ))}
         {list.length === 0 && <span style={{ fontSize: 12, color: "var(--muted)" }}>none</span>}

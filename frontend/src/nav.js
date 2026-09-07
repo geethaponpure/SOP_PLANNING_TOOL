@@ -48,5 +48,8 @@ export const NAV = [
 ];
 
 // pages hidden from the sidebar (not accessible)
+// commitrisk / demandprot / supplycomp / promisedates are parked for now — the
+// pages and their routes stay in the code, remove an id here to bring one back.
 export const HIDDEN = new Set(["overview", "dq", "validation", "forecasting", "segmentation", "jcplan",
-  "analytics", "kpis", "governance", "audit"]);
+  "analytics", "kpis", "governance", "audit",
+  "commitrisk", "demandprot", "supplycomp", "promisedates"]);

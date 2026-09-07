@@ -3,6 +3,7 @@ from ._deps import *
 from ..api import commit_export as _cx
 from ..api.commit import commit_risk, scoped_rows
 from ..api.dashboard import item_detail, my_dashboard, persona_users
+from ..api.rm_impact import rm_impact
 from ..api import dashboard_export as _dx
 from ..api import demand_export as _mx
 from ..api.demand import demand_protection, scoped_ledger
@@ -43,6 +44,15 @@ class LayoutIn(BaseModel):
 
 def _user_key(key: str, user: str) -> str:
     return f"{key}:{(user or '').strip().lower()}"
+
+
+@router.get("/api/my-dashboard/rm-impact")
+def get_rm_impact(username: str = "", email: str = "", admin: int = 0, persona: str = ""):
+    """RM price impact on finished goods. Gated to Division Head, Business Head
+    and Admin — purchase prices are not part of the sales permission model, so
+    every other persona gets allowed:false and no figures."""
+    return rm_impact(username=username or None, email=email or None,
+                     admin=bool(admin), persona=persona or None)
 
 
 @router.get("/api/my-dashboard/export")

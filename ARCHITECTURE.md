@@ -22,6 +22,7 @@ migration plan that keeps the app working at every step.
 | projection_rows (now JC1..current, not just the planning JC) | stg_projection_rows | **My Dashboard** projection-accuracy trend for collector-scoped personas |
 | order_commit (**dbo.SocPendingDetails**, CRM's daily pending-SOC snapshot) | stg_order_commit (whole pending book: committed + rescheduled + customer-requested dates, reasons, warehouse note, executive, segments) | **Commitment Risk** page (see `db/migrate_commit.sql`) |
 | projection_customer (SCBusinessMonthlyPlanDtls, JC1..planning JC) | stg_projection_customer (customer × item × collector × JC, week1/week2 split, mc_code from the customer's primary site, item_code from itemmasters) | **Demand Protection** page (see `db/migrate_demand_ledger.sql`) |
+| rm_price_moves (**PurchaseRequisitionDtls**: lastpoprice vs unit_price, 90-day window) | stg_rm_price_move (one row per RM, signed % computed here, placeholder/implausible rows flagged) | **RM Price Impact** card on My Dashboard (see `db/migrate_rm_price.sql`) |
 
 **Promise Dates — the supply timeline.** Per item, every dated supply event goes on
 one ladder and the company's dated firm orders burn it down: stock on hand today,
@@ -50,6 +51,25 @@ Four rules that are easy to get wrong:
 Coverage ceiling: only 83 of 347 exposed items carry any forward supply (34 production,
 49 inbound). The rest are reported as "no dated supply" rather than given an invented
 date — nothing planned is visible to us, which is not the same as cannot be supplied.
+
+**RM Price Impact — gated, and cleaned at sync.** `added cost per FG unit =
+SUM(BOM qty x price delta)`, then cost impact %, exposure per cycle and margin erosion.
+Four things it depends on:
+
+* **Visible to Division Head, Business Head and Admin only.** The FG/revenue half scopes
+  through the normal permission model, but supplier and purchase-price data does not
+  belong to it, so the whole card is gated server-side (`rm_impact.ALLOWED`) rather than
+  half-shown. Every other persona gets `allowed:false` and the card never renders.
+* **BOM quantity comes from the production workbook**, not CRM:
+  `PurchaseRequisationRawMaterial.quantity_per_assembly` is NULL on all 9,977 rows, and
+  the only populated alternative (`RDBomHdrs`) is an R&D BOM covering 13% of the affected
+  items. The production workbook covers 95%.
+* **Bad price rows are filtered at sync, not at read.** `lastpoprice <= 1.00` is a
+  placeholder and is dropped; a move beyond +/-100% is flagged `implausible` (12 of 365
+  increases, one claiming Rs 162.86 -> Rs 2,565.00, which alone produced a +425% "impact"
+  on a product using 0.15 kg of it). The card reports how many it set aside.
+* **CRM's `change_in_price_per` is unsigned** — a 4.8% FALL is stored as 1.000 — so the
+  percentage is computed from the two prices instead.
 
 **Supply Competition — the ATP rule.** Per item, company-wide:
 `atp = on_hand - firm_total - msl` and `atp_for_me = on_hand - firm_others - msl`;

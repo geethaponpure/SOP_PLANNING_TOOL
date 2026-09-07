@@ -7,7 +7,7 @@ import SmoothInput from "../components/SmoothInput.jsx";
 import DashGrid from "../components/DashGrid.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
-import { BarChart3, CalendarDays, CircleCheck, ClipboardList, Dna, Download, Eye, Package, Target, TrendingUp, TriangleAlert } from "lucide-react";
+import { BarChart3, CalendarDays, CircleCheck, ClipboardList, Dna, Download, Eye, Package, Target, TrendingUp, TriangleAlert, Factory } from "lucide-react";
 
 // My Dashboard — permission-scoped dispatch view. The backend resolves the
 // user's CRM data grants (stg_user_scope) and returns a compact cube
@@ -41,7 +41,46 @@ const DASH_DEFAULTS = {
   jcTrend:    { x: 0, y: 18, w: 6, h: 9 },
   status:     { x: 6, y: 18, w: 6, h: 9 },
   compare:    { x: 0, y: 45, w: 12, h: 12 },
+  // only rendered for Division Head / Business Head / Admin; the slot is simply
+  // unused for everyone else
+  rmImpact:   { x: 0, y: 57, w: 12, h: 12 },
 };
+// RM price impact: what a raw-material rise does to the finished goods that use
+// it. Gated server-side — this only renders when the API says allowed.
+const RM_BAND_COLOR = { ">5%": "#c53030", "3-5%": "#b7791f", "1-3%": "#3182ce", "<1%": "#90a1ac" };
+
+function rmBarOption(fgs, tt, anim) {
+  const top = fgs.filter((r) => r.impact_pct != null).slice(0, 12).slice().reverse();
+  return {
+    ...anim,
+    tooltip: { ...tt, trigger: "axis", axisPointer: { type: "shadow" },
+      formatter: (ps) => {
+        const r = top[ps[0].dataIndex] || {};
+        return `<b>${r.item}</b><br/>material cost <b>+${fmt.num(r.added_per_unit)}</b> per unit`
+          + (r.unit_cost ? ` on a cost of ${fmt.num(r.unit_cost)}` : "")
+          + `<br/><b>${r.impact_pct}%</b> cost impact`
+          + (r.exposure ? `<br/>exposure ${fmt.num(r.exposure)} per cycle` : "")
+          + `<br/><span style="color:#90a1ac">driven by ${r.rm_count} raw material`
+          + `${r.rm_count === 1 ? "" : "s"} · click for the detail</span>`;
+      } },
+    grid: { left: 8, right: 54, top: 8, bottom: 8, containLabel: true },
+    xAxis: { type: "value", axisLabel: { color: "#90a1ac", fontSize: 10, formatter: "{value}%" },
+      splitLine: { lineStyle: { color: "#edf2f7" } } },
+    yAxis: { type: "category", data: top.map((r) => r.item),
+      axisLabel: { color: "#414d55", fontSize: 11, width: 170, overflow: "truncate" },
+      axisTick: { show: false } },
+    series: [{
+      type: "bar", barMaxWidth: 18,
+      itemStyle: { borderRadius: [0, 4, 4, 0],
+        color: (o) => { const v = top[o.dataIndex].impact_pct;
+          return v > 5 ? "#c53030" : v > 3 ? "#b7791f" : v > 1 ? "#3182ce" : "#90a1ac"; } },
+      label: { show: true, position: "right", fontSize: 10.5, color: "#414d55",
+        formatter: (o) => `${o.value}%` },
+      data: top.map((r) => r.impact_pct),
+    }],
+  };
+}
+
 const abbr = (v) => {
   const n = Math.abs(v);
   if (n >= 1e7) return (v / 1e7).toFixed(n >= 1e8 ? 0 : 1) + "Cr";
@@ -193,6 +232,102 @@ function ProjCompareTable({ rows, onItem, jc }) {
 }
 
 // popup: one item's dispatched KG per JC (scoped) + projection reference lines
+// Which raw materials moved, by how much, and what each contributes to this
+// product's cost — the brief's section 5 drill-down.
+function RmDrill({ target, onClose }) {
+  useEffect(() => {
+    if (!target) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [target, onClose]);
+  if (!target) return null;
+  const r = target;
+  return createPortal(
+    <div className="modal-overlay" onMouseDown={onClose}>
+      <div className="modal-container" role="dialog" aria-modal="true"
+        style={{ maxWidth: 860, width: "94vw" }} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-container-header">
+          <div className="modal-container-title" style={{ minWidth: 0 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, overflow: "hidden" }}>
+              <Factory size={16} style={{ flex: "none" }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {r.item}
+              </span>
+            </span>
+          </div>
+          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="modal-container-body">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+            {[
+              ["Added material cost", `+${fmt.num(r.added_per_unit)} / unit`, "#c53030"],
+              ["This product's unit cost", r.unit_cost ? fmt.num(r.unit_cost) : "—", "#1f3a5f"],
+              ["Cost impact", r.impact_pct == null ? "—" : `+${r.impact_pct}%`, "#b7791f"],
+              ["Selling price", r.sell_price ? fmt.num(r.sell_price) : "—", "#1f3a5f"],
+              ["Margin erosion", r.margin_erosion_pts == null ? "—" : `−${r.margin_erosion_pts} pts`, "#c53030"],
+              ["Exposure / cycle", r.exposure ? fmt.num(r.exposure) : "—", "#c53030"],
+            ].map(([l, v, c]) => (
+              <div key={l} style={{ padding: "9px 12px", border: "1px solid var(--border)",
+                borderRadius: 6, minWidth: 132, flex: "1 1 132px" }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 3 }}>{l}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: c }}>{v}</div>
+              </div>
+            ))}
+          </div>
+
+          <h4 style={{ margin: "0 0 8px", fontSize: 13 }}>
+            The raw materials behind it
+            <span style={{ fontWeight: 400, fontSize: 11.5, color: "var(--muted)" }}>
+              {" "}— BOM quantity × the price move
+            </span>
+          </h4>
+          <div className="tbl-wrap" style={{ maxHeight: 320 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...HCELL, textAlign: "left" }}>Raw material</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>BOM qty</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>Previous</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>Current</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>Rise</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>Adds / unit</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>Moved</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(r.rms || []).map((m, i) => (
+                  <tr key={i}>
+                    <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}
+                      title={m.rm_code}>{m.rm}</td>
+                    <td style={{ ...CELL, textAlign: "right" }}>{m.bom_qty}</td>
+                    <td style={{ ...CELL, textAlign: "right", color: "var(--muted)" }}>{fmt.num(m.old_price)}</td>
+                    <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(m.new_price)}</td>
+                    <td style={{ ...CELL, textAlign: "right", fontWeight: 700, color: "#c53030" }}>
+                      +{m.pct}%
+                    </td>
+                    <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>+{fmt.num(m.added)}</td>
+                    <td style={{ ...CELL, textAlign: "right", whiteSpace: "nowrap",
+                      color: "var(--muted)" }}>{m.moved_on || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ marginTop: 12, fontSize: 11.5, color: "var(--muted)" }}>
+            Quantities come from the production BOM. Prices are the current requisition price
+            against the last PO price for the same material.
+          </div>
+        </div>
+      </div>
+    </div>, document.body);
+}
+
 function ItemGraphModal({ target, idParams, onClose }) {
   const { data, loading, error } = useAsync(
     () => (target ? api.myDashboardItem({ ...idParams, item: target.name, code: target.code || "" })
@@ -642,7 +777,7 @@ export default function Dashboard({ session, isAdmin }) {
   );
 
   const [metric, setMetric] = useState("qty");           // qty (KG) | value (₹)
-  const [shape, setShape] = useState({ coll: "bar", proj: "donut" });
+  const [shape, setShape] = useState({ coll: "bar" });
   const setSh = (k) => (v) => setShape((s) => ({ ...s, [k]: v }));
   const [sel, setSel] = useState({ collector: null });   // cross-filter
   const toggle = (k) => (name) => setSel((s) => ({ ...s, [k]: s[k] === name ? null : name }));
@@ -719,6 +854,16 @@ export default function Dashboard({ session, isAdmin }) {
   // both layers in one call: the app-level default + this user's own arrangement
   const me = (u.user_code || u.username || "").trim();
   const savedLayout = useAsync(() => api.dashboardLayout("mydash", me), [me]);
+  // Purchase prices are not part of the sales permission model, so this is gated
+  // server-side: everyone outside Division Head / Business Head / Admin gets
+  // allowed:false and the card is never rendered.
+  const rm = useAsync(() => api.myDashboardRmImpact(idParams),
+    [viewAs.username, viewAs.persona]);
+  const rmData = rm.data && rm.data.allowed ? rm.data : null;
+  const [rmView, setRmView] = useState("chart");
+  const [rmPick, setRmPick] = useState(null);
+  useEffect(() => { setRmView("chart"); setRmPick(null); },
+    [viewAs.username, viewAs.persona]);
 
   const idParams = useMemo(() => (viewAs.username
     ? { username: viewAs.username, persona: viewAs.persona }
@@ -734,8 +879,9 @@ export default function Dashboard({ session, isAdmin }) {
   }, [p, pipeQ]);
   const statusRows = useMemo(() => (p?.summary || []).map((s) => ({
     name: FLAGS[s.flag]?.label || s.flag, value: s.items, color: FLAGS[s.flag]?.color })), [p]);
-  const statusOpt = useMemo(() => distOption(statusRows, { shape: shape.proj, unit: "items", center: "items" }),
-    [statusRows, shape.proj]);
+  // Projection status is donut-only — no shape switch on this card.
+  const statusOpt = useMemo(() => distOption(statusRows, { shape: "donut", unit: "items", center: "items" }),
+    [statusRows]);
   const accGaugeOpt = useMemo(
     () => gaugeOption(p?.overall_accuracy_proj ?? null, "on projected items"), [p]);
   const volRatioOpt = useMemo(() => ratioOption([
@@ -816,9 +962,8 @@ export default function Dashboard({ session, isAdmin }) {
     }
     if (pipeView === "table") out.compare = fitRows(pipeRows.length, true);
     if (jcView === "table") out.jcTrend = fitRows((p?.jc_trend?.length || 0) + 1);
-    if (statusView === "table") {
-      out.status = statusFlag ? fitRows(flagRows.length, true) : fitRows((p?.summary || []).length);
-    }
+    // only the drill-down has a table view now; the card itself is always the donut
+    if (statusView === "table" && statusFlag) out.status = fitRows(flagRows.length, true);
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projView, projMetric, pipeView, jcView, statusView, statusFlag, flagRows.length,
@@ -1055,24 +1200,24 @@ export default function Dashboard({ session, isAdmin }) {
                       : <>items by flag · same ±20% band as the RM plan · click a slice for the items</>}
                   </div>
                 </div>
-                <div className="card-filters">
-                  {statusFlag ? (
+                {/* the top level is a plain donut — no shape / chart-table switches.
+                    The toggles belong to the drill-down, where the item list matters. */}
+                {statusFlag && (
+                  <div className="card-filters">
                     <button type="button" className="btn secondary" style={{ padding: "4px 10px", fontSize: 12 }}
                       onClick={() => { setStatusFlag(null); setStatusView("chart"); }}>
                       ← All statuses
                     </button>
-                  ) : (
-                    <SegTabs size="sm" value={shape.proj} onChange={setSh("proj")} tabs={SHAPE_DIST} />
-                  )}
-                  <SegTabs size="sm" value={statusView} onChange={setStatusView}
-                    tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
-                </div>
+                    <SegTabs size="sm" value={statusView} onChange={setStatusView}
+                      tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
+                  </div>
+                )}
               </div>
-              {statusView === "chart" ? (
-                statusFlag
-                  ? <EChart className="echart-fill" option={flagOpt} height="100%" />
-                  : <EChart className="echart-fill" option={statusOpt} height="100%" onEvents={statusEvents} />
-              ) : statusFlag ? (
+              {!statusFlag ? (
+                <EChart className="echart-fill" option={statusOpt} height="100%" onEvents={statusEvents} />
+              ) : statusView === "chart" ? (
+                <EChart className="echart-fill" option={flagOpt} height="100%" />
+              ) : (
                 <>
                   <div className="pagebar" style={{ marginBottom: 10 }}>
                     <SmoothInput className="searchbox" placeholder="Search item code / name…"
@@ -1116,32 +1261,6 @@ export default function Dashboard({ session, isAdmin }) {
                     </table>
                   </div>
                 </>
-              ) : (
-                <div className="tbl-wrap">
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                    <thead>
-                      <tr>
-                        <th style={{ ...HCELL, textAlign: "left" }}>Status</th>
-                        <th style={{ ...HCELL, textAlign: "right" }}>Items</th>
-                        <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales (KG)</th>
-                        <th style={{ ...HCELL, textAlign: "left" }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(p.summary || []).map((sm, i) => (
-                        <tr key={i} onClick={() => { setStatusFlag(sm.flag); setStatusView("table"); }}
-                          style={{ cursor: "pointer" }} title="Click to see these items">
-                          <td style={{ ...CELL, fontWeight: 600, color: (FLAGS[sm.flag] || {}).color }}>
-                            ● {(FLAGS[sm.flag] || {}).label || sm.flag}
-                          </td>
-                          <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(sm.items)}</td>
-                          <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(sm.kg)}</td>
-                          <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)" }}>view items →</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
               )}
             </div>
 
@@ -1180,10 +1299,112 @@ export default function Dashboard({ session, isAdmin }) {
 
         </>
       )}
+
+        {rmData && (
+          <div key="rmImpact" className="card">
+            <div className="supply-dash-cardhead">
+              <div>
+                <h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                  <Factory size={16} /> RM price impact on FG
+                </h3>
+                <div className="sub">
+                  what raw-material price rises in the last {rmData.window_days} days do to the
+                  finished goods that use them · {fmt.num(rmData.kpis.rms_up)} of{" "}
+                  {fmt.num(rmData.kpis.rms_up_all)} risen materials appear in a BOM
+                  {rmData.kpis.flagged_out > 0
+                    ? ` · ${rmData.kpis.flagged_out} implausible price rows excluded`
+                    : ""}
+                </div>
+              </div>
+              <div className="card-filters">
+                <SegTabs size="sm" value={rmView} onChange={setRmView}
+                  tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(126px, 1fr))",
+              gap: 8, marginBottom: 12 }}>
+              {[
+                ["FG products impacted", fmt.num(rmData.kpis.fgs_impacted), "#1f3a5f",
+                  `${fmt.num(rmData.kpis.with_cost)} carry a unit cost, so the rest show the rupee increase only`],
+                ["Avg FG cost impact", rmData.kpis.avg_impact_pct == null ? "—"
+                  : `+${rmData.kpis.avg_impact_pct}%`, "#b7791f",
+                  "weighted by dispatch volume, not a plain average"],
+                ["Cost exposure / cycle", abbr(rmData.kpis.exposure_per_cycle), "#c53030",
+                  "added material cost on the recent 3-cycle dispatch run rate"],
+                ["Margin erosion", rmData.kpis.margin_erosion_pts == null ? "—"
+                  : `${rmData.kpis.margin_erosion_pts} pts`, "#c53030",
+                  `against ${abbr(rmData.kpis.revenue_per_cycle)} of revenue per cycle on those products`],
+              ].map(([label, value, color, hint]) => (
+                <div key={label} title={hint}
+                  style={{ padding: "9px 11px", border: "1px solid var(--border)", borderRadius: 6 }}>
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 3 }}>{label}</div>
+                  <div style={{ fontSize: 17, fontWeight: 700, color,
+                    fontVariantNumeric: "tabular-nums" }}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            {rmData.kpis.fgs_impacted === 0 ? (
+              <div style={{ padding: "26px 16px", textAlign: "center", color: "#2f855a" }}>
+                <CircleCheck size={26} strokeWidth={1.8} />
+                <div style={{ fontSize: 14, fontWeight: 700, marginTop: 6 }}>
+                  No raw-material rise reaches your products
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>
+                  Nothing that went up in the last {rmData.window_days} days appears in a BOM
+                  for anything in your scope.
+                </div>
+              </div>
+            ) : rmView === "chart" ? (
+              <EChart className="echart-fill" height="100%" option={rmBarOption(rmData.fgs, TT, ANIM)}
+                onEvents={{ click: (e) => {
+                  const top = rmData.fgs.filter((r) => r.impact_pct != null)
+                    .slice(0, 12).slice().reverse();
+                  if (top[e.dataIndex]) setRmPick(top[e.dataIndex]);
+                } }} />
+            ) : (
+              <div className="tbl-wrap">
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...HCELL, textAlign: "left" }}>Finished good</th>
+                      <th style={{ ...HCELL, textAlign: "left" }}>Segment</th>
+                      <th style={{ ...HCELL, textAlign: "right" }}
+                        title="Extra material cost as a share of the product's own unit cost">Impact %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rmData.fgs.map((r) => (
+                      <tr key={r.key} onClick={() => setRmPick(r)} style={{ cursor: "pointer" }}
+                        title="Click for the raw materials behind this">
+                        <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>{r.item}</td>
+                        <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)" }}>
+                          {r.segment3 || r.segment2 || "—"}
+                        </td>
+                        <td style={{ ...CELL, textAlign: "right", fontWeight: 700,
+                          color: r.impact_pct == null ? "var(--muted)"
+                            : r.impact_pct > 5 ? "#c53030" : r.impact_pct > 3 ? "#b7791f" : "#3182ce" }}>
+                          {r.impact_pct == null ? "—" : `+${r.impact_pct}%`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {rmData.total_fgs > rmData.fgs.length && (
+              <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--muted)" }}>
+                Showing the {fmt.num(rmData.fgs.length)} most impacted of {fmt.num(rmData.total_fgs)}.
+              </div>
+            )}
+          </div>
+        )}
       </DashGrid>
       </div>
 
       <ItemGraphModal target={itemPop} idParams={idParams} onClose={() => setItemPop(null)} />
+      <RmDrill target={rmPick} onClose={() => setRmPick(null)} />
     </>
   );
 }

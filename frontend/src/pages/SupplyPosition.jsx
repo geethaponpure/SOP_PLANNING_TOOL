@@ -20,6 +20,9 @@ import { ArrowRight, Boxes, CircleAlert, Download, FileCheck2, Hourglass,
 // resize from here and can save their own; an admin can save a new app default.
 // (the headline strip and the action list render outside the grid — they are
 //  fixed, not movable/resizable; only the cards below are arrangeable)
+// The three chart cards (exposure / supply / competing) are parked for now:
+// flip this to true to bring the whole grid back, nothing else was removed.
+const SHOW_CHART_CARDS = false;
 const DASH_DEFAULTS = {
   exposure: { x: 0, y: 0, w: 6, h: 11 },
   supply: { x: 6, y: 0, w: 6, h: 11 },
@@ -300,7 +303,8 @@ const SUPPLY_METRICS = [
     sub: "on hand against every claim on it, for the items you are most exposed on" },
   { id: "runout", label: "Days to risk", icon: Hourglass,
     title: "When the stock runs out",
-    sub: "the date committed orders across the company exhaust what is on hand" },
+    sub: "the date committed orders across the company exhaust what is on hand — "
+      + "\"today\" means the overdue book already consumes it" },
 ];
 const COMPETING_METRICS = [
   { id: "collector", label: "By collector", icon: Users,
@@ -352,33 +356,49 @@ function supplyOption(items) {
   };
 }
 
+const runColor = (d) => (d <= 7 ? "#c53030" : d <= 30 ? "#b7791f" : "#3182ce");
+
+// Most items run out on day 0 (overdue orders are consumed today), and a bar of
+// length zero draws nothing. A dot on a day axis still marks zero clearly.
 function runoutOption(items) {
   const top = items.filter((r) => r.days_to_risk != null)
-    .slice().sort((a, b) => a.days_to_risk - b.days_to_risk).slice(0, 14).reverse();
+    .slice()
+    // soonest first; among the many that run out today, biggest exposure first
+    .sort((a, b) => a.days_to_risk - b.days_to_risk || b.my_unprotected - a.my_unprotected)
+    .slice(0, 14).reverse();
+  const maxD = Math.max(7, ...top.map((r) => r.days_to_risk));
   return {
     ...ANIM,
     tooltip: { ...TT, trigger: "axis", axisPointer: { type: "shadow" },
       formatter: (ps) => {
         const r = top[ps[0].dataIndex] || {};
         return `<b>${r.item}</b><br/>committed orders exhaust the stock on <b>${r.risk_date}</b>`
-          + `<br/>${r.days_to_risk} days from today`
-          + `<br/><span style="color:#90a1ac">on hand ${fmt.num(r.on_hand)} KG</span>`;
+          + `<br/>${r.days_to_risk === 0 ? "already exhausted today" : `${r.days_to_risk} days from today`}`
+          + `<br/><span style="color:#90a1ac">on hand ${fmt.num(r.on_hand)} KG`
+          + ` · your unprotected ${fmt.num(r.my_unprotected)} KG</span>`;
       } },
-    grid: { left: 8, right: 52, top: 8, bottom: 8, containLabel: true },
-    xAxis: { type: "value", axisLabel: { color: "#90a1ac", fontSize: 10 },
+    grid: { left: 8, right: 78, top: 10, bottom: 8, containLabel: true },
+    xAxis: { type: "value", min: 0, max: maxD, name: "days from today",
+      nameLocation: "middle", nameGap: 26,
+      nameTextStyle: { color: "#90a1ac", fontSize: 10 },
+      axisLabel: { color: "#90a1ac", fontSize: 10 },
       splitLine: { lineStyle: { color: "#edf2f7" } } },
     yAxis: { type: "category", data: top.map((r) => r.item),
       axisLabel: { color: "#414d55", fontSize: 11, width: 160, overflow: "truncate" },
-      axisTick: { show: false } },
-    series: [{
-      type: "bar", barMaxWidth: 18,
-      itemStyle: { borderRadius: [0, 4, 4, 0],
-        color: (o) => { const d = top[o.dataIndex].days_to_risk;
-          return d <= 7 ? "#c53030" : d <= 30 ? "#b7791f" : "#3182ce"; } },
-      label: { show: true, position: "right", fontSize: 10.5, color: "#414d55",
-        formatter: (o) => `${o.value}d` },
-      data: top.map((r) => r.days_to_risk),
-    }],
+      axisTick: { show: false }, splitLine: { show: true, lineStyle: { color: "#f4f7f9" } } },
+    series: [
+      // a faint stem so the eye can travel from the item to its dot
+      { type: "bar", barWidth: 2, silent: true, z: 1,
+        itemStyle: { color: "#e6ecf1" },
+        data: top.map((r) => r.days_to_risk) },
+      { type: "scatter", symbolSize: 13, z: 2,
+        itemStyle: { color: (o) => runColor(top[o.dataIndex].days_to_risk),
+          borderColor: "#fff", borderWidth: 1.5 },
+        label: { show: true, position: "right", distance: 8, fontSize: 10.5,
+          color: "#414d55", fontWeight: 600,
+          formatter: (o) => (o.value === 0 ? "today" : `${o.value}d`) },
+        data: top.map((r) => r.days_to_risk) },
+    ],
   };
 }
 
@@ -1338,10 +1358,11 @@ export default function SupplyPosition({ session, isAdmin }) {
             <Headline k={k} jcLabel={data.jc_label}
               jcFrom={data.jc_from} jcTo={data.jc_to} />
           </div>
-          <div style={{ marginBottom: 14 }}>
+          <div style={{ marginBottom: SHOW_CHART_CARDS ? 14 : 0 }}>
             <ActionTable rows={rows} total={data.total_rows} onPick={setSel} />
           </div>
 
+          {SHOW_CHART_CARDS && (
           <DashGrid storageKey={`supplypos_layout_v1:${me || "anon"}`} defaults={DASH_DEFAULTS}
             expanded={expandedCards}
             remoteLayouts={savedLayout.data?.layouts || null}
@@ -1362,6 +1383,7 @@ export default function SupplyPosition({ session, isAdmin }) {
           <CompetingCard key="competing" data={data} idParams={idParams}
             metric={cmpMetric} setMetric={setCmpMetric} view={cmpView} setView={setCmpView} />
           </DashGrid>
+          )}
         </>
       )}
       <WhyModal r={sel} onClose={() => setSel(null)} />

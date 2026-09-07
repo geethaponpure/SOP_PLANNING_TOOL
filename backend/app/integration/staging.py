@@ -992,6 +992,87 @@ def commit_holders(item_keys, stale_cutoff: str) -> list[dict]:
         return []
 
 
+# ── RM price movements (see migrate_rm_price.sql) ─────────────────────────────
+
+_RM_PRICE_COLS = ["item_code", "item_name", "old_price", "new_price", "pct",
+                  "moved_on", "req_lines", "req_qty", "supplier", "implausible"]
+
+# A previous price of 1.00 or less is a placeholder someone typed, not a price.
+RM_MIN_LAST_PRICE = 1.0
+# Beyond this the "move" is a unit change or a typo, not a price change: measured
+# across 365 increases the median is 11.9% and p90 is 45%, while 12 rows exceed
+# +100% (one claiming Rs 162.86 -> Rs 2,565.00). Flagged, not deleted.
+RM_MAX_MOVE_PCT = 100.0
+
+
+def replace_rm_price_moves(crm_rows: list[dict]) -> int:
+    """Replace stg_rm_price_move. The percentage is computed here (CRM's own
+    change_in_price_per is unsigned) and implausible rows are flagged."""
+    data, seen = [], set()
+    for r in (crm_rows or []):
+        code = str(r.get("ItemCode") or "")[:64]
+        old, new = _num(r.get("OldPrice")), _num(r.get("NewPrice"))
+        if not code or code in seen or old <= RM_MIN_LAST_PRICE or new <= 0:
+            continue
+        seen.add(code)
+        pct = round(100.0 * (new - old) / old, 2)
+        data.append((
+            code, str(r.get("ItemName") or "")[:255] or None,
+            round(old, 4), round(new, 4), pct,
+            _date_or_none(r.get("MovedOn")),
+            _int_or_none(r.get("ReqLines")) or 0, round(_num(r.get("ReqQty")), 3),
+            str(r.get("SupplierId") or "")[:255] or None,
+            1 if abs(pct) > RM_MAX_MOVE_PCT else 0,
+        ))
+    return _replace("stg_rm_price_move", _RM_PRICE_COLS, data)
+
+
+def read_rm_price_moves(rises_only: bool = True, include_implausible: bool = False) -> list[dict]:
+    """Staged RM price movements, cleaned. ``rises_only`` keeps increases, which
+    is what the impact card is about; the flagged rows stay out unless asked for."""
+    where = []
+    if rises_only:
+        where.append("pct > 0")
+    if not include_implausible:
+        where.append("implausible = 0")
+    w = (" WHERE " + " AND ".join(where)) if where else ""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT " + ", ".join(_RM_PRICE_COLS) +
+                            f" FROM stg_rm_price_move{w} ORDER BY pct DESC")
+                rows = cur.fetchall()
+                for r in rows:
+                    for k in ("old_price", "new_price", "pct", "req_qty"):
+                        r[k] = float(r[k] or 0)
+                    if r.get("moved_on") is not None:
+                        r["moved_on"] = str(r["moved_on"])[:10]
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+def rm_price_counts() -> dict:
+    """How many movements were staged, and how many were set aside."""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) total, "
+                            "SUM(CASE WHEN pct > 0 THEN 1 ELSE 0 END) rises, "
+                            "SUM(CASE WHEN pct > 0 AND implausible = 1 THEN 1 ELSE 0 END) flagged "
+                            "FROM stg_rm_price_move")
+                r = cur.fetchone() or {}
+                return {k: int(r.get(k) or 0) for k in ("total", "rises", "flagged")}
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return {"total": 0, "rises": 0, "flagged": 0}
+
+
 # ── dispatch_scope (permission-dashboard cube, see migrate_dashboard.sql) ─────
 
 _DISP_SCOPE_COLS = ["jc_index", "item_code", "item_name", "customer_id", "customer_name",

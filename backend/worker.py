@@ -109,10 +109,19 @@ def sync_dispatch() -> int:
                  lambda rows: staging.replace_dispatch("jc13", rows, len(jcs13)))
 
 
+def sync_rm_price_moves() -> int:
+    """Raw-material price movements for the RM Price Impact card — one row per
+    item whose requisition price differs from its last PO price (90-day window,
+    see db/migrate_rm_price.sql)."""
+    return _sync("rm_price_moves", lambda: crm.rm_price_moves(90),
+                 staging.replace_rm_price_moves)
+
+
 SYNCS = [sync_item_segments, sync_stock_lots, sync_stock_details,
          sync_item_business, sync_pto_pts,
          sync_stock_aged, sync_vooki_items, sync_soc_schedule, sync_dispatch,
-         sync_user_scope, sync_dispatch_scope, sync_order_commit]
+         sync_user_scope, sync_dispatch_scope, sync_order_commit,
+         sync_rm_price_moves]
 
 
 # ── context-keyed sources (content depends on today's planning context) ───────

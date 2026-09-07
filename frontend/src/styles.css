@@ -2022,7 +2022,7 @@ td.num b { color: var(--navy); }
 }
 @media (prefers-reduced-motion: reduce) { .um-btn:hover .svg-icon { animation: none; } }
 
-/* ---- eligible-department toggle chips ---- */
+/* ---- selectable chips: eligible departments (User Master) + org lists (Planning Setting) ---- */
 .dept-chip {
   width: fit-content; min-width: 72px; height: 30px; padding: 0 10px;
   border-radius: 5px;
@@ -2046,4 +2046,10 @@ td.num b { color: var(--navy); }
   font-weight: 600;
 }
 .dept-chip.is-active:hover { background-color: #D5E6FB; border-color: #5E97DF; }
+/* inline "remove" affordance (Planning Setting org chips) */
+.dept-chip .dept-chip-x {
+  margin-left: 7px; cursor: pointer; color: var(--red); font-weight: 700;
+  line-height: 1; font-size: 13px;
+}
+.dept-chip .dept-chip-x:hover { color: #8f1420; }
 @media (prefers-reduced-motion: reduce) { .dept-chip { transition: none; } }

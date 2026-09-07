@@ -743,6 +743,46 @@ def projection_customer(acc_year: str, jc_number: int,
         (acc_year,))
 
 
+# ── raw-material price movements (RM Price Impact card) ──────────────────────
+#
+# PurchaseRequisitionDtls carries the PREVIOUS PO price (lastpoprice) next to the
+# current one (unit_price) on every requisition line, so a price move needs no
+# reconstruction from history. Grouped to one row per item: the newest line wins
+# the prices, and the lines/quantity behind it are summed for context.
+#
+# CRM's own change_in_price_per is NOT selected — it is unsigned, so a 4.8% FALL
+# (OPTIFIX WE.IN LIQ, Rs 166 -> Rs 158) is stored as 1.000. The percentage is
+# computed from the two prices in the staging layer instead.
+RM_PRICE_SQL = """
+WITH moves AS (
+  SELECT im.item_code, d.item_description, d.unit_price, d.lastpoprice,
+         CAST(d.creation_date AS date) AS moved_on, d.quantity, d.header_id,
+         ROW_NUMBER() OVER (PARTITION BY im.item_code
+                            ORDER BY d.creation_date DESC, d.line_id DESC) AS rn,
+         COUNT(*)      OVER (PARTITION BY im.item_code) AS req_lines,
+         SUM(d.quantity) OVER (PARTITION BY im.item_code) AS req_qty
+  FROM PurchaseRequisitionDtls d
+  JOIN itemmasters im ON im.item_id = d.item_id
+  WHERE d.lastpoprice > 0 AND d.unit_price > 0
+    AND d.unit_price <> d.lastpoprice
+    AND d.creation_date >= DATEADD(day, -?, GETDATE())
+)
+SELECT m.item_code AS ItemCode, m.item_description AS ItemName,
+       h.supplier_id AS SupplierId,
+       m.req_lines AS ReqLines, m.req_qty AS ReqQty, m.moved_on AS MovedOn,
+       m.unit_price AS NewPrice, m.lastpoprice AS OldPrice
+FROM moves m
+LEFT JOIN PurchaseRequisitionHdrs h ON h.header_id = m.header_id
+WHERE m.rn = 1
+"""
+
+
+def rm_price_moves(days: int = 90) -> list[dict]:
+    """One row per raw material whose requisition price differs from its last PO
+    price, over the trailing ``days``."""
+    return db.crm_query(RM_PRICE_SQL.replace("-?", f"-{int(days)}"))
+
+
 SOURCES = {
     "pto_pts": pto_pts, "soc_pending": soc_pending,
     "quote_details": quote_details, "dispatch_details": dispatch_details,

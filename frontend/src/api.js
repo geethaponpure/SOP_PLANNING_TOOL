@@ -72,6 +72,11 @@ export const api = {
   myDashboard: ({ username = "", email = "", admin = 0, persona = "" } = {}) =>
     req(`/my-dashboard?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}`),
   myDashboardPersonas: () => req("/my-dashboard/personas"),
+  // gated server-side: only Division Head / Business Head / Admin get figures
+  myDashboardRmImpact: ({ username = "", email = "", admin = 0, persona = "" } = {}) =>
+    req(`/my-dashboard/rm-impact?username=${encodeURIComponent(username)}` +
+      `&email=${encodeURIComponent(email)}&admin=${admin ? 1 : 0}` +
+      `&persona=${encodeURIComponent(persona)}`),
   // section = one card's table; omit it for the whole page (charts + tables)
   myDashboardExport: ({ section = "", username = "", email = "", admin = 0, persona = "" } = {}) =>
     downloadFile(
