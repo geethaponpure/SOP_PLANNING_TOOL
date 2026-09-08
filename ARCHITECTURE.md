@@ -52,6 +52,24 @@ Coverage ceiling: only 83 of 347 exposed items carry any forward supply (34 prod
 49 inbound). The rest are reported as "no dated supply" rather than given an invented
 date — nothing planned is visible to us, which is not the same as cannot be supplied.
 
+**The projection card states five plain figures, not a score.** Upcoming Projection,
+3-cycle Avg Dispatch, Projection vs Avg (%), Projection Uplift (%) and Projection Gap (KG),
+with the arithmetic printed beside each value so nothing is taken on trust. It replaced a
+100 - WMAPE gauge that read as confusing: one clamped percentage could not say whether a
+plan was too big or too small, and it floored at 0% for every error past 100%. The
+comparison is TOTAL to TOTAL - all upcoming projection against all recent dispatch;
+restricting the dispatch side to items that happen to carry a projection would flatter the
+ratio by hiding everything selling with no plan behind it. The colour band follows the
+plan's own +/-20% tolerance (`planning_filter._proj_flag`), so "in line" means the same
+thing here as everywhere else. The per-cycle WMAPE history stays underneath in table view,
+labelled as hindsight.
+Which plan is scored depends on where we sit in the cycle - inside the final 7 days the
+current cycle is nearly spent, so the NEXT cycle's projection is scored instead. Note that
+`jc_window()` ends at the cycle we are INSIDE, so that last entry is partly dispatched and
+the completed cycles are the ones before it: today (JC6, 4 days left) the card scores the
+JC7 plan against JC3/JC4/JC5. The per-JC table below it keeps the hindsight metric and is
+labelled as such, so the two numbers cannot be confused.
+
 **Projection accuracy scores the last 3 completed cycles.** `overall_accuracy_proj` is
 100 - WMAPE per item, volume-weighted across cycles (`_weighted_mean`, not pooled - see
 its docstring), over the three most recent completed JCs rather than the whole accounting
@@ -60,6 +78,38 @@ and averaging it in flattens the movement the card exists to show; the per-JC tr
 it still runs the full year. `accuracy_jcs` names the cycles so the card can say which.
 Both sides of the comparison carry the item filter above - without it the trend scored
 projections for made goods against dispatch that included the traded book.
+
+**My Dashboard is Performance Chemicals only.** The tool is built for one division
+(`ItemCategories.segment1`), and that is the division the business plan is written for -
+100.0% of approved projection volume is PC. Every planning-side query already pins it; the
+dashboard's staging tables carry only segment2-4, so the gate lives in `api.item_activity`
+(`DIVISION`, `division_map`, `in_division`) using `division_target` on stg_item_segments -
+an item that sits in several divisions is PC if any of them is. It sits ABOVE the activity
+rule below: an item must be PC and made or repacked here. Measured on the 13-JC dispatch
+book, the division alone is the decisive cut - General Chemicals (bulk solvents) is 92.5%
+of KG; the made-or-repacked proxy had still let through NPD (637 items, 862,600 KG, 11.4%
+of value) and three General Chemicals bulk lines (845,996 KG). The page reads 21.5M KG,
+1,203 items, and the scope line names the division so nothing drops silently.
+
+**The order-book pages carry the same division gate**, at the staging boundary rather
+than in nine SQL statements: `staging.item_division_maps` resolves the division once from
+stg_item_segments (code first, name as the fallback - 16 order-book items carry a code in
+one division and a name that also exists in another, and the code is the specific item),
+and `staging.pc_only` drops non-PC rows on the way out of the eight item-keyed reads that
+Supply Position, Demand Protection, Supply Competition and Promise Dates go through
+(read_order_commit, commit_by_item, commit_holders, commit_schedule, projection_by_item,
+read_projection_customer, ledger_open_soc, ledger_dispatch). The open book went from
+13,758 lines / 70.0M KG of balance to 1,773 lines / 1.14M KG - 96.5% of it was General
+Chemicals bulk solvent. `api.item_activity` delegates to the same map so the dashboard and
+the order-book pages cannot drift. The maps are resolved ONCE per call and the sync stamp
+re-checked once a minute; the first cut re-validated per row, one DB round-trip each, and
+a single order-book read took minutes.
+
+One thing the gate does NOT settle, deliberately left visible: 1,280 PC items with no
+manufacturing or repack BOM (9.97M KG) are excluded from My Dashboard by the activity rule,
+not the division. 817 look traded (EPOXY RESIN EPOTEC, Toyota gear oil, ATF drums); 316
+look like BOM gaps - a projected item with no BOM, e.g. PURECRYL SA 112 - and are listed for
+the BOM owner in `PC_items_without_a_BOM.xlsx`.
 
 **My Dashboard counts only what we make or repack.** Pure Chemical also trades bulk
 solvents — TOLUENE, METHANOL, ACETIC ACID, IPA, MIXED XYLENE — and by weight that book

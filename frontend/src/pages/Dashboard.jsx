@@ -8,7 +8,7 @@ import DashGrid from "../components/DashGrid.jsx";
 import { useSort, SortTh } from "../components/SortTable.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
-import { BarChart3, CalendarDays, CircleCheck, ClipboardList, Dna, Download, Eye, Package, Target, TrendingUp, TriangleAlert, Factory } from "lucide-react";
+import { CalendarDays, CircleCheck, ClipboardList, Dna, Download, Eye, Package, Target, TrendingUp, TriangleAlert, Factory } from "lucide-react";
 
 // My Dashboard — permission-scoped dispatch view. The backend resolves the
 // user's CRM data grants (stg_user_scope) and returns a compact cube
@@ -169,11 +169,6 @@ const PROJ_SORT_GET = {
   flag: (r) => Object.keys(FLAGS).indexOf(r.flag),
 };
 // same idea for the item-group roll-up and the RM-impact list
-const GROUP_SORT_GET = {
-  cov_pct: (g) => (g.avg3 ? g.covered_kg / g.avg3 : null),
-  miss_pct: (g) => (g.items ? g.missing / g.items : null),
-  with_proj: (g) => (g.items || 0) - (g.missing || 0),
-};
 const RM_SORT_GET = { segment: (r) => r.segment3 || r.segment2 || "" };
 // the two header styles the card tables use, spelled once
 const GH_L = { ...HCELL, textAlign: "left" };
@@ -372,60 +367,78 @@ function pipeOption(pipe) {
 // The three single-number projection metrics share one canvas: pick the metric,
 // then read it as a chart or as the table behind it.
 const PROJ_METRICS = [
-  { id: "accuracy", label: "Accuracy", icon: Target, title: "Accuracy on projected items" },
-  { id: "volume", label: "Volume", icon: BarChart3, title: "Sales volume projected" },
+  { id: "accuracy", label: "Projection", icon: Target,
+    title: "Upcoming projection vs recent dispatch" },
   { id: "items", label: "Missing", icon: TriangleAlert, title: "Items with no projection" },
 ];
 
-// Single-number projection metrics, drawn rather than printed on a card.
+// Colour band shared by the per-cycle accuracy figures.
 const accColor = (v) => (v == null ? "#90a1ac" : v < 40 ? "#c53030" : v < 70 ? "#b7791f" : "#2f855a");
 
-export function gaugeOption(value, caption, window = "") {
-  const c = accColor(value);
-  return {
-    ...ANIM,
-    tooltip: { ...TT, trigger: "item",
-      formatter: () => `Accuracy on projected items<br/><b style="font-size:14px">${value == null ? "—" : value + "%"}</b>` +
-        `<br/><span style="color:#90a1ac">projection vs dispatch, ${window || "the last completed cycles"}` +
-        `<br/>100 − WMAPE per item</span>` },
-    series: [{
-      type: "gauge", startAngle: 205, endAngle: -25, min: 0, max: 100,
-      radius: "80%", center: ["50%", "58%"],
-      progress: { show: true, width: 14, roundCap: true, itemStyle: { color: c } },
-      axisLine: { lineStyle: { width: 14, color: [[1, "#eef2f7"]] } },
-      pointer: { show: false }, anchor: { show: false },
-      axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
-      // valueAnimation feeds the formatter RAW interpolated floats — without
-      // rounding it renders "8.42361111111111%" mid-animation, which overflows
-      // the card at this font size.
-      detail: { valueAnimation: true, fontSize: 26, fontWeight: 700, offsetCenter: [0, "2%"],
-        formatter: (v) => (value == null ? "—" : `${Number(v).toFixed(1)}%`), color: c },
-      title: { offsetCenter: [0, "36%"], fontSize: 11, color: "#90a1ac", width: 150, overflow: "truncate" },
-      data: [{ value: value == null ? 0 : value, name: caption }],
-    }],
-  };
+// The upcoming plan against how we have actually been selling, stated as the five
+// figures a planner reads directly — no score, no WMAPE. The band follows the
+// plan's own +/-20% tolerance (planning_filter._proj_flag), so "in line" here
+// means the same thing it means everywhere else in the tool.
+const upliftColor = (u) => (u == null ? "#90a1ac"
+  : Math.abs(u) <= 20 ? "#2f855a" : Math.abs(u) <= 50 ? "#b7791f" : "#c53030");
+
+function ProjectionKpis({ f }) {
+  if (!f) {
+    return <div style={{ padding: "26px 16px", textAlign: "center", color: "var(--muted)" }}>
+      No completed cycle to compare against yet.
+    </div>;
+  }
+  const kg = (v) => (v == null ? "—" : `${fmt.num(v)} kg`);
+  const signedKg = (v) => (v == null ? "—" : `${v > 0 ? "+" : ""}${fmt.num(v)} kg`);
+  const pct = (v) => (v == null ? "—" : `${v}%`);
+  const signedPct = (v) => (v == null ? "—" : `${v > 0 ? "+" : ""}${v}%`);
+  const n = f.n_cycles || 3;
+  const cycles = (f.dispatch_jcs || []).join(" + ");
+  const c = upliftColor(f.uplift_pct);
+  const rows = [
+    ["Upcoming Projection", `Executive input · ${f.label}`, kg(f.projection_kg), "#1f3a5f", true],
+    [`${n}-cycle Avg Dispatch`, `(${cycles}) ÷ ${n}`, kg(f.dispatch_avg_kg), "#1f3a5f", false],
+    ["Projection vs Avg", "Projection ÷ Avg × 100", pct(f.ratio_pct), c, true],
+    ["Projection Uplift %", "(Projection − Avg) ÷ Avg × 100", signedPct(f.uplift_pct), c, true],
+    ["Projection Gap", "Projection − Avg", signedKg(f.gap_kg), c, false],
+  ];
+  return (
+    <div>
+      <div className="tbl-wrap">
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={{ ...HCELL, textAlign: "left" }}>KPI</th>
+              <th style={{ ...HCELL, textAlign: "left" }}>Formula</th>
+              <th style={{ ...HCELL, textAlign: "right" }}>Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([label, formula, value, color, strong]) => (
+              <tr key={label}>
+                <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>{label}</td>
+                <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)" }}>{formula}</td>
+                <td style={{ ...CELL, textAlign: "right", color,
+                  fontWeight: strong ? 700 : 600, fontSize: strong ? 14 : 13,
+                  fontVariantNumeric: "tabular-nums" }}>{value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--muted)" }}>
+        {f.in_last_week
+          ? `${f.current_label} ends in ${f.days_left} day${f.days_left === 1 ? "" : "s"}, so ${f.label} — the next cycle — is the plan shown.`
+          : `We are inside ${f.current_label}, so its own plan is shown.`}
+        {" "}{fmt.num(f.items_projected)} items carry a projection; {fmt.num(f.items_sold)} sold
+        in {cycles}.
+      </div>
+    </div>
+  );
 }
 
+
 // Donut for a two-way split (projected vs not), with the share in the middle.
-export function ratioOption(rows, { centerText, centerSub, unit }) {
-  return {
-    ...ANIM,
-    tooltip: { ...TT, trigger: "item",
-      formatter: (o) => `${o.marker} ${o.name}<br/><b style="font-size:13px">${fmt.num(o.value)}</b> ${unit} · ${o.percent}%` },
-    legend: { bottom: 0, icon: "circle", itemWidth: 9, itemHeight: 9,
-      textStyle: { color: "#414d55", fontSize: 11 } },
-    title: { text: centerText, subtext: centerSub, left: "center", top: "31%",
-      textStyle: { fontSize: 24, fontWeight: 700, color: "#1f3a5f" },
-      subtextStyle: { fontSize: 11, color: "#90a1ac" } },
-    series: [{
-      type: "pie", radius: ["58%", "80%"], center: ["50%", "42%"], avoidLabelOverlap: true,
-      itemStyle: { borderRadius: 6, borderColor: "#fff", borderWidth: 2 },
-      label: { show: false }, labelLine: { show: false },
-      emphasis: { scale: true, scaleSize: 8, itemStyle: { shadowBlur: 14, shadowColor: "rgba(0,0,0,.18)" } },
-      data: rows.map((r) => ({ value: r.value, name: r.name, itemStyle: { color: r.color } })),
-    }],
-  };
-}
 
 // ── projection analytics charts (JC trend / accuracy / items / item group) ────
 
@@ -614,7 +627,7 @@ function JcTrendTable({ p, metric = "accuracy" }) {
     ? ["Total", fmt.num(rows.reduce((a, t) => a + (t.proj || 0), 0)),
        fmt.num(done.reduce((a, t) => a + (t.actual || 0), 0)), ""]
     : metric === "accuracy"
-      ? [`Overall · last ${(p.accuracy_jcs || []).length} cycles`,
+      ? [`Hindsight · average of the last ${(p.accuracy_jcs || []).length} cycles`,
          p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`,
          p.overall_accuracy == null ? "—" : `${p.overall_accuracy}%`, `${p.coverage_pct}%`]
       : null;
@@ -788,7 +801,7 @@ export default function Dashboard({ session, isAdmin }) {
   useEffect(() => {
     setPipeView("chart"); setPipeQ(""); setItemPop(null);
     setStatusFlag(null); setStatusView("chart"); setStatusQ("");
-    setProjMetric("accuracy"); setProjView("chart");
+    setProjMetric("accuracy");
     setJcMetric("qty"); setJcView("chart");
   }, [viewAs.username, viewAs.persona]);
 
@@ -822,35 +835,25 @@ export default function Dashboard({ session, isAdmin }) {
   }, [p, pipeQ]);
   const statusRows = useMemo(() => (p?.summary || []).map((s) => ({
     name: FLAGS[s.flag]?.label || s.flag, value: s.items, color: FLAGS[s.flag]?.color })), [p]);
+  // Which figure the projection card shows: the plan-vs-dispatch KPIs, or the
+  // items with no projection at all. The card is a table either way.
+  const [projMetric, setProjMetric] = useState("accuracy");
+  // the Projection-by-JC card keeps its own metric and chart/table switch
+  const [jcMetric, setJcMetric] = useState("qty");
+  const [jcView, setJcView] = useState("chart");
   // Projection status is donut-only — no shape switch on this card.
   const statusOpt = useMemo(() => distOption(statusRows, { shape: "donut", unit: "items", center: "items" }),
     [statusRows]);
-  // the cycles the accuracy headline covers — the backend says which
-  const accWindow = useMemo(() => {
+  // The accuracy headline is a FORWARD check: the plan in front of us against
+  // how we have actually been selling. Which plan depends on where we are in the
+  // cycle — inside its last week the current one is spent, so the next is scored.
+  const fwd = p?.forward || null;
+  // the cycles the per-JC table's own average covers
+  const histWindow = useMemo(() => {
     const j = p?.accuracy_jcs || [];
     if (!j.length) return "";
     return j.length === 1 ? j[0] : `${j[0]}–${j[j.length - 1]}`;
   }, [p]);
-  const accGaugeOpt = useMemo(
-    () => gaugeOption(p?.overall_accuracy_proj ?? null, "on projected items",
-      accWindow), [p, accWindow]);
-  const volRatioOpt = useMemo(() => ratioOption([
-    { name: "Projected", value: p?.covered_kg || 0, color: "#2a9d8f" },
-    { name: "No projection", value: p?.uncovered_kg || 0, color: "#c53030" },
-  ], { centerText: `${p?.coverage_pct ?? 0}%`, centerSub: "of sales volume", unit: "KG / JC" }), [p]);
-  const itemRatioOpt = useMemo(() => {
-    const projected = p?.items_projected || 0, missing = p?.missing_total || 0;
-    const tot = projected + missing;
-    return ratioOption([
-      { name: "Has a projection", value: projected, color: "#4880ff" },
-      { name: "No projection", value: missing, color: "#c53030" },
-    ], { centerText: fmt.num(missing), centerSub: "items unprojected",
-      unit: tot ? "items" : "items" });
-  }, [p]);
-  const [jcMetric, setJcMetric] = useState("qty");
-  const [jcView, setJcView] = useState("chart");
-  const [projMetric, setProjMetric] = useState("accuracy");
-  const [projView, setProjView] = useState("chart");
   const lastDoneJc = useMemo(() => {
     const done = (p?.jc_trend || []).filter((t) => t.done);
     return done.length ? done[done.length - 1].jc : "—";
@@ -859,10 +862,18 @@ export default function Dashboard({ session, isAdmin }) {
   const jcAccOpt = useMemo(() => jcAccOption(p?.jc_trend || []), [p]);
   const jcItemsOpt = useMemo(() => jcItemsOption(p?.jc_trend || []), [p]);
 
-  // item-group roll-up (Segment 3 / Segment 2) with a chart/table toggle
-  const [groupLevel, setGroupLevel] = useState("segment3");
-  const groupRows = useMemo(() => (p?.by_group?.[groupLevel] || []), [p, groupLevel]);
-  const grp = useSort(groupRows, { key: null, dir: "desc" }, GROUP_SORT_GET);
+  // Items selling with no projection at all — the submission gaps, item by item.
+  const [missQ, setMissQ] = useState("");
+  const missingAll = useMemo(() => (p?.missing_all || []), [p]);
+  const missingRows = useMemo(() => {
+    const q = missQ.trim().toLowerCase();
+    if (!q) return missingAll;
+    return missingAll.filter((m) => (m.name || "").toLowerCase().includes(q)
+      || (m.code || "").toLowerCase().includes(q)
+      || (m.seg || "").toLowerCase().includes(q));
+  }, [missingAll, missQ]);
+  const miss = useSort(missingRows, { key: null, dir: "desc" },
+    (r, k) => (k === "name" || k === "code" || k === "seg" ? (r[k] || "") : r[k]));
 
   // Projection status drills down: click a slice to see the items behind it.
   const [statusFlag, setStatusFlag] = useState(null);
@@ -908,11 +919,10 @@ export default function Dashboard({ session, isAdmin }) {
   };
   const expandedCards = useMemo(() => {
     const out = {};
-    if (projView === "table") {
-      out.projCanvas = projMetric === "accuracy"
-        ? fitRows((p?.jc_trend?.length || 0) + 1)      // + the overall row
-        : fitRows(groupRows.length, true);
-    }
+    // the card carries a table either way — the five KPIs, or the item groups
+    out.projCanvas = projMetric === "accuracy"
+      ? fitRows(5)
+      : fitRows(missingRows.length, true);
     if (pipeView === "table") out.compare = fitRows(pipeRows.length, true);
     if (jcView === "table") out.jcTrend = fitRows((p?.jc_trend?.length || 0) + 1);
     // only the drill-down has a table view now; the card itself is always the donut
@@ -920,8 +930,8 @@ export default function Dashboard({ session, isAdmin }) {
     if (rmView === "table" && rmData) out.rmImpact = fitRows(rmData.fgs.length) + 3;  // + the KPI strip
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projView, projMetric, pipeView, jcView, statusView, statusFlag, flagRows.length,
-      p, groupRows.length, pipeRows.length, rmView, rmData]);
+  }, [projMetric, pipeView, jcView, statusView, statusFlag, flagRows.length,
+      p, missingRows.length, pipeRows.length, rmView, rmData]);
 
   if (loading && !data) return <Loading what="your dashboard" />;
   if (error) return <>{switcher}<ErrorBox msg={error} /></>;
@@ -1010,111 +1020,84 @@ export default function Dashboard({ session, isAdmin }) {
       {p && (
         <>
           <div key="projCanvas" className="card">
-              <ExportBtn section={projMetric === "accuracy" ? "jc_trend" : "groups"} idParams={idParams} />
+              <ExportBtn section={projMetric === "accuracy" ? "forward" : "missing"} idParams={idParams} />
             <div className="supply-dash-cardhead">
               <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>{(() => { const M = PROJ_METRICS.find((m) => m.id === projMetric); const I = M?.icon; return <>{I && <I size={16} />} {M?.title}</>; })()}</h3>
                 <div className="sub">
-                  {projMetric === "accuracy" && <>projection vs dispatch over the last{" "}
-                    {(p.accuracy_jcs || []).length} completed cycles{accWindow ? ` (${accWindow})` : ""}{" "}
-                    · only the items that were projected</>}
+                  {projMetric === "accuracy" && (fwd
+                    ? <>what <b>{fwd.label}</b> is planned to sell, against the average of{" "}
+                      {(fwd.dispatch_jcs || []).join(", ")} — the last {fwd.n_cycles} completed
+                      cycles</>
+                    : <>the upcoming plan against the average of the last completed cycles</>)}
                   {projMetric === "volume" && <>share of your 3-JC average sales that carries a JC{p.jc} projection</>}
-                  {projMetric === "items" && <>selling items with vs without a JC{p.jc} projection</>}
+                  {projMetric === "items" && <>items that are selling but carry no JC{p.jc} projection
+                    at all — ranked by the volume at stake</>}
                 </div></div>
               <div className="card-filters">
                 <SegTabs size="sm" value={projMetric} onChange={setProjMetric}
                   tabs={PROJ_METRICS.map((m) => ({ id: m.id, label: m.label }))} />
-                <SegTabs size="sm" value={projView} onChange={setProjView}
-                  tabs={[{ id: "chart", label: "Chart" }, { id: "table", label: "Table" }]} />
               </div>
             </div>
 
-            {projView === "chart" ? (
-              <div className="echart-fill" style={{ width: "100%", maxWidth: 560, margin: "0 auto" }}>
-                <EChart option={projMetric === "accuracy" ? accGaugeOpt
-                  : projMetric === "volume" ? volRatioOpt : itemRatioOpt} height="100%" />
-              </div>
-            ) : projMetric === "accuracy" ? (
-              <JcTrendTable p={p} metric="accuracy" />
+            {projMetric === "accuracy" ? (
+              <ProjectionKpis f={fwd} />
             ) : (
               <>
                 <div className="pagebar" style={{ marginBottom: 10 }}>
-                  <SegTabs size="sm" value={groupLevel} onChange={setGroupLevel}
-                    tabs={[{ id: "segment3", label: "Segment 3" }, { id: "segment2", label: "Segment 2" }]} />
+                  <SmoothInput className="searchbox" placeholder="Search item code / name / segment…"
+                    value={missQ} onChange={(e) => setMissQ(e.target.value)} />
                   <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
-                    broken down by item group
+                    {fmt.num(missingRows.length)} of {fmt.num(p.missing_total || 0)} items
+                    {" · "}{fmt.num(p.missing_kg || 0)} KG a cycle with no projection
                   </span>
                 </div>
                 <div className="tbl-wrap">
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <thead>
-                      {projMetric === "volume" ? (
-                        <tr>
-                          <SortTh label="Item group" k="name" dir0="asc" {...grp.th} style={GH_L} />
-                          <SortTh label="3-JC avg sales (KG)" k="avg3" {...grp.th} style={GH_R} />
-                          <SortTh label="Projected (KG)" k="proj" {...grp.th} style={GH_R} />
-                          <SortTh label="Sales with a projection" k="covered_kg" {...grp.th} style={GH_R} />
-                          <SortTh label="Sales with none" k="uncovered_kg" {...grp.th} style={GH_R} />
-                          <SortTh label="Volume projected" k="cov_pct" {...grp.th} style={GH_R} />
-                        </tr>
-                      ) : (
-                        <tr>
-                          <SortTh label="Item group" k="name" dir0="asc" {...grp.th} style={GH_L} />
-                          <SortTh label="Items" k="items" {...grp.th} style={GH_R} />
-                          <SortTh label="With a projection" k="with_proj" {...grp.th} style={GH_R} />
-                          <SortTh label="No projection" k="missing" {...grp.th} style={GH_R} />
-                          <SortTh label="Unprojected sales (KG)" k="uncovered_kg" {...grp.th} style={GH_R} />
-                          <SortTh label="% items missing" k="miss_pct" {...grp.th} style={GH_R} />
-                        </tr>
-                      )}
+                      <tr>
+                        <SortTh label="Item code" k="code" dir0="asc" {...miss.th} style={GH_L} />
+                        <SortTh label="Item" k="name" dir0="asc" {...miss.th} style={GH_L} />
+                        <SortTh label="Segment" k="seg" dir0="asc" {...miss.th} style={GH_L} />
+                        <SortTh label="3-JC avg sales (KG)" k="avg3" {...miss.th} style={GH_R} />
+                        <th style={GH_R}>Share of the gap</th>
+                      </tr>
                     </thead>
                     <tbody>
-                      {grp.rows.map((g, i) => {
-                        const covPct = g.avg3 ? (g.covered_kg / g.avg3) * 100 : null;
-                        const missPct = g.items ? (g.missing / g.items) * 100 : null;
+                      {miss.rows.map((m, i) => {
+                        const share = p.missing_kg ? (m.avg3 / p.missing_kg) * 100 : null;
                         return (
-                          <tr key={i}>
-                            <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>{g.name}</td>
-                            {projMetric === "volume" ? (
-                              <>
-                                <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(g.avg3)}</td>
-                                <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(g.proj)}</td>
-                                <td style={{ ...CELL, textAlign: "right", color: "#2a9d8f", fontWeight: 600 }}>
-                                  {fmt.num(g.covered_kg)}
-                                </td>
-                                <td style={{ ...CELL, textAlign: "right",
-                                  color: g.uncovered_kg ? "#c53030" : "var(--muted)", fontWeight: g.uncovered_kg ? 600 : 400 }}>
-                                  {fmt.num(g.uncovered_kg)}
-                                </td>
-                                <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>
-                                  {covPct == null ? "—" : `${covPct.toFixed(1)}%`}
-                                </td>
-                              </>
-                            ) : (
-                              <>
-                                <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(g.items)}</td>
-                                <td style={{ ...CELL, textAlign: "right", color: "#4880ff", fontWeight: 600 }}>
-                                  {fmt.num(g.items - g.missing)}
-                                </td>
-                                <td style={{ ...CELL, textAlign: "right",
-                                  color: g.missing ? "#c53030" : "var(--muted)", fontWeight: g.missing ? 600 : 400 }}>
-                                  {fmt.num(g.missing)}
-                                </td>
-                                <td style={{ ...CELL, textAlign: "right" }}>{fmt.num(g.uncovered_kg)}</td>
-                                <td style={{ ...CELL, textAlign: "right", fontWeight: 600,
-                                  color: missPct && missPct > 50 ? "#c53030" : "inherit" }}>
-                                  {missPct == null ? "—" : `${missPct.toFixed(0)}%`}
-                                </td>
-                              </>
-                            )}
+                          <tr key={`${m.code || ""}|${m.name}|${i}`}>
+                            <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)",
+                              whiteSpace: "nowrap" }}>{m.code || "—"}</td>
+                            <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>{m.name}</td>
+                            <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)" }}>
+                              {m.seg || "—"}
+                            </td>
+                            <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>
+                              {fmt.num(m.avg3)}
+                            </td>
+                            <td style={{ ...CELL, textAlign: "right",
+                              color: share && share >= 5 ? "#c53030" : "var(--muted)",
+                              fontWeight: share && share >= 5 ? 600 : 400 }}>
+                              {share == null ? "—" : `${share.toFixed(1)}%`}
+                            </td>
                           </tr>
                         );
                       })}
-                      {grp.rows.length === 0 && (
-                        <tr><td colSpan={6} style={CELL}>No item groups in scope.</td></tr>
+                      {miss.rows.length === 0 && (
+                        <tr><td colSpan={5} style={CELL}>
+                          {missingAll.length ? "No items match that search."
+                            : "Every selling item in your scope carries a projection."}
+                        </td></tr>
                       )}
                     </tbody>
                   </table>
                 </div>
+                {missingAll.length >= 500 && (
+                  <div style={{ marginTop: 8, fontSize: 11.5, color: "#b7791f" }}>
+                    Showing the 500 biggest of {fmt.num(p.missing_total || 0)} — download for the rest.
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -1126,7 +1109,7 @@ export default function Dashboard({ session, isAdmin }) {
                     {JC_VIEWS.find((v) => v.id === jcMetric)?.icon} {JC_VIEWS.find((v) => v.id === jcMetric)?.title}</h3>
                     <div className="sub">
                       {jcMetric === "qty" && <>projected KG per job cycle vs actual sales · {p.acc_year} · the pale bar is the planning JC{p.jc}</>}
-                      {jcMetric === "accuracy" && <>100 − WMAPE per item · the last {(p.accuracy_jcs || []).length} cycles{accWindow ? ` (${accWindow})` : ""} average <b>{p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}</b> on projected items</>}
+                      {jcMetric === "accuracy" && <>100 − WMAPE per item · the last {(p.accuracy_jcs || []).length} cycles{histWindow ? ` (${histWindow})` : ""} average <b>{p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}</b> on projected items</>}
                       {jcMetric === "items" && <>items carrying a projection each cycle vs items that actually sold · the pale bar is the planning JC (not dispatched yet)</>}
                     </div></div>
                   <div className="card-filters">

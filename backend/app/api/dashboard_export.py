@@ -23,6 +23,7 @@ SECTION_TITLES = {
     "collector": "By collector",
     "segment": "By segment",
     "jc_trend": "Projection by JC",
+    "forward": "Projection vs dispatch",
     "status": "Projection status",
     "items": "Items by status",
     "groups": "Item groups",
@@ -52,7 +53,42 @@ def _cube_by(payload: dict, field: str) -> list[dict]:
     return sorted(rows, key=lambda d: -d["Dispatched (KG)"])
 
 
+def _forward_rows(payload: dict) -> list[dict]:
+    """The projection card's five KPIs, with the arithmetic spelled out — the
+    same three columns the card shows."""
+    f = ((payload.get("projection") or {}).get("forward")) or {}
+    if not f:
+        return [{"KPI": "No completed cycle to compare against yet",
+                 "Formula": "", "Value": ""}]
+    n = f.get("n_cycles") or 3
+    cycles = " + ".join(f.get("dispatch_jcs") or [])
+    rows = [
+        {"KPI": "Upcoming Projection", "Formula": f"Executive input · {f.get('label')}",
+         "Value": f.get("projection_kg")},
+        {"KPI": f"{n}-cycle Avg Dispatch", "Formula": f"({cycles}) / {n}",
+         "Value": f.get("dispatch_avg_kg")},
+        {"KPI": "Projection vs Avg (%)", "Formula": "Projection / Avg x 100",
+         "Value": f.get("ratio_pct")},
+        {"KPI": "Projection Uplift (%)", "Formula": "(Projection - Avg) / Avg x 100",
+         "Value": f.get("uplift_pct")},
+        {"KPI": "Projection Gap (KG)", "Formula": "Projection - Avg",
+         "Value": f.get("gap_kg")},
+        {"KPI": "", "Formula": "", "Value": ""},
+        {"KPI": "Cycle shown",
+         "Formula": (f"{f.get('current_label')} ends in {f.get('days_left')} days, so the "
+                     f"next cycle's plan is shown" if f.get("in_last_week")
+                     else f"we are inside {f.get('current_label')}, so its own plan is shown"),
+         "Value": f.get("label")},
+        {"KPI": "Items with a projection", "Formula": "", "Value": f.get("items_projected")},
+        {"KPI": f"Items sold in {cycles}", "Formula": "", "Value": f.get("items_sold")},
+    ]
+    return rows
+
+
 def section_rows(payload: dict, section: str) -> list[dict]:
+    if section == "forward":
+        return _forward_rows(payload)
+
     """The table behind one card, as a list of row dicts (already display-ready)."""
     p = payload.get("projection") or {}
     k = payload.get("kpis") or {}
@@ -153,6 +189,7 @@ def section_rows(payload: dict, section: str) -> list[dict]:
     if section == "missing":
         total = p.get("missing_kg") or 0
         return [{"#": i + 1, "Item code": m.get("code") or "", "Item": m.get("name"),
+                 "Segment": m.get("seg") or "",
                  "3-JC avg sales (KG)": _num(m.get("avg3")),
                  "Share of gap (%)": (round(m["avg3"] / total * 100, 1) if total else None)}
                 for i, m in enumerate(p.get("missing_all") or [])]
@@ -232,7 +269,7 @@ def build(payload: dict, section: str | None = None) -> bytes:
     charts["A3"] = f"Data as of {(payload.get('last_sync') or {}).get('finished_at') or '—'}"
 
     counts = {}
-    for key in ("summary", "collector", "segment", "jc_trend", "status",
+    for key in ("summary", "collector", "segment", "forward", "jc_trend", "status",
                 "items", "groups", "compare", "pipeline", "missing"):
         ws = wb.create_sheet(SECTION_TITLES[key][:31])
         counts[key] = _write(ws, section_rows(payload, key))

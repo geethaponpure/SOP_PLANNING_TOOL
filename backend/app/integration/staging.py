@@ -14,6 +14,7 @@ existing api/live.py consumers work unchanged.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 
 from . import mysql_db
@@ -177,6 +178,91 @@ def replace_item_segments(crm_rows: list[dict]) -> int:
     for row in data:
         seen[row[0]] = row
     return _replace("stg_item_segments", _SEG_COLS, list(seen.values()))
+
+
+# ── division gate ────────────────────────────────────────────────────────────
+#
+# The tool is built for one division: ItemCategories.segment1 = 'Performance
+# Chemicals'. The business plan is written for it (100% of approved projection
+# volume), every planning-side CRM query pins it, and My Dashboard gates on it.
+# The order-book pages read through the functions below, whose tables carry only
+# segment2-4 — so the division is resolved here from stg_item_segments and
+# non-PC rows are dropped on the way out. Measured on the open order book that
+# keeps 1.6% of the balance: 96.5% of it is General Chemicals (bulk solvents).
+#
+# Code first, name as the fallback. 16 order-book items carry a code in one
+# division and a name that also exists in another (FERRIC CHLORIDE: code General
+# Chemicals, name Performance Chemicals); the code is the specific item, the
+# name map only knows the first item to carry that name.
+PC_DIVISION = "Performance Chemicals"
+_DIV_CACHE: dict = {}
+# how often to re-check the item_segments sync stamp: the map only changes when
+# the worker re-syncs, so one DB round-trip a minute is plenty — checking it per
+# row was ~14k round-trips per order-book read
+_DIV_RECHECK_S = 60.0
+
+
+def _squash(v) -> str:
+    """The item key the ledger joins on — identical to planning_filter._squash."""
+    return re.sub(r"[^A-Z0-9]", "", str(v or "").strip().upper())
+
+
+def item_division_maps() -> tuple[dict, dict]:
+    """({item code: division}, {squashed item name: division}) from the staged
+    item segments, cached on the item_segments sync stamp. ``division_target``
+    wins over ``segment1``: an item that sits in several divisions is tagged PC
+    if any of them is."""
+    import time as _t
+    now = _t.monotonic()
+    if _DIV_CACHE.get("maps") is not None and \
+            now - float(_DIV_CACHE.get("checked", 0.0)) < _DIV_RECHECK_S:
+        return _DIV_CACHE["maps"]
+    stamp = str((last_sync("item_segments") or {}).get("finished_at") or "")
+    if _DIV_CACHE.get("stamp") == stamp and _DIV_CACHE.get("maps") is not None:
+        _DIV_CACHE["checked"] = now
+        return _DIV_CACHE["maps"]
+    by_code: dict = {}
+    by_name: dict = {}
+    for r in read_item_segments():
+        div = r.get("DivisionTarget") or r.get("Segment1")
+        if not div:
+            continue
+        if r.get("ItemCode"):
+            by_code[str(r["ItemCode"])] = div
+        k = _squash(r.get("ItemName"))
+        if k and k not in by_name:
+            by_name[k] = div
+    _DIV_CACHE.update({"stamp": stamp, "maps": (by_code, by_name), "checked": now})
+    return _DIV_CACHE["maps"]
+
+
+def item_in_division(code=None, name=None) -> bool:
+    by_code, by_name = item_division_maps()
+    div = by_code.get(str(code)) if code else None
+    if div is None and name:
+        div = by_name.get(_squash(name))
+    return div == PC_DIVISION
+
+
+def pc_only(rows: list[dict]) -> list[dict]:
+    """Keep the Performance Chemicals rows. A row names its item by ``item_code``
+    and/or one of ``item_name`` / ``item_key`` / ``item`` (the ledger keys are
+    UPPER(TRIM(name)) or the squashed name — both squash to the same key).
+    The maps are resolved ONCE per call, not per row."""
+    if not rows:
+        return rows
+    by_code, by_name = item_division_maps()
+    out = []
+    for r in rows:
+        code = r.get("item_code")
+        div = by_code.get(str(code)) if code else None
+        if div is None:
+            name = r.get("item_name") or r.get("item_key") or r.get("item")
+            if name:
+                div = by_name.get(_squash(name))
+        if div == PC_DIVISION:
+            out.append(r)
+    return out
 
 
 def read_item_segments() -> list[dict]:
@@ -710,7 +796,7 @@ def read_projection_customer(flt: dict, acc_year: str, jc: int) -> list[dict]:
                     "p.week1_q, p.week2_q, p.current_q, p.next1_q, p.next2_q "
                     "FROM stg_projection_customer p WHERE " + " AND ".join(where),
                     tuple(params))
-                rows = cur.fetchall()
+                rows = pc_only(cur.fetchall())
                 for r in rows:
                     for k in ("week1_q", "week2_q", "current_q", "next1_q", "next2_q"):
                         r[k] = float(r[k] or 0)
@@ -753,7 +839,7 @@ def ledger_open_soc(customer_ids, jc_from: str, jc_to: str) -> list[dict]:
                     "FROM stg_order_commit WHERE " + cin +
                     " GROUP BY customer_id, UPPER(TRIM(item_name))",
                     tuple([jc_from, jc_to, jc_from] + params))
-                rows = cur.fetchall()
+                rows = pc_only(cur.fetchall())
                 for r in rows:
                     r["in_jc"] = float(r["in_jc"] or 0)
                     r["backlog"] = float(r["backlog"] or 0)
@@ -781,7 +867,7 @@ def ledger_dispatch(customer_ids, jc_index) -> list[dict]:
                     "WHERE jc_index=%s AND " + cin +
                     " GROUP BY customer_id, UPPER(TRIM(item_name))",
                     tuple([int(jc_index)] + params))
-                rows = cur.fetchall()
+                rows = pc_only(cur.fetchall())
                 for r in rows:
                     r["qty"] = float(r["qty"] or 0)
                 return rows
@@ -882,7 +968,7 @@ def commit_by_item(flt, stale_cutoff: str) -> list[dict]:
                     "FROM stg_order_commit" + w +
                     " GROUP BY REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', '')",
                     tuple([stale_cutoff, stale_cutoff, stale_cutoff] + params))
-                rows = cur.fetchall()
+                rows = pc_only(cur.fetchall())
                 for r in rows:
                     r["balance"] = float(r["balance"] or 0)
                     r["stale"] = float(r["stale"] or 0)
@@ -911,7 +997,7 @@ def projection_by_item(acc_year: str, jc: int) -> list[dict]:
                     "FROM stg_projection_customer WHERE acc_year=%s AND jc=%s "
                     "GROUP BY REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', '')",
                     (acc_year, int(jc)))
-                rows = cur.fetchall()
+                rows = pc_only(cur.fetchall())
                 for r in rows:
                     r["qty"] = float(r["qty"] or 0)
                 return rows
@@ -941,7 +1027,7 @@ def commit_schedule(stale_cutoff: str) -> list[dict]:
                     "GROUP BY REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', ''), "
                     "         COALESCE(resched_date, sched_date)",
                     (stale_cutoff,))
-                rows = cur.fetchall()
+                rows = pc_only(cur.fetchall())
                 for r in rows:
                     r["qty"] = float(r["qty"] or 0)
                     r["due"] = str(r["due"])[:10] if r.get("due") else None
@@ -980,7 +1066,7 @@ def commit_holders(item_keys, stale_cutoff: str) -> list[dict]:
                     "GROUP BY REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', ''), "
                     "         customer_id, collector, mc_code",
                     tuple([stale_cutoff] + keys))
-                rows = cur.fetchall()
+                rows = pc_only(cur.fetchall())
                 for r in rows:
                     r["balance"] = float(r["balance"] or 0)
                     if r.get("due") is not None:
@@ -1498,7 +1584,7 @@ def read_order_commit(flt: dict) -> list[dict]:
             with conn.cursor() as cur:
                 cur.execute("SELECT " + ", ".join(_COMMIT_COLS) + f" FROM stg_order_commit{w}",
                             tuple(params))
-                rows = cur.fetchall()
+                rows = pc_only(cur.fetchall())
                 for r in rows:
                     for k in ("soc_date", "sched_date", "resched_date", "cust_req_date"):
                         if r.get(k) is not None:

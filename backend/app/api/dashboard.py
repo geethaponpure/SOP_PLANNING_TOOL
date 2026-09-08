@@ -19,6 +19,9 @@ Personas and how their scope filters the cube:
 """
 from __future__ import annotations
 
+from datetime import date, datetime
+
+from ..integration import jc_calendar as _jc
 from ..integration import msl as _msl
 from ..integration import planning_filter as _pf
 from ..integration import staging
@@ -27,7 +30,7 @@ from ..integration.planning_filter import _proj_flag   # the plan's ±20% band
 
 # bump when the payload shape changes so stale precomputed admin payloads
 # (computed_plan.dashboard_admin) are rebuilt instead of served
-_PAYLOAD_V = 14
+_PAYLOAD_V = 18
 
 # broadest scope first — a user holding several personas gets the widest view
 _PERSONA_PRIORITY = ["Division Head", "Business Head", "Technical Head",
@@ -40,6 +43,9 @@ _PERSONA_PRIORITY = ["Division Head", "Business Head", "Technical Head",
 # it in flattens exactly the movement the card exists to show. The per-JC trend
 # beside it still runs the full year, so the history is not lost.
 _ACC_JCS = 3
+# A cycle is "ending" inside its final week, at which point the plan that matters
+# is the next one rather than the one nearly spent.
+_LAST_WEEK_DAYS = 7
 _CUBE_MAX_COLLECTORS = 12   # cube buckets beyond these become "Other" (keeps the
 _CUBE_MAX_SEGMENTS = 10     # client-side cross-filter payload small)
 
@@ -98,7 +104,7 @@ def _scope_flt(persona: str, grants: list[dict]):
 
 
 # shown under the persona chip, so nobody wonders where the traded volume went
-_ACTIVITY_NOTE = "Made or repacked here — traded items excluded"
+_ACTIVITY_NOTE = "Performance Chemicals, made or repacked here — other divisions and traded items excluded"
 
 
 def _scope_summary(persona: str, stype: str, mine: list[dict]) -> list[str]:
@@ -171,6 +177,47 @@ def _proj_map(mine: list[dict], admin: bool, acc_year: str, jc: int):
         p["next1"] += float(r.get("Next1Q") or 0)
         p["next2"] += float(r.get("Next2Q") or 0)
     return proj, use_rows
+
+
+def _forward_scope(window: list[dict], today: date | None = None) -> dict | None:
+    """Which cycle's projection to score, and which cycles to score it against.
+
+    ``jc_window()`` ends at the cycle we are CURRENTLY INSIDE, so its last entry
+    is partly dispatched and the completed cycles are the ones before it. Inside
+    the final week that current cycle is nearly spent, so the plan worth checking
+    is the next one.
+    """
+    if not window:
+        return None
+    today = today or date.today()
+
+    def _d(v):
+        try:
+            return datetime.strptime(str(v)[:10], "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            return None
+
+    cur = window[-1]
+    end = _d(cur.get("to"))
+    start = _d(cur.get("from"))
+    days_left = (end - today).days if end else None
+    in_last_week = bool(end and start and start <= today <= end
+                        and days_left < _LAST_WEEK_DAYS)
+
+    scored = cur
+    if in_last_week:
+        allj = sorted(_jc._all_jcs(), key=lambda j: j["start"])
+        i = next((n for n, j in enumerate(allj)
+                  if j.get("fy") == cur.get("fy") and j.get("jc") == cur.get("jc")), None)
+        if i is not None and i + 1 < len(allj):
+            scored = allj[i + 1]
+        else:
+            in_last_week = False        # no next cycle on the calendar yet
+
+    # the completed cycles: everything in the window that has already ended
+    done = [(n, j) for n, j in enumerate(window) if (_d(j.get("to")) or today) < today]
+    return {"scored": scored, "current": cur, "in_last_week": in_last_week,
+            "days_left": days_left, "done": done[-_ACC_JCS:]}
 
 
 def _wmape_acc(pairs) -> float | None:
@@ -406,6 +453,58 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
                              if done and act_tot > 0 else None),
         })
 
+    # ── the forward check: the plan that matters now vs how we have been
+    # selling. Not a hindsight score — it asks whether the projection in front
+    # of us is plausible against the last three COMPLETED cycles.
+    forward = None
+    fw = _forward_scope(window)
+    if fw:
+        fproj, _ur = _proj_map(mine, admin, str(fw["scored"].get("fy") or acc_year),
+                               int(fw["scored"].get("jc") or 0))
+        rate: dict = {}
+        for n, _j in fw["done"]:
+            for k, v in (act_by_jc.get(n) or {}).items():
+                rate[k] = rate.get(k, 0.0) + v
+        n_done = len(fw["done"]) or 1
+        rate = {k: v / n_done for k, v in rate.items()}
+        if allowed is not None:
+            fproj = {k: v for k, v in fproj.items() if k in allowed}
+            rate = {k: v for k, v in rate.items() if k in allowed}
+        pairs_f = [(fproj.get(k, {}).get("proj", 0.0), rate.get(k, 0.0))
+                   for k in set(fproj) | set(rate)]
+        pairs_fp = [x for x in pairs_f if x[0] > 0]
+        # The comparison is TOTAL to TOTAL, as the KPI definitions say: all of the
+        # upcoming projection against all of the recent dispatch. Restricting the
+        # dispatch side to items that happen to carry a projection would flatter
+        # the ratio by hiding everything selling with no plan behind it.
+        projection = sum(p for p, _a in pairs_f)
+        avg = sum(a for _p, a in pairs_f)
+        gap = projection - avg
+        forward = {
+            "jc": int(fw["scored"].get("jc") or 0),
+            "label": str(fw["scored"].get("label") or ""),
+            "basis": "next" if fw["in_last_week"] else "current",
+            "current_label": str(fw["current"].get("label") or ""),
+            "in_last_week": fw["in_last_week"],
+            "days_left": fw["days_left"],
+            "dispatch_jcs": [str(j.get("label") or "") for _n, j in fw["done"]],
+            "n_cycles": len(fw["done"]),
+            # the five KPIs
+            "projection_kg": round(projection, 1),
+            "dispatch_avg_kg": round(avg, 1),
+            "ratio_pct": (round(100.0 * projection / avg, 2) if avg > 0 else None),
+            "uplift_pct": (round(100.0 * gap / avg, 2) if avg > 0 else None),
+            "gap_kg": round(gap, 1),
+            # context for the line under the table
+            "dispatch_total_kg": round(avg * (len(fw["done"]) or 1), 1),
+            "items_projected": sum(1 for p, _a in pairs_f if p > 0),
+            "items_sold": sum(1 for _p, a in pairs_f if a > 0),
+            # kept so the per-cycle history can still be reconciled
+            "accuracy": _wmape_acc(pairs_fp),
+            "accuracy_all": _wmape_acc(pairs_f),
+            "projected_items_dispatch_avg_kg": round(sum(a for _p, a in pairs_fp), 1),
+        }
+
     # every scoped item grouped by its status, so the status chart can drill
     # into any slice (biggest seller first; projected-but-not-selling items have
     # no sales to rank by, so they fall back to projected volume)
@@ -415,7 +514,10 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
             {"name": i["name"], "code": i["code"], "avg3": i["avg3"], "proj": i["proj"]})
     items_by_flag = {k: v[:200] for k, v in by_flag.items()}
 
-    missing_all = [{"name": i["name"], "code": i["code"], "avg3": i["avg3"]}
+    # the card lists these item by item, so each carries the segment the rest of
+    # the page groups by
+    missing_all = [{"name": i["name"], "code": i["code"], "avg3": i["avg3"],
+                    "seg": cube_seg.get(_norm(i["name"]), "—")}
                    for i in with_sales if i["flag"] == "none"][:500]
     return {
         "acc_year": acc_year, "jc": int(jc),
@@ -427,6 +529,7 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
         "pipeline_rows": pipeline_rows,
         "compare": with_sales[:12],
         "jc_trend": jc_trend,
+        "forward": forward,
         "overall_accuracy": _weighted_mean(acc_rows[-_ACC_JCS:]),
         "overall_accuracy_proj": _weighted_mean(acc_rows_p[-_ACC_JCS:]),
         # which cycles that headline actually covers, so the card can name them

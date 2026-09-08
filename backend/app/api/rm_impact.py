@@ -90,8 +90,9 @@ from .item_activity import ACTIVITY as _ACTIVITY
 
 
 def _bom() -> dict:
-    """{squashed assembly name: components} for the finished goods we make or
-    repack — see ``_ACTIVITY``. Internal builds and traded goods are dropped."""
+    """{squashed assembly name: components} for the Performance Chemicals finished
+    goods we make or repack — see ``_ACTIVITY`` and ``item_activity.DIVISION``.
+    Other divisions, internal builds and traded goods are dropped."""
     from .live import _resolve_file
     path = _resolve_file("PLANNING_BOM_XLSX")
     if _BOM.get("path") == path and _BOM.get("map"):
@@ -101,7 +102,17 @@ def _bom() -> dict:
     except Exception:   # noqa: BLE001
         return {}
     out = {}
+    from .item_activity import division_map, DIVISION
+    _by_code, by_name = division_map()
     for k, variants in raw["by_squash"].items():
+        # Performance Chemicals only — the division sits above the activity rule
+        div = by_name.get(k)
+        if div is None:
+            div = next((_by_code.get(_pf._norm(v.get("assembly_item")))
+                        for v in variants
+                        if _by_code.get(_pf._norm(v.get("assembly_item")))), None)
+        if div != DIVISION:
+            continue
         for cls in _ACTIVITY:
             cand = [v for v in variants if v.get("bom_class") == cls]
             if cand:
