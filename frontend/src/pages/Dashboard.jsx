@@ -380,13 +380,14 @@ const PROJ_METRICS = [
 // Single-number projection metrics, drawn rather than printed on a card.
 const accColor = (v) => (v == null ? "#90a1ac" : v < 40 ? "#c53030" : v < 70 ? "#b7791f" : "#2f855a");
 
-export function gaugeOption(value, caption) {
+export function gaugeOption(value, caption, window = "") {
   const c = accColor(value);
   return {
     ...ANIM,
     tooltip: { ...TT, trigger: "item",
       formatter: () => `Accuracy on projected items<br/><b style="font-size:14px">${value == null ? "—" : value + "%"}</b>` +
-        `<br/><span style="color:#90a1ac">100 − WMAPE across completed JCs</span>` },
+        `<br/><span style="color:#90a1ac">projection vs dispatch, ${window || "the last completed cycles"}` +
+        `<br/>100 − WMAPE per item</span>` },
     series: [{
       type: "gauge", startAngle: 205, endAngle: -25, min: 0, max: 100,
       radius: "80%", center: ["50%", "58%"],
@@ -613,7 +614,7 @@ function JcTrendTable({ p, metric = "accuracy" }) {
     ? ["Total", fmt.num(rows.reduce((a, t) => a + (t.proj || 0), 0)),
        fmt.num(done.reduce((a, t) => a + (t.actual || 0), 0)), ""]
     : metric === "accuracy"
-      ? ["Overall · completed cycles",
+      ? [`Overall · last ${(p.accuracy_jcs || []).length} cycles`,
          p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`,
          p.overall_accuracy == null ? "—" : `${p.overall_accuracy}%`, `${p.coverage_pct}%`]
       : null;
@@ -824,8 +825,15 @@ export default function Dashboard({ session, isAdmin }) {
   // Projection status is donut-only — no shape switch on this card.
   const statusOpt = useMemo(() => distOption(statusRows, { shape: "donut", unit: "items", center: "items" }),
     [statusRows]);
+  // the cycles the accuracy headline covers — the backend says which
+  const accWindow = useMemo(() => {
+    const j = p?.accuracy_jcs || [];
+    if (!j.length) return "";
+    return j.length === 1 ? j[0] : `${j[0]}–${j[j.length - 1]}`;
+  }, [p]);
   const accGaugeOpt = useMemo(
-    () => gaugeOption(p?.overall_accuracy_proj ?? null, "on projected items"), [p]);
+    () => gaugeOption(p?.overall_accuracy_proj ?? null, "on projected items",
+      accWindow), [p, accWindow]);
   const volRatioOpt = useMemo(() => ratioOption([
     { name: "Projected", value: p?.covered_kg || 0, color: "#2a9d8f" },
     { name: "No projection", value: p?.uncovered_kg || 0, color: "#c53030" },
@@ -1006,7 +1014,9 @@ export default function Dashboard({ session, isAdmin }) {
             <div className="supply-dash-cardhead">
               <div><h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>{(() => { const M = PROJ_METRICS.find((m) => m.id === projMetric); const I = M?.icon; return <>{I && <I size={16} />} {M?.title}</>; })()}</h3>
                 <div className="sub">
-                  {projMetric === "accuracy" && <>100 − WMAPE over JC1–JC{lastDoneJc} · only the items that were projected</>}
+                  {projMetric === "accuracy" && <>projection vs dispatch over the last{" "}
+                    {(p.accuracy_jcs || []).length} completed cycles{accWindow ? ` (${accWindow})` : ""}{" "}
+                    · only the items that were projected</>}
                   {projMetric === "volume" && <>share of your 3-JC average sales that carries a JC{p.jc} projection</>}
                   {projMetric === "items" && <>selling items with vs without a JC{p.jc} projection</>}
                 </div></div>
@@ -1116,7 +1126,7 @@ export default function Dashboard({ session, isAdmin }) {
                     {JC_VIEWS.find((v) => v.id === jcMetric)?.icon} {JC_VIEWS.find((v) => v.id === jcMetric)?.title}</h3>
                     <div className="sub">
                       {jcMetric === "qty" && <>projected KG per job cycle vs actual sales · {p.acc_year} · the pale bar is the planning JC{p.jc}</>}
-                      {jcMetric === "accuracy" && <>100 − WMAPE per item · overall <b>{p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}</b> on projected items</>}
+                      {jcMetric === "accuracy" && <>100 − WMAPE per item · the last {(p.accuracy_jcs || []).length} cycles{accWindow ? ` (${accWindow})` : ""} average <b>{p.overall_accuracy_proj == null ? "—" : `${p.overall_accuracy_proj}%`}</b> on projected items</>}
                       {jcMetric === "items" && <>items carrying a projection each cycle vs items that actually sold · the pale bar is the planning JC (not dispatched yet)</>}
                     </div></div>
                   <div className="card-filters">

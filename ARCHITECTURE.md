@@ -52,6 +52,15 @@ Coverage ceiling: only 83 of 347 exposed items carry any forward supply (34 prod
 49 inbound). The rest are reported as "no dated supply" rather than given an invented
 date — nothing planned is visible to us, which is not the same as cannot be supplied.
 
+**Projection accuracy scores the last 3 completed cycles.** `overall_accuracy_proj` is
+100 - WMAPE per item, volume-weighted across cycles (`_weighted_mean`, not pooled - see
+its docstring), over the three most recent completed JCs rather than the whole accounting
+year (`_ACC_JCS`). A JC1 miss six cycles ago says nothing about how the team projects now,
+and averaging it in flattens the movement the card exists to show; the per-JC trend beside
+it still runs the full year. `accuracy_jcs` names the cycles so the card can say which.
+Both sides of the comparison carry the item filter above - without it the trend scored
+projections for made goods against dispatch that included the traded book.
+
 **My Dashboard counts only what we make or repack.** Pure Chemical also trades bulk
 solvents — TOLUENE, METHANOL, ACETIC ACID, IPA, MIXED XYLENE — and by weight that book
 dwarfs everything made in-house: 428 of 452 million KG dispatched over 13 JCs (94.8%),

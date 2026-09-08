@@ -27,13 +27,19 @@ from ..integration.planning_filter import _proj_flag   # the plan's ±20% band
 
 # bump when the payload shape changes so stale precomputed admin payloads
 # (computed_plan.dashboard_admin) are rebuilt instead of served
-_PAYLOAD_V = 12
+_PAYLOAD_V = 14
 
 # broadest scope first — a user holding several personas gets the widest view
 _PERSONA_PRIORITY = ["Division Head", "Business Head", "Technical Head",
                      "Technical Manager", "Regional Manager", "Branch Manager",
                      "Sales Executive", "Technical Executive"]
 
+# The accuracy headline scores the LAST N COMPLETED cycles rather than the whole
+# accounting year. A projection is judged by how it landed recently — a JC1 miss
+# six cycles ago says nothing about how the team is projecting now, and averaging
+# it in flattens exactly the movement the card exists to show. The per-JC trend
+# beside it still runs the full year, so the history is not lost.
+_ACC_JCS = 3
 _CUBE_MAX_COLLECTORS = 12   # cube buckets beyond these become "Other" (keeps the
 _CUBE_MAX_SEGMENTS = 10     # client-side cross-filter payload small)
 
@@ -351,9 +357,17 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
     else:
         hist = staging.read_projection_all(acc_year, approved=True)
     proj_by_jc: dict = {}
+    # Both sides of the comparison must cover the same universe. The actuals come
+    # from the dispatch cube, already filtered to what we make or repack; without
+    # the same filter here every projected traded item would arrive with a
+    # projection and no dispatch, scoring as a total miss — which floored the
+    # Admin accuracy at 0% in every cycle.
+    keep = _activity.activity_map()
     for r in hist:
         k = _norm(r.get("item_name"))
         if not k or (allowed is not None and k not in allowed):
+            continue
+        if keep and _pf._squash(r.get("item_name")) not in keep:
             continue
         d = proj_by_jc.setdefault(int(r["jc"]), {})
         d[k] = d.get(k, 0.0) + float(r.get("current_q") or 0)
@@ -363,7 +377,7 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
     # the qty and item-count charts still show it).
     win = {int(w.get("jc") or 0): (i, w) for i, w in enumerate(window or [])
            if str(w.get("fy")) == str(acc_year)}
-    jc_trend, acc_rows, acc_rows_p = [], [], []
+    jc_trend, acc_rows, acc_rows_p, done_jcs = [], [], [], []
     for wjc in sorted(set(proj_by_jc) | set(win)):
         idx, w = win.get(wjc, (None, {}))
         pj = proj_by_jc.get(wjc, {})
@@ -378,6 +392,7 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
         if done:
             acc_rows.append((_wmape_acc(pairs), act_tot))
             acc_rows_p.append((_wmape_acc(pairs_p), act_tot_p))
+            done_jcs.append(wjc)          # ascending, so the last N are the recent ones
         jc_trend.append({
             "label": f"JC{wjc}", "jc": wjc, "done": done,
             "from": str(w.get("from") or ""), "to": str(w.get("to") or ""),
@@ -412,8 +427,10 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
         "pipeline_rows": pipeline_rows,
         "compare": with_sales[:12],
         "jc_trend": jc_trend,
-        "overall_accuracy": _weighted_mean(acc_rows),
-        "overall_accuracy_proj": _weighted_mean(acc_rows_p),
+        "overall_accuracy": _weighted_mean(acc_rows[-_ACC_JCS:]),
+        "overall_accuracy_proj": _weighted_mean(acc_rows_p[-_ACC_JCS:]),
+        # which cycles that headline actually covers, so the card can name them
+        "accuracy_jcs": [f"JC{j}" for j in done_jcs[-_ACC_JCS:]],
         "by_group": by_group,
         "items_projected": pipeline[0]["items"],
         "items_selling": sum(1 for i in items if i["avg3"] > 0),
