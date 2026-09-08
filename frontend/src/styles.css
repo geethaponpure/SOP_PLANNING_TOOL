@@ -1164,6 +1164,15 @@ code.k { background: #edf2f7; color: var(--navy); padding: 1px 6px; border-radiu
 .tbl-wrap .subtable { font-size: 11.5px; }
 .num-pos { color: var(--red); font-weight: 700; }
 .num-zero { color: var(--green); }
+
+/* click-to-sort headers (components/SortTable.jsx) — the arrow sits inline so
+   the header keeps whatever text-align its own column set */
+th.sort-th { cursor: pointer; user-select: none; white-space: nowrap; }
+.sort-th-in { display: inline-flex; align-items: center; gap: 4px; }
+.sort-th-ic { flex: none; opacity: .32; transition: opacity .12s ease, color .12s ease; }
+th.sort-th:hover .sort-th-ic { opacity: .7; }
+th.sort-th.is-sorted { color: var(--navy); }
+th.sort-th.is-sorted .sort-th-ic { opacity: 1; color: var(--navy); }
 th.grp { text-align: center; background: var(--navy) !important; color: #fff; border-bottom: 2px solid var(--navy); }
 .cg-proj { background: #f3f8ff; }
 .cg-net { background: #fff6f1; }

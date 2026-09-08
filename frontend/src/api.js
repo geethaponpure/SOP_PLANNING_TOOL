@@ -77,6 +77,13 @@ export const api = {
     req(`/my-dashboard/rm-impact?username=${encodeURIComponent(username)}` +
       `&email=${encodeURIComponent(email)}&admin=${admin ? 1 : 0}` +
       `&persona=${encodeURIComponent(persona)}`),
+  // same gate as the card — a persona without price access gets a 403, not a file
+  myDashboardRmExport: ({ section = "", username = "", email = "", admin = 0, persona = "" } = {}) =>
+    downloadFile(
+      `/my-dashboard/rm-impact/export?section=${encodeURIComponent(section)}` +
+      `&username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}` +
+      `&admin=${admin ? 1 : 0}&persona=${encodeURIComponent(persona)}`,
+      "RM_Price_Impact.xlsx"),
   // section = one card's table; omit it for the whole page (charts + tables)
   myDashboardExport: ({ section = "", username = "", email = "", admin = 0, persona = "" } = {}) =>
     downloadFile(

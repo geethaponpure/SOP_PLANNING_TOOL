@@ -5,6 +5,7 @@ import SegTabs from "../components/SegTabs.jsx";
 import SelectBox from "../components/SelectBox.jsx";
 import SmoothInput from "../components/SmoothInput.jsx";
 import DashGrid from "../components/DashGrid.jsx";
+import { useSort, SortTh } from "../components/SortTable.jsx";
 import { api, fmt } from "../api";
 import { useAsync, Loading, ErrorBox } from "../components/ui.jsx";
 import { BarChart3, CalendarDays, CircleCheck, ClipboardList, Dna, Download, Eye, Package, Target, TrendingUp, TriangleAlert, Factory } from "lucide-react";
@@ -47,7 +48,6 @@ const DASH_DEFAULTS = {
 };
 // RM price impact: what a raw-material rise does to the finished goods that use
 // it. Gated server-side — this only renders when the API says allowed.
-const RM_BAND_COLOR = { ">5%": "#c53030", "3-5%": "#b7791f", "1-3%": "#3182ce", "<1%": "#90a1ac" };
 
 function rmBarOption(fgs, tt, anim) {
   const top = fgs.filter((r) => r.impact_pct != null).slice(0, 12).slice().reverse();
@@ -56,12 +56,9 @@ function rmBarOption(fgs, tt, anim) {
     tooltip: { ...tt, trigger: "axis", axisPointer: { type: "shadow" },
       formatter: (ps) => {
         const r = top[ps[0].dataIndex] || {};
-        return `<b>${r.item}</b><br/>material cost <b>+${fmt.num(r.added_per_unit)}</b> per unit`
-          + (r.unit_cost ? ` on a cost of ${fmt.num(r.unit_cost)}` : "")
-          + `<br/><b>${r.impact_pct}%</b> cost impact`
-          + (r.exposure ? `<br/>exposure ${fmt.num(r.exposure)} per cycle` : "")
-          + `<br/><span style="color:#90a1ac">driven by ${r.rm_count} raw material`
-          + `${r.rm_count === 1 ? "" : "s"} · click for the detail</span>`;
+        return `<b>${r.item}</b>`
+          + (r.segment3 || r.segment2 ? `<br/>${r.segment3 || r.segment2}` : "")
+          + `<br/><b>${r.impact_pct}%</b> cost impact`;
       } },
     grid: { left: 8, right: 54, top: 8, bottom: 8, containLabel: true },
     xAxis: { type: "value", axisLabel: { color: "#90a1ac", fontSize: 10, formatter: "{value}%" },
@@ -165,7 +162,26 @@ function MiniBar({ label, value, max, color }) {
   );
 }
 
+// Proj % and Status are worked out while rendering, so the sorter needs its own
+// readers for them; Status ranks by the FLAGS order (on-track → new), not A-Z.
+const PROJ_SORT_GET = {
+  pct: (r) => (r.avg3 > 0 ? r.proj / r.avg3 : null),
+  flag: (r) => Object.keys(FLAGS).indexOf(r.flag),
+};
+// same idea for the item-group roll-up and the RM-impact list
+const GROUP_SORT_GET = {
+  cov_pct: (g) => (g.avg3 ? g.covered_kg / g.avg3 : null),
+  miss_pct: (g) => (g.items ? g.missing / g.items : null),
+  with_proj: (g) => (g.items || 0) - (g.missing || 0),
+};
+const RM_SORT_GET = { segment: (r) => r.segment3 || r.segment2 || "" };
+// the two header styles the card tables use, spelled once
+const GH_L = { ...HCELL, textAlign: "left" };
+const GH_R = { ...HCELL, textAlign: "right" };
+
 function ProjCompareTable({ rows, onItem, jc }) {
+  const s = useSort(rows, { key: null, dir: "desc" }, PROJ_SORT_GET);
+  const th = s.th;
   return (
     <div className="tbl-wrap">
       <table className="proj-table" style={{ borderCollapse: "collapse", fontSize: 13 }}>
@@ -177,18 +193,23 @@ function ProjCompareTable({ rows, onItem, jc }) {
         </colgroup>
         <thead>
           <tr>
-            <th style={{ ...HCELL, textAlign: "left" }}>Item</th>
-            <th style={{ ...HCELL, textAlign: "left" }} title="3-JC average sales vs the JC{jc} projection">Sales vs Proj</th>
-            <th style={{ ...HCELL, textAlign: "right" }} title="3-JC average sales (KG)">Avg sales</th>
-            <th style={{ ...HCELL, textAlign: "right" }} title={`Projection for the current cycle, JC${jc} (KG)`}>JC{jc}</th>
-            <th style={{ ...HCELL, textAlign: "right" }} title="Projection for the next cycle (KG)">Next JC</th>
-            <th style={{ ...HCELL, textAlign: "right" }} title="Projection for the cycle after next (KG)">JC after</th>
-            <th style={{ ...HCELL, textAlign: "right" }} title="Projection as a % of 3-JC average sales">Proj %</th>
-            <th style={{ ...HCELL, textAlign: "center" }}>Status</th>
+            <SortTh label="Item" k="name" dir0="asc" {...th} style={{ ...HCELL, textAlign: "left" }} />
+            <th style={{ ...HCELL, textAlign: "left" }} title={`3-JC average sales vs the JC${jc} projection`}>Sales vs Proj</th>
+            <SortTh label="Avg sales" k="avg3" {...th} style={{ ...HCELL, textAlign: "right" }}
+              title="3-JC average sales (KG) · click to sort" />
+            <SortTh label={`JC${jc}`} k="proj" {...th} style={{ ...HCELL, textAlign: "right" }}
+              title={`Projection for the current cycle, JC${jc} (KG) · click to sort`} />
+            <SortTh label="Next JC" k="next1" {...th} style={{ ...HCELL, textAlign: "right" }}
+              title="Projection for the next cycle (KG) · click to sort" />
+            <SortTh label="JC after" k="next2" {...th} style={{ ...HCELL, textAlign: "right" }}
+              title="Projection for the cycle after next (KG) · click to sort" />
+            <SortTh label="Proj %" k="pct" {...th} style={{ ...HCELL, textAlign: "right" }}
+              title="Projection as a % of 3-JC average sales · click to sort" />
+            <SortTh label="Status" k="flag" {...th} style={{ ...HCELL, textAlign: "center" }} />
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => {
+          {s.rows.map((r, i) => {
             const f = FLAGS[r.flag] || FLAGS.ontrack;
             const max = Math.max(r.avg3, r.proj);
             const acc = r.avg3 > 0 ? Math.round((r.proj / r.avg3) * 100) : null;
@@ -234,100 +255,6 @@ function ProjCompareTable({ rows, onItem, jc }) {
 // popup: one item's dispatched KG per JC (scoped) + projection reference lines
 // Which raw materials moved, by how much, and what each contributes to this
 // product's cost — the brief's section 5 drill-down.
-function RmDrill({ target, onClose }) {
-  useEffect(() => {
-    if (!target) return undefined;
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [target, onClose]);
-  if (!target) return null;
-  const r = target;
-  return createPortal(
-    <div className="modal-overlay" onMouseDown={onClose}>
-      <div className="modal-container" role="dialog" aria-modal="true"
-        style={{ maxWidth: 860, width: "94vw" }} onMouseDown={(e) => e.stopPropagation()}>
-        <div className="modal-container-header">
-          <div className="modal-container-title" style={{ minWidth: 0 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, overflow: "hidden" }}>
-              <Factory size={16} style={{ flex: "none" }} />
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {r.item}
-              </span>
-            </span>
-          </div>
-          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-              strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="modal-container-body">
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-            {[
-              ["Added material cost", `+${fmt.num(r.added_per_unit)} / unit`, "#c53030"],
-              ["This product's unit cost", r.unit_cost ? fmt.num(r.unit_cost) : "—", "#1f3a5f"],
-              ["Cost impact", r.impact_pct == null ? "—" : `+${r.impact_pct}%`, "#b7791f"],
-              ["Selling price", r.sell_price ? fmt.num(r.sell_price) : "—", "#1f3a5f"],
-              ["Margin erosion", r.margin_erosion_pts == null ? "—" : `−${r.margin_erosion_pts} pts`, "#c53030"],
-              ["Exposure / cycle", r.exposure ? fmt.num(r.exposure) : "—", "#c53030"],
-            ].map(([l, v, c]) => (
-              <div key={l} style={{ padding: "9px 12px", border: "1px solid var(--border)",
-                borderRadius: 6, minWidth: 132, flex: "1 1 132px" }}>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 3 }}>{l}</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: c }}>{v}</div>
-              </div>
-            ))}
-          </div>
-
-          <h4 style={{ margin: "0 0 8px", fontSize: 13 }}>
-            The raw materials behind it
-            <span style={{ fontWeight: 400, fontSize: 11.5, color: "var(--muted)" }}>
-              {" "}— BOM quantity × the price move
-            </span>
-          </h4>
-          <div className="tbl-wrap" style={{ maxHeight: 320 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-              <thead>
-                <tr>
-                  <th style={{ ...HCELL, textAlign: "left" }}>Raw material</th>
-                  <th style={{ ...HCELL, textAlign: "right" }}>BOM qty</th>
-                  <th style={{ ...HCELL, textAlign: "right" }}>Previous</th>
-                  <th style={{ ...HCELL, textAlign: "right" }}>Current</th>
-                  <th style={{ ...HCELL, textAlign: "right" }}>Rise</th>
-                  <th style={{ ...HCELL, textAlign: "right" }}>Adds / unit</th>
-                  <th style={{ ...HCELL, textAlign: "right" }}>Moved</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(r.rms || []).map((m, i) => (
-                  <tr key={i}>
-                    <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}
-                      title={m.rm_code}>{m.rm}</td>
-                    <td style={{ ...CELL, textAlign: "right" }}>{m.bom_qty}</td>
-                    <td style={{ ...CELL, textAlign: "right", color: "var(--muted)" }}>{fmt.num(m.old_price)}</td>
-                    <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>{fmt.num(m.new_price)}</td>
-                    <td style={{ ...CELL, textAlign: "right", fontWeight: 700, color: "#c53030" }}>
-                      +{m.pct}%
-                    </td>
-                    <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>+{fmt.num(m.added)}</td>
-                    <td style={{ ...CELL, textAlign: "right", whiteSpace: "nowrap",
-                      color: "var(--muted)" }}>{m.moved_on || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ marginTop: 12, fontSize: 11.5, color: "var(--muted)" }}>
-            Quantities come from the production BOM. Prices are the current requisition price
-            against the last PO price for the same material.
-          </div>
-        </div>
-      </div>
-    </div>, document.body);
-}
-
 function ItemGraphModal({ target, idParams, onClose }) {
   const { data, loading, error } = useAsync(
     () => (target ? api.myDashboardItem({ ...idParams, item: target.name, code: target.code || "" })
@@ -638,30 +565,36 @@ function missingOption(rows, total, color = "#c53030", byProj = false) {
 // The cycle-by-cycle numbers behind every "by JC" view. The columns follow the
 // metric being looked at — showing all of them under every filter made the
 // filter look broken, since three different questions got one identical table.
+// `cell` formats for the screen, `val` hands the sorter the raw number behind it
+// (sorting "1,20,000" as text would order it next to "12").
 const JC_COLUMNS = {
   qty: [
-    { head: "Projected (KG)", num: true, strong: true, cell: (t) => fmt.num(t.proj) },
-    { head: "Actual sales (KG)", num: true,
-      cell: (t) => (t.actual == null ? null : fmt.num(t.actual)) },
-    { head: "Variance (KG)", num: true,
+    { head: "Projected (KG)", key: "proj", num: true, strong: true,
+      cell: (t) => fmt.num(t.proj), val: (t) => t.proj },
+    { head: "Actual sales (KG)", key: "actual", num: true,
+      cell: (t) => (t.actual == null ? null : fmt.num(t.actual)), val: (t) => t.actual },
+    { head: "Variance (KG)", key: "variance", num: true,
       cell: (t) => (t.actual == null ? null : fmt.num(t.proj - t.actual)),
+      val: (t) => (t.actual == null ? null : t.proj - t.actual),
       color: (t) => (t.actual == null ? undefined : t.proj > t.actual ? "#b7791f" : "#3182ce") },
   ],
   accuracy: [
-    { head: "Accuracy (projected items)", num: true, strong: true,
-      cell: (t) => (t.accuracy_proj == null ? null : `${t.accuracy_proj}%`),
+    { head: "Accuracy (projected items)", key: "accuracy_proj", num: true, strong: true,
+      cell: (t) => (t.accuracy_proj == null ? null : `${t.accuracy_proj}%`), val: (t) => t.accuracy_proj,
       color: (t) => (t.accuracy_proj == null ? undefined : accColor(t.accuracy_proj)) },
-    { head: "Accuracy (all items)", num: true, muted: true,
-      cell: (t) => (t.accuracy == null ? null : `${t.accuracy}%`) },
-    { head: "Volume projected", num: true,
-      cell: (t) => (t.coverage_pct == null ? null : `${t.coverage_pct}%`) },
+    { head: "Accuracy (all items)", key: "accuracy", num: true, muted: true,
+      cell: (t) => (t.accuracy == null ? null : `${t.accuracy}%`), val: (t) => t.accuracy },
+    { head: "Volume projected", key: "coverage_pct", num: true,
+      cell: (t) => (t.coverage_pct == null ? null : `${t.coverage_pct}%`), val: (t) => t.coverage_pct },
   ],
   items: [
-    { head: "Items projected", num: true, strong: true, cell: (t) => fmt.num(t.items_projected) },
-    { head: "Items sold", num: true,
-      cell: (t) => (t.items_sold == null ? null : fmt.num(t.items_sold)) },
-    { head: "Selling items projected", num: true,
-      cell: (t) => (t.items_sold ? `${Math.round((t.items_projected / t.items_sold) * 100)}%` : null) },
+    { head: "Items projected", key: "items_projected", num: true, strong: true,
+      cell: (t) => fmt.num(t.items_projected), val: (t) => t.items_projected },
+    { head: "Items sold", key: "items_sold", num: true,
+      cell: (t) => (t.items_sold == null ? null : fmt.num(t.items_sold)), val: (t) => t.items_sold },
+    { head: "Selling items projected", key: "items_ratio", num: true,
+      cell: (t) => (t.items_sold ? `${Math.round((t.items_projected / t.items_sold) * 100)}%` : null),
+      val: (t) => (t.items_sold ? t.items_projected / t.items_sold : null) },
   ],
 };
 
@@ -669,6 +602,13 @@ function JcTrendTable({ p, metric = "accuracy" }) {
   const rows = p.jc_trend || [];
   const cols = JC_COLUMNS[metric] || JC_COLUMNS.accuracy;
   const done = rows.filter((t) => t.done);
+  // cycles start in their own chronological order; a click re-ranks them
+  const get = useMemo(() => {
+    const g = { jc: (t) => t.jc ?? t.label };
+    cols.forEach((c) => { g[c.key] = c.val; });
+    return g;
+  }, [cols]);
+  const s = useSort(rows, { key: null, dir: "desc" }, get);
   const foot = metric === "qty"
     ? ["Total", fmt.num(rows.reduce((a, t) => a + (t.proj || 0), 0)),
        fmt.num(done.reduce((a, t) => a + (t.actual || 0), 0)), ""]
@@ -683,15 +623,17 @@ function JcTrendTable({ p, metric = "accuracy" }) {
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr>
-            <th style={{ ...HCELL, textAlign: "left" }}>Job cycle</th>
+            <SortTh label="Job cycle" k="jc" dir0="asc" {...s.th}
+              style={{ ...HCELL, textAlign: "left" }} />
             <th style={{ ...HCELL, textAlign: "left" }}>Period</th>
             {cols.map((c) => (
-              <th key={c.head} style={{ ...HCELL, textAlign: c.num ? "right" : "left" }}>{c.head}</th>
+              <SortTh key={c.head} label={c.head} k={c.key} {...s.th}
+                style={{ ...HCELL, textAlign: c.num ? "right" : "left" }} />
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((t, i) => (
+          {s.rows.map((t, i) => (
             <tr key={i}>
               <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>
                 {t.label}{!t.done && <span style={{ fontSize: 10.5, color: "var(--muted)",
@@ -738,7 +680,8 @@ function JcTrendTable({ p, metric = "accuracy" }) {
 // Small Excel download, pinned to a card's top-right corner. Sits outside the
 // header so it never disturbs the title/toggle layout, and stopPropagation keeps
 // a click from starting a card drag.
-function ExportBtn({ section, idParams, label = "Download this table as Excel" }) {
+function ExportBtn({ section, idParams, fn, label = "Download this table as Excel" }) {
+  const call = fn || api.myDashboardExport;
   const [busy, setBusy] = useState(false);
   return (
     <button type="button" className="btn secondary dash-export" title={label}
@@ -747,7 +690,7 @@ function ExportBtn({ section, idParams, label = "Download this table as Excel" }
       onClick={async (e) => {
         e.stopPropagation();
         setBusy(true);
-        try { await api.myDashboardExport({ ...idParams, section }); } catch { /* surfaced by the browser */ }
+        try { await call({ ...idParams, section }); } catch { /* surfaced by the browser */ }
         setBusy(false);
       }}>
       <Download size={14} />
@@ -860,10 +803,9 @@ export default function Dashboard({ session, isAdmin }) {
   const rm = useAsync(() => api.myDashboardRmImpact(idParams),
     [viewAs.username, viewAs.persona]);
   const rmData = rm.data && rm.data.allowed ? rm.data : null;
+  const rmSort = useSort(rmData?.fgs, { key: null, dir: "desc" }, RM_SORT_GET);
   const [rmView, setRmView] = useState("chart");
-  const [rmPick, setRmPick] = useState(null);
-  useEffect(() => { setRmView("chart"); setRmPick(null); },
-    [viewAs.username, viewAs.persona]);
+  useEffect(() => { setRmView("chart"); }, [viewAs.username, viewAs.persona]);
 
   const idParams = useMemo(() => (viewAs.username
     ? { username: viewAs.username, persona: viewAs.persona }
@@ -912,6 +854,7 @@ export default function Dashboard({ session, isAdmin }) {
   // item-group roll-up (Segment 3 / Segment 2) with a chart/table toggle
   const [groupLevel, setGroupLevel] = useState("segment3");
   const groupRows = useMemo(() => (p?.by_group?.[groupLevel] || []), [p, groupLevel]);
+  const grp = useSort(groupRows, { key: null, dir: "desc" }, GROUP_SORT_GET);
 
   // Projection status drills down: click a slice to see the items behind it.
   const [statusFlag, setStatusFlag] = useState(null);
@@ -932,6 +875,8 @@ export default function Dashboard({ session, isAdmin }) {
     return src.filter((m) => (m.name || "").toLowerCase().includes(q) ||
       (m.code || "").toLowerCase().includes(q));
   }, [flagItems, statusQ]);
+  // # keeps the original ranking even after another column is sorted on
+  const flg = useSort(flagRows, { key: null, dir: "desc" });
   const flagOpt = useMemo(() => {
     // rank by what the status is about: sales for the ones that sell, projected
     // volume for items that were projected but have not sold
@@ -964,10 +909,11 @@ export default function Dashboard({ session, isAdmin }) {
     if (jcView === "table") out.jcTrend = fitRows((p?.jc_trend?.length || 0) + 1);
     // only the drill-down has a table view now; the card itself is always the donut
     if (statusView === "table" && statusFlag) out.status = fitRows(flagRows.length, true);
+    if (rmView === "table" && rmData) out.rmImpact = fitRows(rmData.fgs.length) + 3;  // + the KPI strip
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projView, projMetric, pipeView, jcView, statusView, statusFlag, flagRows.length,
-      p, groupRows.length, pipeRows.length]);
+      p, groupRows.length, pipeRows.length, rmView, rmData]);
 
   if (loading && !data) return <Loading what="your dashboard" />;
   if (error) return <>{switcher}<ErrorBox msg={error} /></>;
@@ -1093,26 +1039,26 @@ export default function Dashboard({ session, isAdmin }) {
                     <thead>
                       {projMetric === "volume" ? (
                         <tr>
-                          <th style={{ ...HCELL, textAlign: "left" }}>Item group</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales (KG)</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>Projected (KG)</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>Sales with a projection</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>Sales with none</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>Volume projected</th>
+                          <SortTh label="Item group" k="name" dir0="asc" {...grp.th} style={GH_L} />
+                          <SortTh label="3-JC avg sales (KG)" k="avg3" {...grp.th} style={GH_R} />
+                          <SortTh label="Projected (KG)" k="proj" {...grp.th} style={GH_R} />
+                          <SortTh label="Sales with a projection" k="covered_kg" {...grp.th} style={GH_R} />
+                          <SortTh label="Sales with none" k="uncovered_kg" {...grp.th} style={GH_R} />
+                          <SortTh label="Volume projected" k="cov_pct" {...grp.th} style={GH_R} />
                         </tr>
                       ) : (
                         <tr>
-                          <th style={{ ...HCELL, textAlign: "left" }}>Item group</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>Items</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>With a projection</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>No projection</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>Unprojected sales (KG)</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>% items missing</th>
+                          <SortTh label="Item group" k="name" dir0="asc" {...grp.th} style={GH_L} />
+                          <SortTh label="Items" k="items" {...grp.th} style={GH_R} />
+                          <SortTh label="With a projection" k="with_proj" {...grp.th} style={GH_R} />
+                          <SortTh label="No projection" k="missing" {...grp.th} style={GH_R} />
+                          <SortTh label="Unprojected sales (KG)" k="uncovered_kg" {...grp.th} style={GH_R} />
+                          <SortTh label="% items missing" k="miss_pct" {...grp.th} style={GH_R} />
                         </tr>
                       )}
                     </thead>
                     <tbody>
-                      {groupRows.map((g, i) => {
+                      {grp.rows.map((g, i) => {
                         const covPct = g.avg3 ? (g.covered_kg / g.avg3) * 100 : null;
                         const missPct = g.items ? (g.missing / g.items) * 100 : null;
                         return (
@@ -1153,7 +1099,7 @@ export default function Dashboard({ session, isAdmin }) {
                           </tr>
                         );
                       })}
-                      {groupRows.length === 0 && (
+                      {grp.rows.length === 0 && (
                         <tr><td colSpan={6} style={CELL}>No item groups in scope.</td></tr>
                       )}
                     </tbody>
@@ -1230,15 +1176,16 @@ export default function Dashboard({ session, isAdmin }) {
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
                         <tr>
-                          <th style={{ ...HCELL, textAlign: "left", width: 56 }}>#</th>
-                          <th style={{ ...HCELL, textAlign: "left" }}>Item Code</th>
-                          <th style={{ ...HCELL, textAlign: "left" }}>Item Name</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>3-JC avg sales (KG)</th>
-                          <th style={{ ...HCELL, textAlign: "right" }}>Projection (KG)</th>
+                          <SortTh label="#" k="rank" dir0="asc" {...flg.th}
+                            style={{ ...HCELL, textAlign: "left", width: 56 }} />
+                          <SortTh label="Item Code" k="code" dir0="asc" {...flg.th} style={GH_L} />
+                          <SortTh label="Item Name" k="name" dir0="asc" {...flg.th} style={GH_L} />
+                          <SortTh label="3-JC avg sales (KG)" k="avg3" {...flg.th} style={GH_R} />
+                          <SortTh label="Projection (KG)" k="proj" {...flg.th} style={GH_R} />
                         </tr>
                       </thead>
                       <tbody>
-                        {flagRows.map((m, i) => (
+                        {flg.rows.map((m, i) => (
                           <tr key={i} onClick={() => setItemPop({ name: m.name, code: m.code })}
                             style={{ cursor: "pointer" }} title="Click to see this item's JC-wise graph">
                             <td style={{ ...CELL, color: "var(--muted)" }}>{m.rank}</td>
@@ -1254,7 +1201,7 @@ export default function Dashboard({ session, isAdmin }) {
                             </td>
                           </tr>
                         ))}
-                        {flagRows.length === 0 && (
+                        {flg.rows.length === 0 && (
                           <tr><td colSpan={5} style={CELL}>No items match the search.</td></tr>
                         )}
                       </tbody>
@@ -1302,19 +1249,13 @@ export default function Dashboard({ session, isAdmin }) {
 
         {rmData && (
           <div key="rmImpact" className="card">
+            <ExportBtn idParams={idParams} fn={api.myDashboardRmExport}
+              label="Download every impacted product and the raw materials behind them" />
             <div className="supply-dash-cardhead">
               <div>
                 <h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
                   <Factory size={16} /> RM price impact on FG
                 </h3>
-                <div className="sub">
-                  what raw-material price rises in the last {rmData.window_days} days do to the
-                  finished goods that use them · {fmt.num(rmData.kpis.rms_up)} of{" "}
-                  {fmt.num(rmData.kpis.rms_up_all)} risen materials appear in a BOM
-                  {rmData.kpis.flagged_out > 0
-                    ? ` · ${rmData.kpis.flagged_out} implausible price rows excluded`
-                    : ""}
-                </div>
               </div>
               <div className="card-filters">
                 <SegTabs size="sm" value={rmView} onChange={setRmView}
@@ -1357,27 +1298,22 @@ export default function Dashboard({ session, isAdmin }) {
                 </div>
               </div>
             ) : rmView === "chart" ? (
-              <EChart className="echart-fill" height="100%" option={rmBarOption(rmData.fgs, TT, ANIM)}
-                onEvents={{ click: (e) => {
-                  const top = rmData.fgs.filter((r) => r.impact_pct != null)
-                    .slice(0, 12).slice().reverse();
-                  if (top[e.dataIndex]) setRmPick(top[e.dataIndex]);
-                } }} />
+              <EChart className="echart-fill" height="100%"
+                option={rmBarOption(rmData.fgs, TT, ANIM)} />
             ) : (
               <div className="tbl-wrap">
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr>
-                      <th style={{ ...HCELL, textAlign: "left" }}>Finished good</th>
-                      <th style={{ ...HCELL, textAlign: "left" }}>Segment</th>
-                      <th style={{ ...HCELL, textAlign: "right" }}
-                        title="Extra material cost as a share of the product's own unit cost">Impact %</th>
+                      <SortTh label="Finished good" k="item" dir0="asc" {...rmSort.th} style={GH_L} />
+                      <SortTh label="Segment" k="segment" dir0="asc" {...rmSort.th} style={GH_L} />
+                      <SortTh label="Impact %" k="impact_pct" {...rmSort.th} style={GH_R}
+                        title="Extra material cost as a share of the product's own unit cost · click to sort" />
                     </tr>
                   </thead>
                   <tbody>
-                    {rmData.fgs.map((r) => (
-                      <tr key={r.key} onClick={() => setRmPick(r)} style={{ cursor: "pointer" }}
-                        title="Click for the raw materials behind this">
+                    {rmSort.rows.map((r) => (
+                      <tr key={r.key}>
                         <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>{r.item}</td>
                         <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)" }}>
                           {r.segment3 || r.segment2 || "—"}
@@ -1404,7 +1340,6 @@ export default function Dashboard({ session, isAdmin }) {
       </div>
 
       <ItemGraphModal target={itemPop} idParams={idParams} onClose={() => setItemPop(null)} />
-      <RmDrill target={rmPick} onClose={() => setRmPick(null)} />
     </>
   );
 }

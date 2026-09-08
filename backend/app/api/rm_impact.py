@@ -45,13 +45,36 @@ from .dashboard import _pick_persona, _scope_flt, _scope_summary
 _PAYLOAD_V = 1
 # only these personas may see purchase prices (Admin backs the View-as switcher)
 ALLOWED = ("Division Head", "Business Head", "Admin")
-_TOP = 60
+# the card's table now carries three tiny columns, so it can hold every impacted
+# product rather than a page of them; the cap is only a runaway guard
+_TOP = 500
 # cost-impact bands for the summary, per the brief's section 4
 BANDS = [(">5%", 5.0, None), ("3-5%", 3.0, 5.0), ("1-3%", 1.0, 3.0), ("<1%", None, 1.0)]
+# Almost every manufacturing BOM states its components per ONE unit of output —
+# the non-packing quantities sum to about 1 (777 of 851 fall between 0.5 and 1.5).
+# A handful are written per production batch or per drum instead: one line of
+# PUREPRINT WHITE NC PLUS lists 179.25 KG of inputs. Dispatch quantity and item
+# cost are both per unit, so a batch BOM has to be divided by its own basis
+# before it can be compared with either — left alone that single item reported
+# Rs 3,752 of added cost against a Rs 248 unit cost, and Rs 10.1M of exposure,
+# six times the rest of the book put together.
+_UNIT_BASIS = 1.5       # above this the BOM is not written per unit of output
+_MAX_BASIS = 10_000.0   # beyond this the quantity is corrupt (one row reads 3e16)
 
 
 def _key(name) -> str:
     return _pf._squash(name)
+
+
+# What a finished good looks like OUTSIDE this module. Purchase prices, supplier
+# names, BOM quantities and the per-unit rupee increase are all used to derive
+# the figures below and then dropped: the card shows the product, its segment and
+# the cost impact, so that is all that leaves the server.
+_OUT = ("key", "item", "item_code", "segment2", "segment3", "impact_pct")
+
+
+def _slim(r: dict) -> dict:
+    return {k: r[k] for k in _OUT}
 
 
 # ── inputs, each cached against what feeds it ────────────────────────────────
@@ -60,9 +83,15 @@ _BOM: dict = {}
 _SEG: dict = {}
 
 
+# The activity classes the whole dashboard reports on — see api.item_activity.
+# Manufacturing wins when an item carries both, because the recipe is what the
+# price rise actually flows through.
+from .item_activity import ACTIVITY as _ACTIVITY
+
+
 def _bom() -> dict:
-    """{squashed assembly name: [components]} from the production BOM workbook,
-    manufacturing variant where one exists."""
+    """{squashed assembly name: components} for the finished goods we make or
+    repack — see ``_ACTIVITY``. Internal builds and traded goods are dropped."""
     from .live import _resolve_file
     path = _resolve_file("PLANNING_BOM_XLSX")
     if _BOM.get("path") == path and _BOM.get("map"):
@@ -73,8 +102,12 @@ def _bom() -> dict:
         return {}
     out = {}
     for k, variants in raw["by_squash"].items():
-        mfg = [v for v in variants if not v["is_packing"]] or variants
-        out[k] = mfg[0]
+        for cls in _ACTIVITY:
+            cand = [v for v in variants if v.get("bom_class") == cls]
+            if cand:
+                # the recipe, not the packing line, when the item has both
+                out[k] = next((v for v in cand if not v["is_packing"]), cand[0])
+                break
     _BOM.update({"path": path, "map": out})
     return out
 
@@ -154,7 +187,10 @@ def _band(pct) -> str:
     return "<1%"
 
 
-def build(persona: str, flt: dict) -> dict:
+def build(persona: str, flt: dict, top: int | None = _TOP) -> dict:
+    """``top=None`` returns every impacted FG — the Excel download, which must
+    not be trimmed to what the card shows. Either way the rows are slimmed to
+    ``_OUT``; the raw-material detail never leaves this function."""
     moves = {r["item_code"]: r for r in staging.read_rm_price_moves()}
     counts = staging.rm_price_counts()
     bom, segs = _bom(), _segments()
@@ -164,6 +200,10 @@ def build(persona: str, flt: dict) -> dict:
     for k, v in bom.items():
         seg = segs.get(k) or {}
         if not _in_scope(seg, flt):
+            continue
+        basis = sum(float(c.get("qty") or 0) for c in v["components"]
+                    if not _pf._is_packing_comp(c))
+        if basis > _MAX_BASIS:
             continue
         added, behind = 0.0, []
         for c in v["components"]:
@@ -179,6 +219,10 @@ def build(persona: str, flt: dict) -> dict:
                            "old_price": m["old_price"], "new_price": m["new_price"],
                            "pct": m["pct"], "added": round(delta, 2),
                            "moved_on": m["moved_on"]})
+        if basis > _UNIT_BASIS:
+            added /= basis
+            for b in behind:
+                b["added"] = round(b["added"] / basis, 4)
         if added <= 0:
             continue
         unit_cost = cost.get(k)
@@ -196,7 +240,7 @@ def build(persona: str, flt: dict) -> dict:
             "sell_price": round(sell, 2) if sell else None,
             "exposure": round(added * qty_cyc, 0),
             "margin_erosion_pts": round(100.0 * added / sell, 1) if sell and sell > 0 else None,
-            "rm_count": len(behind), "rms": behind[:12],
+            "rm_count": len(behind),
         })
     fgs.sort(key=lambda r: (-(r["impact_pct"] or 0), -r["exposure"]))
 
@@ -205,11 +249,6 @@ def build(persona: str, flt: dict) -> dict:
     weighted = [(r["impact_pct"], r["qty_per_cycle"]) for r in fgs
                 if r["impact_pct"] is not None and r["qty_per_cycle"] > 0]
     wq = sum(q for _p, q in weighted)
-    top_rm = None
-    if used_rms:
-        cand = [moves[c] for c in used_rms if c in moves]
-        top_rm = max(cand, key=lambda m: m["pct"]) if cand else None
-
     return {
         "v": _PAYLOAD_V, "allowed": True, "persona": persona,
         "as_of": date.today().isoformat(),
@@ -231,19 +270,19 @@ def build(persona: str, flt: dict) -> dict:
                    "exposure": round(sum(r["exposure"] for r in fgs
                                          if _band(r["impact_pct"]) == lbl), 0)}
                   for lbl, _lo, _hi in BANDS],
-        "headline_rm": ({"rm": top_rm["item_name"], "rm_code": top_rm["item_code"],
-                         "old_price": top_rm["old_price"], "new_price": top_rm["new_price"],
-                         "pct": top_rm["pct"], "moved_on": top_rm["moved_on"]}
-                        if top_rm else None),
-        "fgs": fgs[:_TOP],
+        "fgs": [_slim(r) for r in (fgs if top is None else fgs[:top])],
         "total_fgs": len(fgs),
         "last_sync": staging.last_sync("rm_price_moves"),
     }
 
 
 def rm_impact(username: str | None = None, email: str | None = None,
-              admin: bool = False, persona: str | None = None) -> dict:
-    """Gated: only Division Head, Business Head and Admin get the data."""
+              admin: bool = False, persona: str | None = None,
+              full: bool = False) -> dict:
+    """Gated: only Division Head, Business Head and Admin get the data.
+
+    ``full`` skips the card's 60-row cap — the Excel download goes through the
+    same gate, so a blocked persona cannot reach prices that way either."""
     if admin:
         who, flt = "Admin", {}
     else:
@@ -269,9 +308,9 @@ def rm_impact(username: str | None = None, email: str | None = None,
     if _CACHE.get("__stamp__") != stamp:
         _CACHE.clear()
         _CACHE["__stamp__"] = stamp
-    ck = (username or "", email or "", bool(admin), who)
+    ck = (username or "", email or "", bool(admin), who, bool(full))
     if ck not in _CACHE:
-        p = build(who, flt)
+        p = build(who, flt, None if full else _TOP)
         if not admin:
             _st, mine, _f = _scope_flt(who, staging.read_user_scope(
                 email=email or None, username=username or None))

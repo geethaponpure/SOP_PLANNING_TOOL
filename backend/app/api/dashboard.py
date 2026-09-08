@@ -20,12 +20,14 @@ Personas and how their scope filters the cube:
 from __future__ import annotations
 
 from ..integration import msl as _msl
+from ..integration import planning_filter as _pf
 from ..integration import staging
+from . import item_activity as _activity
 from ..integration.planning_filter import _proj_flag   # the plan's ±20% band
 
 # bump when the payload shape changes so stale precomputed admin payloads
 # (computed_plan.dashboard_admin) are rebuilt instead of served
-_PAYLOAD_V = 11
+_PAYLOAD_V = 12
 
 # broadest scope first — a user holding several personas gets the widest view
 _PERSONA_PRIORITY = ["Division Head", "Business Head", "Technical Head",
@@ -89,7 +91,17 @@ def _scope_flt(persona: str, grants: list[dict]):
     return stype, mine, ({"segment_grants": sg} if sg else None)
 
 
+# shown under the persona chip, so nobody wonders where the traded volume went
+_ACTIVITY_NOTE = "Made or repacked here — traded items excluded"
+
+
 def _scope_summary(persona: str, stype: str, mine: list[dict]) -> list[str]:
+    """The scope lines shown under the persona chip, plus the standing note that
+    the page counts only what we make or repack."""
+    return _scope_lines(persona, stype, mine) + [_ACTIVITY_NOTE]
+
+
+def _scope_lines(persona: str, stype: str, mine: list[dict]) -> list[str]:
     if persona == "Admin":
         return ["Full access — all divisions, collectors and customers"]
     if stype == "market_circle":
@@ -126,7 +138,12 @@ def _norm(s) -> str:
 def _proj_map(mine: list[dict], admin: bool, acc_year: str, jc: int):
     """(projection map, use_rows): norm item name -> current/next1/next2 KG.
     Collector-named scopes read the per-collector projection rows; everyone
-    else reads the item-level plan table (approved slice)."""
+    else reads the item-level plan table (approved slice).
+
+    Traded items are dropped here as well as on the dispatch side — otherwise a
+    projected-but-not-selling solvent would still surface as a 'new' item and
+    the coverage percentages would be measured against a universe the rest of
+    the page no longer counts."""
     coll_names = {g.get("collector_name") for g in mine if g.get("collector_name")}
     use_rows = bool(coll_names) and not admin
     if use_rows:
@@ -136,9 +153,10 @@ def _proj_map(mine: list[dict], admin: bool, acc_year: str, jc: int):
     else:
         rows = staging.read_projection(acc_year, jc, approved=True)
     proj: dict = {}
+    keep = _activity.activity_map()
     for r in rows:
         k = _norm(r.get("ItemName"))
-        if not k:
+        if not k or (keep and _pf._squash(r.get("ItemName")) not in keep):
             continue
         p = proj.setdefault(k, {"proj": 0.0, "next1": 0.0, "next2": 0.0,
                                 "name": str(r.get("ItemName")).strip(),
@@ -567,7 +585,8 @@ def my_dashboard(username: str | None = None, email: str | None = None,
                 (not stamp or (comp.get("last_sync") or {}).get("finished_at") == stamp):
             payload = comp
         else:
-            ds = staging.dashboard_datasets({}, jc_from=jc_from)
+            ds = staging.dashboard_datasets({}, jc_from=jc_from,
+                                            item_codes=_activity.allowed_item_codes())
             payload = {**base, "scope": _scope_summary("Admin", "", []),
                        **_assemble(ds, len(jcs)),
                        "projection": _projection_block(ds["sales3"], ds["item_jc"], jcs,
@@ -581,7 +600,8 @@ def my_dashboard(username: str | None = None, email: str | None = None,
 
     stype, mine, flt = _scope_flt(persona, grants)
     if flt:
-        ds = staging.dashboard_datasets(flt, jc_from=jc_from)
+        ds = staging.dashboard_datasets(flt, jc_from=jc_from,
+                                        item_codes=_activity.allowed_item_codes())
         data = {**_assemble(ds, len(jcs)),
                 "projection": _projection_block(ds["sales3"], ds["item_jc"], jcs, mine, stype)}
     else:

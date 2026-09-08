@@ -4,6 +4,7 @@ from ..api import commit_export as _cx
 from ..api.commit import commit_risk, scoped_rows
 from ..api.dashboard import item_detail, my_dashboard, persona_users
 from ..api.rm_impact import rm_impact
+from ..api import rm_export as _rmx
 from ..api import dashboard_export as _dx
 from ..api import demand_export as _mx
 from ..api.demand import demand_protection, scoped_ledger
@@ -53,6 +54,24 @@ def get_rm_impact(username: str = "", email: str = "", admin: int = 0, persona: 
     every other persona gets allowed:false and no figures."""
     return rm_impact(username=username or None, email=email or None,
                      admin=bool(admin), persona=persona or None)
+
+
+@router.get("/api/my-dashboard/rm-impact/export")
+def export_rm_impact(username: str = "", email: str = "", admin: int = 0,
+                     persona: str = "", section: str = ""):
+    """Excel of the RM price impact card — the full list, not the 60 rows on
+    screen. Goes through the same gate as the card, so a persona that may not
+    see purchase prices cannot download them either."""
+    if section and section not in _rmx.SECTION_TITLES:
+        raise HTTPException(400, f"unknown section '{section}'")
+    payload = rm_impact(username=username or None, email=email or None,
+                        admin=bool(admin), persona=persona or None, full=True)
+    if not payload.get("allowed"):
+        raise HTTPException(403, payload.get("reason") or "Not permitted.")
+    data = _rmx.build(payload, section or None)
+    who = (payload.get("persona") or "scope").replace(" ", "_")
+    name = f"RM_Price_Impact_{who}.xlsx"
+    return _xlsx(data, name)
 
 
 @router.get("/api/my-dashboard/export")

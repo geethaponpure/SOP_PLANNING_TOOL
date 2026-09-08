@@ -52,6 +52,24 @@ Coverage ceiling: only 83 of 347 exposed items carry any forward supply (34 prod
 49 inbound). The rest are reported as "no dated supply" rather than given an invented
 date — nothing planned is visible to us, which is not the same as cannot be supplied.
 
+**My Dashboard counts only what we make or repack.** Pure Chemical also trades bulk
+solvents — TOLUENE, METHANOL, ACETIC ACID, IPA, MIXED XYLENE — and by weight that book
+dwarfs everything made in-house: 428 of 452 million KG dispatched over 13 JCs (94.8%),
+and 94.2% of the value. Every card on the page counts only items whose BOM classes them
+Manufacturing or Repack/Relabel (`api.item_activity`, reading `bom_class` from
+`planning_filter.classify_bom` — the status the MSL page shows). Items with no BOM are
+traded; internal/R&D builds go with them. The headline reads 23.2M KG rather than 452M,
+and the scope line says "Made or repacked here — traded items excluded" so the drop is
+never silent.
+
+The dashboard aggregates in SQL and cannot join a workbook, so `item_activity` resolves
+the workbook once into the set of `stg_dispatch_scope.item_code` values that pass (1,923
+of 5,436) and `dashboard_datasets` filters on that; the set is cached against both the
+workbook timestamp and the dispatch sync stamp. The projection side is filtered by the
+same map in `_proj_map`, otherwise a projected-but-not-selling solvent would still show
+as a "new" item and coverage would be measured against a universe the rest of the page
+no longer counts.
+
 **RM Price Impact — gated, and cleaned at sync.** `added cost per FG unit =
 SUM(BOM qty x price delta)`, then cost impact %, exposure per cycle and margin erosion.
 Four things it depends on:
@@ -60,6 +78,18 @@ Four things it depends on:
   through the normal permission model, but supplier and purchase-price data does not
   belong to it, so the whole card is gated server-side (`rm_impact.ALLOWED`) rather than
   half-shown. Every other persona gets `allowed:false` and the card never renders.
+* **Only what we make or repack** (`rm_impact._ACTIVITY`). Every BOM variant already
+  carries `bom_class` from `planning_filter.classify_bom` — the status the MSL page shows
+  as Manufacturing / Repack-Relabel / Trading. An assembly with neither class is an
+  internal/R&D build or a traded good, so 175 of the workbook's 3,266 assemblies are
+  dropped; the card went from 230 products to 224. Manufacturing wins when an item carries
+  both classes, because the recipe is what the price rise flows through.
+* **The added cost is normalised to one unit of output.** 777 of 851 manufacturing BOMs
+  state their components per unit (non-packing quantities sum to ~1); a few are written per
+  batch — one line of PUREPRINT WHITE NC PLUS lists 179.25 KG of inputs. Since dispatch
+  quantity and item cost are both per unit, a BOM whose basis exceeds 1.5 is divided by it.
+  Without that, this single item reported Rs 3,752 added against a Rs 248 unit cost and
+  Rs 10.1M of exposure — six times the rest of the book (it is 8.4% and Rs 56K).
 * **BOM quantity comes from the production workbook**, not CRM:
   `PurchaseRequisationRawMaterial.quantity_per_assembly` is NULL on all 9,977 rows, and
   the only populated alternative (`RDBomHdrs`) is an R&D BOM covering 13% of the affected
@@ -67,9 +97,14 @@ Four things it depends on:
 * **Bad price rows are filtered at sync, not at read.** `lastpoprice <= 1.00` is a
   placeholder and is dropped; a move beyond +/-100% is flagged `implausible` (12 of 365
   increases, one claiming Rs 162.86 -> Rs 2,565.00, which alone produced a +425% "impact"
-  on a product using 0.15 kg of it). The card reports how many it set aside.
+  on a product using 0.15 kg of it).
 * **CRM's `change_in_price_per` is unsigned** — a 4.8% FALL is stored as 1.000 — so the
   percentage is computed from the two prices instead.
+* **The raw-material detail never leaves the server.** Prices, supplier, BOM quantity and
+  the per-unit rupee increase are used to derive the impact and then dropped: a row on the
+  wire is `_OUT` only — product, code, segments, impact %. The Excel download
+  (`/api/my-dashboard/rm-impact/export`, `rm_export.py`) is the same three columns the
+  table shows, and goes through the same gate — 403 for a persona that may not see prices.
 
 **Supply Competition — the ATP rule.** Per item, company-wide:
 `atp = on_hand - firm_total - msl` and `atp_for_me = on_hand - firm_others - msl`;

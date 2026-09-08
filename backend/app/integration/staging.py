@@ -1171,7 +1171,8 @@ def dashboard_item_series(flt: dict, item_code: str | None = None,
         return []
 
 
-def dashboard_datasets(flt: dict, jc_from: int | None = None) -> dict:
+def dashboard_datasets(flt: dict, jc_from: int | None = None,
+                       item_codes: list[str] | None = None) -> dict:
     """All My-Dashboard aggregates in FIVE indexed SQL queries. Aggregation
     stays in MySQL — never haul the 134k-row cube into Python per request
     (that melted the API under concurrent page loads). ``jc_from`` adds a
@@ -1186,8 +1187,19 @@ def dashboard_datasets(flt: dict, jc_from: int | None = None) -> dict:
       {"segment_grants": [{"level": "segment4", "value": v,
                            "collector_ids": [...] | None}, ...]}
                                   -> segment personas (deepest grant level)
+
+    ``item_codes`` narrows every aggregate to those items — the page reports on
+    what we make or repack, not the traded solvent book (see api.item_activity).
+    An EMPTY list means nothing qualifies and the page is empty; ``None`` means
+    no item filter at all.
     """
     where, params = _dash_where(flt)
+    if item_codes is not None:
+        if not item_codes:
+            return {"cube": [], "totals": {}, "top_items": [], "top_customers": [],
+                    "sales3": [], "item_jc": []}
+        where.append("d.item_code IN (" + ", ".join(["%s"] * len(item_codes)) + ")")
+        params = list(params) + [str(c) for c in item_codes]
     w = (" WHERE " + " AND ".join(where)) if where else ""
     w_cust = w + (" AND " if w else " WHERE ") + "d.customer_id IS NOT NULL"
     base = "FROM stg_dispatch_scope d"
