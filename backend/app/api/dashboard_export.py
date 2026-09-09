@@ -30,6 +30,7 @@ SECTION_TITLES = {
     "compare": "Projection vs sales",
     "pipeline": "Projection pipeline",
     "missing": "Missing projections",
+    "commercial": "Annual plan vs demand",
 }
 
 _FLAG_LABEL = {"ontrack": "On-track", "over": "Over-projected",
@@ -85,7 +86,29 @@ def _forward_rows(payload: dict) -> list[dict]:
     return rows
 
 
+def _commercial_rows(payload: dict) -> list[dict]:
+    """One row per item x customer: SOC, open quote, annual potential, annual
+    budget. The whole set, not the page the card has room for."""
+    c = payload.get("commercial") or {}
+    rows = c.get("rows") or []
+    if not rows:
+        return [{"Item": "no annual plan, quote or order in this scope", "Customer": "",
+                 "Segment": "", "SOC (KG)": "", "Open quote (KG)": "",
+                 "Annual potential (KG)": "", "Annual budget (KG)": "",
+                 "Open quotations": "", "Quoted before the window (KG)": ""}]
+    return [{
+        "Item": r.get("item"), "Customer": r.get("customer"), "Segment": r.get("seg") or "",
+        "SOC (KG)": r.get("soc"), "Open quote (KG)": r.get("quote"),
+        "Annual potential (KG)": r.get("potential"),
+        "Annual budget (KG)": r.get("budget"),
+        "Open quotations": r.get("quotes"),
+        "Quoted before the window (KG)": r.get("quote_stale"),
+    } for r in rows]
+
+
 def section_rows(payload: dict, section: str) -> list[dict]:
+    if section == "commercial":
+        return _commercial_rows(payload)
     if section == "forward":
         return _forward_rows(payload)
 
@@ -270,7 +293,7 @@ def build(payload: dict, section: str | None = None) -> bytes:
 
     counts = {}
     for key in ("summary", "collector", "segment", "forward", "jc_trend", "status",
-                "items", "groups", "compare", "pipeline", "missing"):
+                "items", "groups", "compare", "pipeline", "missing", "commercial"):
         ws = wb.create_sheet(SECTION_TITLES[key][:31])
         counts[key] = _write(ws, section_rows(payload, key))
 

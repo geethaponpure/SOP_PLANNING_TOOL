@@ -79,6 +79,59 @@ it still runs the full year. `accuracy_jcs` names the cycles so the card can say
 Both sides of the comparison carry the item filter above - without it the trend scored
 projections for made goods against dispatch that included the traded book.
 
+**The commercial table: SOC, open quote, annual potential, annual budget.** Three sources
+that share a customer x item grain, joined on the normalised item name and rolled up by
+item, customer or segment (`dashboard._commercial_block`). SOC is the LIVE committed
+balance under the same 90-day stale rule the order-book pages use, so this table and My
+Supply Position agree. Two new staging tables, both carrying the full scope key set so
+`_scope_where` filters them like the dispatch cube: `stg_annual_plan` (21,290 rows) and
+`stg_open_quote` (7,135 rows).
+
+Four things measured in CRM before the sync was written, each of which would otherwise
+have been silently wrong:
+
+* **The annual plan duplicates its own rows.** 314 (customer, item, collector) groups carry
+  more than one: 178 repeat an identical figure (one AVITERA LIGHT BLUE SE line appears 4x
+  at 800 KG), 136 pair a real figure with a zero. Summing reports 152,988,356 KG of
+  potential against a true 132,090,332 - 16% too high. Collapsed with MAX per
+  (customer, item, collector), which is right for both shapes.
+* **`annual_*_value` is in LAKHS of rupees**, not rupees: 7,231 of 8,937 budget rows give a
+  sane Rs/KG on that reading and 6 do not. Converted at sync; the card shows KG.
+* **CustomerMasters fans out.** It holds 6,067 rows against `customer_id = 0` and 38,445
+  against NULL, so a plain LEFT JOIN turns a 9,854-line quote book into 46,250 rows. Every
+  master in both queries is reached through `OUTER APPLY ... TOP 1`.
+* **The open quote book is mostly stale.** It reaches back to 2020 and 63% of its quantity
+  (2.86M KG over 1,284 quotes) is more than a year old, while CRM's own
+  `quotation_valid_upto` is NULL on 96% of open quotes - age is the only usable signal. The
+  sync stages 24 months; the card counts 12 and reports the rest beside the search box,
+  the same way stale SOC is handled.
+
+An OPEN quote is one neither won, lost nor abandoned - Open, Waiting For Approval, Referred
+Back, Pending, the pre-approval chain, and Approved (approved but not yet an order is still
+pipeline); see `crm_sources.OPEN_QUOTE_STATUS`.
+
+The table is one row per ITEM x CUSTOMER - the grain all three sources share - so the item
+and the customer sit on the same line instead of in two tables. Ranked by annual budget and
+capped at `_COMMERCIAL_CAP` (3,000) rows; the totals row and the two scope counts are
+computed over the whole set before capping, and the download carries every line. Admin has
+22,422 lines, but a real persona is far smaller (Business Head 3,668, Division Head 1,341,
+Sales Executive 418).
+
+**Two named scopes, stated on the page** (`dashboard._scopes`, `_SCOPE_NOTE`). The dashboard
+deliberately reports two different product universes and users must not read the counts as
+a discrepancy:
+
+* **Dispatch scope** - Performance Chemicals AND made or repacked here. What the dispatch,
+  projection and RM cards measure. Admin: 1,203 products.
+* **Budget & quotation scope** - the whole Performance Chemicals range, including products
+  the division distributes rather than makes, restricted to those that actually carry an
+  annual plan, a quote or an order. Admin: 2,127 products.
+
+Neither set contains the other: a Business Head sees 171 commercial against 248 dispatch,
+because an item can be dispatched and made here yet carry no plan, quote or open order. The
+header chips name both counts with the note attached, and the card repeats its own
+"Included products" figure, so the difference reads as a definition rather than a bug.
+
 **My Dashboard is Performance Chemicals only.** The tool is built for one division
 (`ItemCategories.segment1`), and that is the division the business plan is written for -
 100.0% of approved projection volume is PC. Every planning-side query already pins it; the

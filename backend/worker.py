@@ -117,11 +117,17 @@ def sync_rm_price_moves() -> int:
                  staging.replace_rm_price_moves)
 
 
+def sync_open_quotes() -> int:
+    """Open quotation lines over the trailing 24 months (see
+    crm_sources.OPEN_QUOTE_STATUS for what counts as open)."""
+    return _sync("open_quotes", lambda: crm.open_quotes(24), staging.replace_open_quote)
+
+
 SYNCS = [sync_item_segments, sync_stock_lots, sync_stock_details,
          sync_item_business, sync_pto_pts,
          sync_stock_aged, sync_vooki_items, sync_soc_schedule, sync_dispatch,
          sync_user_scope, sync_dispatch_scope, sync_order_commit,
-         sync_rm_price_moves]
+         sync_rm_price_moves, sync_open_quotes]
 
 
 # ── context-keyed sources (content depends on today's planning context) ───────
@@ -232,8 +238,28 @@ def sync_projection_customer(ctx) -> int:
         return 0
 
 
+def sync_annual_plan(ctx) -> int:
+    """Annual potential and budget per customer x item x collector for the current
+    accounting year (see db/migrate_commercial.sql). De-duplicated and converted
+    from lakhs at source - crm_sources.ANNUAL_PLAN_SQL explains both."""
+    run_id = staging.start_run("annual_plan")
+    t0 = time.time()
+    try:
+        acc = ctx["acc_year"]
+        n = staging.replace_annual_plan(acc, crm.annual_plan(acc) or [])
+        staging.finish_run(run_id, "ok", n)
+        print(f"[sync] annual_plan: {n} rows ({acc}) in {time.time() - t0:.1f}s")
+        return n
+    except Exception as e:   # noqa: BLE001
+        msg = f"{type(e).__name__}: {str(e).splitlines()[0]}"
+        staging.finish_run(run_id, "error", None, msg)
+        print(f"[sync] annual_plan FAILED: {msg[:160]}")
+        return -1
+
+
 CONTEXT_SYNCS = [sync_projection, sync_soc_pending, sync_soc_detail, sync_intransit,
-                 sync_projection_rows, sync_projection_customer, sync_projection_accuracy]
+                 sync_projection_rows, sync_projection_customer, sync_projection_accuracy,
+                 sync_annual_plan]
 
 
 def compute_rm_planning() -> int:

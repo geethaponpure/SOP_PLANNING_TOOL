@@ -783,6 +783,104 @@ def rm_price_moves(days: int = 90) -> list[dict]:
     return db.crm_query(RM_PRICE_SQL.replace("-?", f"-{int(days)}"))
 
 
+# ── annual plan + open quotes (My Dashboard commercial table) ─────────────────
+#
+# ANNUAL POTENTIAL / BUDGET live on SCBusinessMonthlyPlanHdrs, the same header the
+# per-JC projection hangs off, so they scope through customer / collector /
+# segment exactly like everything else.
+#
+# Two traps, both measured on 2026-2027:
+#
+#  * The header DUPLICATES plan lines. 314 (customer, item, collector) groups
+#    carry more than one row: 178 repeat the identical figure (one customer's
+#    AVITERA LIGHT BLUE SE appears 4 times at 800 KG) and 136 pair a real figure
+#    with a zero. Summing every row reports 152,988,356 KG of potential where the
+#    true figure is 132,090,332 - a 16% overstatement. So the rows are collapsed
+#    with MAX per (customer, item, collector), which is right for both shapes.
+#
+#  * annual_*_value is in LAKHS of rupees, not rupees: 7,231 of 8,937 budget rows
+#    give a sane Rs/KG on that reading and only 6 do otherwise. Converted here.
+ANNUAL_PLAN_SQL = """
+SELECT h.customer_id AS CustomerId, h.collector_id AS CollectorId,
+       h.item_description AS ItemName,
+       MAX(h.segment2) AS Segment2, MAX(h.segment3) AS Segment3,
+       MAX(h.segment4) AS Segment4,
+       MAX(cs.mc_code) AS McCode, MAX(cm.customer_name) AS CustomerName,
+       MAX(col.name) AS Collector, MAX(im.item_code) AS ItemCode,
+       MAX(h.annual_potential_qty)   AS PotentialQty,
+       MAX(h.annual_potential_value) AS PotentialValueLakhs,
+       MAX(h.annual_budget_qty)      AS BudgetQty,
+       MAX(h.annual_budget_value)    AS BudgetValueLakhs
+FROM SCBusinessMonthlyPlanHdrs h
+OUTER APPLY (SELECT TOP 1 c.customer_name FROM CustomerMasters c
+             WHERE c.customer_id = h.customer_id) cm
+OUTER APPLY (SELECT TOP 1 c.name FROM Collectors c
+             WHERE c.collector_id = h.collector_id) col
+OUTER APPLY (SELECT TOP 1 s.mc_code FROM CustomerSites s
+             WHERE s.customer_id = h.customer_id AND s.mc_code IS NOT NULL
+             ORDER BY CASE WHEN s.primary_flag = 'Y' THEN 0 ELSE 1 END, s.line_id) cs
+OUTER APPLY (SELECT TOP 1 m.item_code FROM itemmasters m
+             WHERE m.item_description = h.item_description
+               AND m.item_code IS NOT NULL) im
+WHERE h.acc_year = ?
+  AND (h.annual_potential_qty > 0 OR h.annual_budget_qty > 0)
+GROUP BY h.customer_id, h.collector_id, h.item_description
+"""
+
+
+def annual_plan(acc_year: str) -> list[dict]:
+    """Annual potential and budget per (customer, item, collector) for one
+    accounting year, de-duplicated and with value converted to rupees."""
+    return db.crm_query(ANNUAL_PLAN_SQL, (acc_year,))
+
+
+# An OPEN quote is one that is neither won, lost nor abandoned: Open, Waiting For
+# Approval, Referred Back, Pending, the pre-approval chain, and Approved (an
+# approved quote that has not become an order is still live pipeline). Excluded:
+# Rejected(4), Confirmed(6), Cancelled(7), Closed(8), Partial(10), Converted(11).
+OPEN_QUOTE_STATUS = (1, 2, 3, 5, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21)
+
+# CustomerMasters holds 6,067 rows against customer_id = 0 and 38,445 against
+# NULL, so a plain LEFT JOIN fans a 9,854-line quote book out to 46,250 rows.
+# Every master here is reached through OUTER APPLY ... TOP 1 for that reason.
+OPEN_QUOTE_SQL = """
+SELECT h.header_id AS QuoteId, CAST(h.quotation_date AS date) AS QuoteDate,
+       st.name AS Status, h.customer_id AS CustomerId, h.collector_id AS CollectorId,
+       cm.customer_name AS CustomerName, col.name AS Collector, cs.mc_code AS McCode,
+       im.item_code AS ItemCode, im.item_description AS ItemName,
+       ic.segment2 AS Segment2, ic.segment3 AS Segment3, ic.segment4 AS Segment4,
+       d.quantity AS Qty, d.total_sales_price AS Value
+FROM QuotationDtls d
+JOIN QuotationHdrs h ON h.header_id = d.header_id
+JOIN QuotationStatus st ON st.line_id = h.status_id
+OUTER APPLY (SELECT TOP 1 m.item_code, m.item_description FROM itemmasters m
+             WHERE m.item_id = d.item_id) im
+OUTER APPLY (SELECT TOP 1 c.segment2, c.segment3, c.segment4 FROM ItemCategories c
+             WHERE c.item_id = d.item_id
+             ORDER BY CASE WHEN c.segment1 = 'Performance Chemicals' THEN 0 ELSE 1 END) ic
+OUTER APPLY (SELECT TOP 1 c.customer_name FROM CustomerMasters c
+             WHERE c.customer_id = h.customer_id) cm
+OUTER APPLY (SELECT TOP 1 c.name FROM Collectors c
+             WHERE c.collector_id = h.collector_id) col
+OUTER APPLY (SELECT TOP 1 s.mc_code FROM CustomerSites s
+             WHERE s.customer_id = h.customer_id AND s.mc_code IS NOT NULL
+             ORDER BY CASE WHEN s.primary_flag = 'Y' THEN 0 ELSE 1 END, s.line_id) cs
+WHERE h.status_id IN (STATUS_LIST)
+  AND d.quantity > 0
+  AND h.quotation_date >= DATEADD(month, -?, GETDATE())
+"""
+
+
+def open_quotes(months: int = 24) -> list[dict]:
+    """Open quotation lines over the trailing ``months``. The book reaches back
+    to 2020 and 63% of its quantity is over a year old, so the window keeps the
+    staging table to what could still convert; the API ages it further."""
+    sql = (OPEN_QUOTE_SQL
+           .replace("STATUS_LIST", ",".join(str(i) for i in OPEN_QUOTE_STATUS))
+           .replace("-?", f"-{int(months)}"))
+    return db.crm_query(sql)
+
+
 SOURCES = {
     "pto_pts": pto_pts, "soc_pending": soc_pending,
     "quote_details": quote_details, "dispatch_details": dispatch_details,

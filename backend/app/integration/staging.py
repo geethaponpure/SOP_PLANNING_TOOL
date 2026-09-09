@@ -1078,6 +1078,105 @@ def commit_holders(item_keys, stale_cutoff: str) -> list[dict]:
         return []
 
 
+# ── annual plan + open quotes (see migrate_commercial.sql) ───────────────────
+
+_ANNUAL_COLS = ["acc_year", "customer_id", "customer_name", "collector_id", "collector",
+                "mc_code", "item_code", "item_name", "segment2", "segment3", "segment4",
+                "potential_qty", "potential_value", "budget_qty", "budget_value"]
+
+# CRM stores the annual values in LAKHS of rupees (7,231 of 8,937 budget rows give
+# a sane Rs/KG on that reading, 6 do not); staged in rupees.
+_LAKH = 100000.0
+
+
+def replace_annual_plan(acc_year: str, crm_rows: list[dict]) -> int:
+    data = [(
+        acc_year,
+        _int_or_none(r.get("CustomerId")), str(r.get("CustomerName") or "")[:255] or None,
+        _int_or_none(r.get("CollectorId")), str(r.get("Collector") or "")[:400] or None,
+        str(r.get("McCode") or "")[:32] or None,
+        str(r.get("ItemCode") or "")[:64] or None, str(r.get("ItemName") or "")[:255] or None,
+        str(r.get("Segment2") or "")[:64] or None, str(r.get("Segment3") or "")[:64] or None,
+        str(r.get("Segment4") or "")[:64] or None,
+        round(_num(r.get("PotentialQty")), 3), round(_num(r.get("PotentialValueLakhs")) * _LAKH, 2),
+        round(_num(r.get("BudgetQty")), 3), round(_num(r.get("BudgetValueLakhs")) * _LAKH, 2),
+    ) for r in (crm_rows or []) if r.get("ItemName")]
+    return _replace("stg_annual_plan", _ANNUAL_COLS, data,
+                    where="acc_year=%s", where_params=(acc_year,))
+
+
+_QUOTE_COLS = ["quote_id", "quote_date", "status", "customer_id", "customer_name",
+               "collector_id", "collector", "mc_code", "item_code", "item_name",
+               "segment2", "segment3", "segment4", "qty", "value_"]
+
+
+def replace_open_quote(crm_rows: list[dict]) -> int:
+    data = [(
+        _int_or_none(r.get("QuoteId")), _date_or_none(r.get("QuoteDate")),
+        str(r.get("Status") or "")[:48] or None,
+        _int_or_none(r.get("CustomerId")), str(r.get("CustomerName") or "")[:255] or None,
+        _int_or_none(r.get("CollectorId")), str(r.get("Collector") or "")[:400] or None,
+        str(r.get("McCode") or "")[:32] or None,
+        str(r.get("ItemCode") or "")[:64] or None, str(r.get("ItemName") or "")[:255] or None,
+        str(r.get("Segment2") or "")[:64] or None, str(r.get("Segment3") or "")[:64] or None,
+        str(r.get("Segment4") or "")[:64] or None,
+        round(_num(r.get("Qty")), 3), round(_num(r.get("Value")), 2),
+    ) for r in (crm_rows or []) if r.get("ItemName")]
+    return _replace("stg_open_quote", _QUOTE_COLS, data)
+
+
+def read_annual_plan(flt: dict, acc_year: str) -> list[dict]:
+    """Annual potential / budget for one year inside a persona's scope.
+    Performance Chemicals only, like every other item-keyed read."""
+    where, params = _scope_where(flt or {}, "a")
+    where = ["a.acc_year=%s"] + where
+    params = [acc_year] + list(params)
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT a.customer_id, a.customer_name, a.collector, a.mc_code, "
+                    "a.item_code, a.item_name, a.segment2, a.segment3, a.segment4, "
+                    "a.potential_qty, a.potential_value, a.budget_qty, a.budget_value "
+                    "FROM stg_annual_plan a WHERE " + " AND ".join(where), tuple(params))
+                rows = pc_only(cur.fetchall())
+                for r in rows:
+                    for k in ("potential_qty", "potential_value", "budget_qty", "budget_value"):
+                        r[k] = float(r[k] or 0)
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+def read_open_quotes(flt: dict) -> list[dict]:
+    """Open quotation lines inside a persona's scope, Performance Chemicals only."""
+    where, params = _scope_where(flt or {}, "q")
+    w = (" WHERE " + " AND ".join(where)) if where else ""
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT q.quote_id, q.quote_date, q.status, q.customer_id, "
+                    "q.customer_name, q.collector, q.mc_code, q.item_code, q.item_name, "
+                    "q.segment2, q.segment3, q.segment4, q.qty, q.value_ "
+                    "FROM stg_open_quote q" + w, tuple(params))
+                rows = pc_only(cur.fetchall())
+                for r in rows:
+                    r["qty"] = float(r["qty"] or 0)
+                    r["value_"] = float(r["value_"] or 0)
+                    if r.get("quote_date") is not None:
+                        r["quote_date"] = str(r["quote_date"])[:10]
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
 # ── RM price movements (see migrate_rm_price.sql) ─────────────────────────────
 
 _RM_PRICE_COLS = ["item_code", "item_name", "old_price", "new_price", "pct",

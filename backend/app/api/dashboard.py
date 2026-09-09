@@ -19,7 +19,7 @@ Personas and how their scope filters the cube:
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from ..integration import jc_calendar as _jc
 from ..integration import msl as _msl
@@ -30,7 +30,7 @@ from ..integration.planning_filter import _proj_flag   # the plan's ±20% band
 
 # bump when the payload shape changes so stale precomputed admin payloads
 # (computed_plan.dashboard_admin) are rebuilt instead of served
-_PAYLOAD_V = 18
+_PAYLOAD_V = 20
 
 # broadest scope first — a user holding several personas gets the widest view
 _PERSONA_PRIORITY = ["Division Head", "Business Head", "Technical Head",
@@ -48,6 +48,10 @@ _ACC_JCS = 3
 _LAST_WEEK_DAYS = 7
 _CUBE_MAX_COLLECTORS = 12   # cube buckets beyond these become "Other" (keeps the
 _CUBE_MAX_SEGMENTS = 10     # client-side cross-filter payload small)
+
+
+def ctx_acc_year() -> str:
+    return str((staging.read_context() or {}).get("acc_year") or "")
 
 
 def _pick_persona(grants: list[dict]) -> str | None:
@@ -135,6 +139,139 @@ def _scope_lines(persona: str, stype: str, mine: list[dict]) -> list[str]:
     if len(out) > 8:
         out = out[:8] + [f"+{len(out) - 8} more segments"]
     return [f"Segments: {'; '.join(out)}"] if out else []
+
+
+# A quote older than this has stopped being pipeline. 63% of the open book's
+# quantity is over a year old (1,284 quotes, 2.86M KG), and CRM's own
+# quotation_valid_upto is NULL on 96% of open quotes, so age is the only usable
+# signal. Reported separately rather than dropped, exactly like stale SOC.
+_QUOTE_LIVE_MONTHS = 12
+_COMMERCIAL_CAP = 3000
+
+
+def _commercial_block(flt: dict, flt_c: dict, acc_year: str) -> dict | None:
+    """SOC / open quote / annual potential / annual budget over one scope.
+
+    The four measures come from three tables that share a customer x item grain,
+    so they are joined on the item name (normalised) and rolled up three ways.
+    SOC is the LIVE committed balance — the same stale rule the order-book pages
+    use, so this table and My Supply Position agree.
+    """
+    from .competition import STALE_DAYS
+    if flt is None:
+        return None
+    cutoff = (date.today() - timedelta(days=STALE_DAYS)).isoformat()
+    quote_cut = (date.today() - timedelta(days=30 * _QUOTE_LIVE_MONTHS)).isoformat()
+
+    # One row per item x customer — the grain all three sources share, so the
+    # item and the customer are on the same line rather than in two tables.
+    agg: dict = {}
+
+    def add(item_name, cust_name, seg, cust_id, item_key, field, qty):
+        if not item_key:
+            return
+        k = (item_key, cust_id if cust_id is not None else cust_name)
+        g = agg.get(k)
+        if g is None:
+            g = agg[k] = {"key": f"{item_key}|{cust_id if cust_id is not None else cust_name}",
+                          "item": item_name, "customer": cust_name or "—", "seg": seg or "",
+                          "soc": 0.0, "quote": 0.0, "quote_stale": 0.0,
+                          "potential": 0.0, "budget": 0.0, "quotes": set(),
+                          "_item": item_key, "_cust": cust_id}
+        g[field] += qty
+        if not g["seg"] and seg:
+            g["seg"] = seg
+
+    # ── SOC: live committed balance ─────────────────────────────────────────
+    for r in staging.read_order_commit(flt_c or {}):
+        due = r.get("resched_date") or r.get("sched_date")
+        if due and str(due)[:10] < cutoff:
+            continue                       # stale paperwork, not a live claim
+        nm = str(r.get("item_name") or "").strip()
+        key = _norm(nm)
+        if not key:
+            continue
+        seg = r.get("segment3") or r.get("segment2") or ""
+        add(nm, str(r.get("customer_name") or "—"), seg,
+            r.get("customer_id"), key, "soc", float(r.get("balance") or 0))
+
+    # ── open quotes ─────────────────────────────────────────────────────────
+    for r in staging.read_open_quotes(flt):
+        nm = str(r.get("item_name") or "").strip()
+        key = _norm(nm)
+        if not key:
+            continue
+        seg = r.get("segment3") or r.get("segment2") or ""
+        live = not r.get("quote_date") or str(r["quote_date"])[:10] >= quote_cut
+        add(nm, str(r.get("customer_name") or "—"), seg,
+            r.get("customer_id"), key, "quote" if live else "quote_stale",
+            float(r.get("qty") or 0))
+        if live:
+            cid = r.get("customer_id")
+            g = agg.get((key, cid if cid is not None else str(r.get("customer_name") or "—")))
+            if g is not None:
+                g["quotes"].add(r.get("quote_id"))
+
+    # ── annual potential + budget ───────────────────────────────────────────
+    for r in staging.read_annual_plan(flt, acc_year):
+        nm = str(r.get("item_name") or "").strip()
+        key = _norm(nm)
+        if not key:
+            continue
+        seg = r.get("segment3") or r.get("segment2") or ""
+        cust = r.get("customer_id")
+        cname = str(r.get("customer_name") or "—")
+        add(nm, cname, seg, cust, key, "potential", float(r.get("potential_qty") or 0))
+        add(nm, cname, seg, cust, key, "budget", float(r.get("budget_qty") or 0))
+
+    if not agg:
+        return None
+
+    rows = [{
+        "key": g["key"], "item": g["item"], "customer": g["customer"], "seg": g["seg"],
+        "soc": round(g["soc"], 1), "quote": round(g["quote"], 1),
+        "quote_stale": round(g["quote_stale"], 1),
+        "potential": round(g["potential"], 1), "budget": round(g["budget"], 1),
+        "quotes": len(g["quotes"]),
+    } for g in agg.values()]
+    # budget is the planning anchor, so it ranks; the live figures break ties
+    rows.sort(key=lambda r: (-(r["budget"] or 0), -(r["soc"] or 0), -(r["quote"] or 0),
+                             -(r["potential"] or 0)))
+
+    tot = {f: round(sum(r[f] for r in rows), 1)
+           for f in ("soc", "quote", "quote_stale", "potential", "budget")}
+    tot["rows"] = len(rows)
+    tot["items"] = len({g["_item"] for g in agg.values()})
+    tot["customers"] = len({g["_cust"] for g in agg.values() if g["_cust"] is not None})
+    tot["quotes"] = len({q for g in agg.values() for q in g["quotes"]})
+    return {
+        "acc_year": acc_year,
+        "quote_months": _QUOTE_LIVE_MONTHS,
+        "stale_days": STALE_DAYS,
+        "totals": tot,
+        "count": len(rows),
+        "rows": rows[:_COMMERCIAL_CAP],
+    }
+
+
+# The dashboard reports two DIFFERENT product universes on purpose, and users
+# must not read the two counts as a discrepancy:
+#
+#   dispatch scope   - Performance Chemicals AND made or repacked here. What the
+#                      dispatch, projection and RM cards measure.
+#   commercial scope - the whole Performance Chemicals range, including products
+#                      the division distributes rather than makes. What a budget
+#                      and a quotation actually cover.
+_SCOPE_NOTE = ("Budget and quotation cover the whole Performance Chemicals range, "
+               "including distributed products that dispatch calculations exclude.")
+
+
+def _scopes(kpis: dict | None, commercial: dict | None) -> dict:
+    return {
+        "dispatch_items": int((kpis or {}).get("items") or 0),
+        "commercial_items": int(((commercial or {}).get("totals") or {}).get("items") or 0),
+        "note": _SCOPE_NOTE,
+    }
 
 
 def _empty_datasets() -> dict:
@@ -710,7 +847,9 @@ def my_dashboard(username: str | None = None, email: str | None = None,
             payload = {**base, "scope": _scope_summary("Admin", "", []),
                        **_assemble(ds, len(jcs)),
                        "projection": _projection_block(ds["sales3"], ds["item_jc"], jcs,
-                                                      [], "", admin=True)}
+                                                      [], "", admin=True),
+                       "commercial": _commercial_block({}, {}, ctx_acc_year())}
+            payload["scopes"] = _scopes(payload.get("kpis"), payload.get("commercial"))
             staging.save_computed("dashboard_admin", payload)
         _CACHE[key] = payload
         return payload
@@ -722,13 +861,18 @@ def my_dashboard(username: str | None = None, email: str | None = None,
     if flt:
         ds = staging.dashboard_datasets(flt, jc_from=jc_from,
                                         item_codes=_activity.allowed_item_codes())
+        # imported lazily: commit.py imports from this module
+        from .commit import _commit_flt   # order-book scope keys collectors by NAME
+        _stc, _mnc, flt_c = _commit_flt(persona, grants)
         data = {**_assemble(ds, len(jcs)),
-                "projection": _projection_block(ds["sales3"], ds["item_jc"], jcs, mine, stype)}
+                "projection": _projection_block(ds["sales3"], ds["item_jc"], jcs, mine, stype),
+                "commercial": _commercial_block(flt, flt_c, ctx_acc_year())}
     else:
         data = _empty_datasets()
     payload = {**base, "scope": _scope_summary(persona, stype, mine),
                "user_name": mine[0].get("user_name") if mine else None,
                **data}
+    payload["scopes"] = _scopes(payload.get("kpis"), payload.get("commercial"))
     _CACHE[key] = payload
     return payload
 

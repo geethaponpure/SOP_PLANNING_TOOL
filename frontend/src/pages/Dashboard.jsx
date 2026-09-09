@@ -45,7 +45,9 @@ const DASH_DEFAULTS = {
   // only rendered for Division Head / Business Head / Admin; the slot is simply
   // unused for everyone else
   rmImpact:   { x: 0, y: 57, w: 12, h: 12 },
+  commercial: { x: 0, y: 69, w: 12, h: 13 },
 };
+
 // RM price impact: what a raw-material rise does to the finished goods that use
 // it. Gated server-side — this only renders when the API says allowed.
 
@@ -801,7 +803,7 @@ export default function Dashboard({ session, isAdmin }) {
   useEffect(() => {
     setPipeView("chart"); setPipeQ(""); setItemPop(null);
     setStatusFlag(null); setStatusView("chart"); setStatusQ("");
-    setProjMetric("accuracy");
+    setProjMetric("accuracy"); setCommQ("");
     setJcMetric("qty"); setJcView("chart");
   }, [viewAs.username, viewAs.persona]);
 
@@ -835,6 +837,20 @@ export default function Dashboard({ session, isAdmin }) {
   }, [p, pipeQ]);
   const statusRows = useMemo(() => (p?.summary || []).map((s) => ({
     name: FLAGS[s.flag]?.label || s.flag, value: s.items, color: FLAGS[s.flag]?.color })), [p]);
+  // the commercial table: annual plan against what is actually committed
+  const comm = data?.commercial || null;
+  const [commQ, setCommQ] = useState("");
+  const commAll = useMemo(() => (comm?.rows || []), [comm]);
+  const commRows = useMemo(() => {
+    const q = commQ.trim().toLowerCase();
+    if (!q) return commAll;
+    return commAll.filter((r) => (r.item || "").toLowerCase().includes(q)
+      || (r.customer || "").toLowerCase().includes(q)
+      || (r.seg || "").toLowerCase().includes(q));
+  }, [commAll, commQ]);
+  const cm = useSort(commRows, { key: null, dir: "desc" },
+    (r, k) => (["item", "customer", "seg"].includes(k) ? (r[k] || "") : r[k]));
+
   // Which figure the projection card shows: the plan-vs-dispatch KPIs, or the
   // items with no projection at all. The card is a table either way.
   const [projMetric, setProjMetric] = useState("accuracy");
@@ -920,6 +936,7 @@ export default function Dashboard({ session, isAdmin }) {
   const expandedCards = useMemo(() => {
     const out = {};
     // the card carries a table either way — the five KPIs, or the item groups
+    out.commercial = fitRows(commRows.length, true);
     out.projCanvas = projMetric === "accuracy"
       ? fitRows(5)
       : fitRows(missingRows.length, true);
@@ -931,7 +948,7 @@ export default function Dashboard({ session, isAdmin }) {
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projMetric, pipeView, jcView, statusView, statusFlag, flagRows.length,
-      p, missingRows.length, pipeRows.length, rmView, rmData]);
+      p, missingRows.length, pipeRows.length, rmView, rmData, commRows.length]);
 
   if (loading && !data) return <Loading what="your dashboard" />;
   if (error) return <>{switcher}<ErrorBox msg={error} /></>;
@@ -969,6 +986,21 @@ export default function Dashboard({ session, isAdmin }) {
         <span style={{ fontSize: 13, color: "var(--muted)" }}>
           {(data.scope || []).join(" · ") || "—"}
         </span>
+        {data.scopes && (
+          <span style={{ display: "inline-flex", flexWrap: "wrap", alignItems: "center",
+            gap: 8, fontSize: 12 }}
+            title={data.scopes.note}>
+            <span className="chip" style={{ cursor: "default", background: "#F1F5F9" }}>
+              Budget &amp; quotation scope: <b>{fmt.num(data.scopes.commercial_items)}</b> products
+            </span>
+            <span className="chip" style={{ cursor: "default", background: "#F1F5F9" }}>
+              Dispatch scope: <b>{fmt.num(data.scopes.dispatch_items)}</b> products
+            </span>
+            <span style={{ color: "var(--muted)" }}>
+              two different product sets — not meant to match
+            </span>
+          </span>
+        )}
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
           Last 13 JCs{syncedAt ? ` · data as of ${syncedAt}` : ""}
         </span>
@@ -1325,6 +1357,118 @@ export default function Dashboard({ session, isAdmin }) {
             {rmData.total_fgs > rmData.fgs.length && (
               <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--muted)" }}>
                 Showing the {fmt.num(rmData.fgs.length)} most impacted of {fmt.num(rmData.total_fgs)}.
+              </div>
+            )}
+          </div>
+        )}
+
+        {comm && (
+          <div key="commercial" className="card">
+            <ExportBtn section="commercial" idParams={idParams} />
+            <div className="supply-dash-cardhead">
+              <div>
+                <h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                  <ClipboardList size={16} /> Annual plan vs live demand
+                </h3>
+                <div className="sub">
+                  one line per item and customer · what is committed and quoted today
+                  against the {comm.acc_year} annual plan · quotes still open and raised in
+                  the last {comm.quote_months} months · SOC excludes lines overdue by more
+                  than {comm.stale_days} days
+                </div>
+              </div>
+              <div className="card-filters">
+                <span className="chip" style={{ cursor: "default", background: "#F1F5F9",
+                  fontSize: 11.5 }} title={data.scopes?.note}>
+                  Included products: <b>{fmt.num(comm.totals.items)}</b>
+                </span>
+              </div>
+            </div>
+
+            <div className="pagebar" style={{ marginBottom: 10 }}>
+              <SmoothInput className="searchbox" placeholder="Search…"
+                value={commQ} onChange={(e) => setCommQ(e.target.value)} />
+              <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
+                {fmt.num(commRows.length)} of {fmt.num(comm.count)} lines ·{" "}
+                {fmt.num(comm.totals.items)} products · {fmt.num(comm.totals.customers)} customers
+                {comm.totals.quote_stale > 0 && <>
+                  {" · "}{fmt.num(comm.totals.quote_stale)} KG quoted over{" "}
+                  {comm.quote_months} months ago, not counted
+                </>}
+              </span>
+            </div>
+
+            <div className="tbl-wrap">
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <SortTh label="Item" k="item" dir0="asc" {...cm.th} style={GH_L} />
+                    <SortTh label="Customer" k="customer" dir0="asc" {...cm.th} style={GH_L} />
+                    <SortTh label="Segment" k="seg" dir0="asc" {...cm.th} style={GH_L} />
+                    <SortTh label="SOC (KG)" k="soc" {...cm.th} style={GH_R} />
+                    <SortTh label="Open quote (KG)" k="quote" {...cm.th} style={GH_R} />
+                    <SortTh label="Annual potential (KG)" k="potential" {...cm.th} style={GH_R} />
+                    <SortTh label="Annual budget (KG)" k="budget" {...cm.th} style={GH_R} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {cm.rows.map((r, i) => (
+                    <tr key={`${r.key}|${i}`}>
+                      <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>{r.item}</td>
+                      <td style={{ ...CELL }}>{r.customer}</td>
+                      <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)" }}>
+                        {r.seg || "—"}
+                      </td>
+                      <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>
+                        {r.soc ? fmt.num(r.soc) : "—"}
+                      </td>
+                      <td style={{ ...CELL, textAlign: "right",
+                        color: r.quote ? "#3182ce" : "var(--muted)",
+                        fontWeight: r.quote ? 600 : 400 }}
+                        title={r.quotes ? `${r.quotes} open quotation${r.quotes === 1 ? "" : "s"}` : ""}>
+                        {r.quote ? fmt.num(r.quote) : "—"}
+                      </td>
+                      <td style={{ ...CELL, textAlign: "right" }}>
+                        {r.potential ? fmt.num(r.potential) : "—"}
+                      </td>
+                      <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>
+                        {r.budget ? fmt.num(r.budget) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  {cm.rows.length === 0 && (
+                    <tr><td colSpan={7} style={CELL}>
+                      {commAll.length ? "Nothing matches that search."
+                        : "No annual plan, quote or order in this scope."}
+                    </td></tr>
+                  )}
+                </tbody>
+                {!commQ && (
+                  <tfoot>
+                    <tr>
+                      <td colSpan={3}
+                        style={{ ...CELL, background: "#f7fafc", fontWeight: 700 }}>
+                        Total · {fmt.num(comm.totals.items)} product
+                        {comm.totals.items === 1 ? "" : "s"} ·{" "}
+                        {fmt.num(comm.totals.customers)} customer
+                        {comm.totals.customers === 1 ? "" : "s"}
+                      </td>
+                      {["soc", "quote", "potential", "budget"].map((f) => (
+                        <td key={f} style={{ ...CELL, background: "#f7fafc",
+                          fontWeight: 700, textAlign: "right" }}>
+                          {fmt.num(comm.totals[f])}
+                        </td>
+                      ))}
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+            {comm.count > commAll.length && (
+              <div style={{ marginTop: 8, fontSize: 11.5, color: "#b7791f" }}>
+                Showing the {fmt.num(commAll.length)} biggest of {fmt.num(comm.count)} lines,
+                ranked by annual budget — the total row counts them all, and the download
+                carries the rest.
               </div>
             )}
           </div>
