@@ -79,6 +79,102 @@ it still runs the full year. `accuracy_jcs` names the cycles so the card can say
 Both sides of the comparison carry the item filter above - without it the trend scored
 projections for made goods against dispatch that included the traded book.
 
+**The annual plan and the cycle projection are joined.** They are two fields of the SAME
+CRM plan row - `SCBusinessMonthlyPlanHdrs.annual_budget_qty` is the yearly commitment and
+the `jc{n}_week1/week2_user_dfn_qty` columns on the matching detail are that rep's phasing
+of it - so they join exactly on customer x item. The commercial table therefore carries
+`budget_cycle` (annual budget / 13, `_JC_PER_YEAR`), the projection for the cycle the
+projection card scores, and the variance between them. A line budgeted with no projection
+renders as "none" rather than a dash, and the card header counts them.
+
+Two things to keep straight:
+
+* The pro-rata is FLAT. Real demand is seasonal, so a single cycle can legitimately sit
+  either side of budget/13; the figure is reliable for "nothing at all versus something",
+  which is where the gap actually lives, and weak for judging one cycle in isolation.
+* `budget_cycle` is rounded PER ROW so the footer equals the column above it. Summing N
+  rounded values drifts up to 0.05 x N from the exact total / 13 - 24.7 KG over Admin's
+  22,744 rows. The suite's tolerance scales with the row count for that reason.
+
+**The Projection-by-JC download carries extra detail for a Division Head**
+(`dashboard_export.JC_DETAIL_PERSONAS`, Admin included because it backs the View-as
+switcher). Two further sheets behind the cycle totals. "By item and activity" is a
+per-item x per-cycle grid: item code, name, ACTIVITY (Manufacturing / Repack-Relabel,
+from `item_activity.activity_map`) and segment, then projected / actual / accuracy for
+each of the last `JC_DETAIL_CYCLES` (4) COMPLETED cycles of the accounting year - JC2..JC5
+today - and the four-cycle totals with an overall accuracy. "By segment 3" rolls the
+current cycle's projection against actual up to Segment 3. The gate reads the PAYLOAD's
+own persona, which is the already-resolved one, so no other role reaches it by editing
+the URL and View-as shows exactly what that person would get.
+
+The per-cycle grid is NOT in the payload. `dashboard.jc_item_detail` builds it on demand
+for this one download, because the page payload carries only per-cycle TOTALS plus a
+per-item 3-cycle average, and shipping the grid to every load would cost every persona
+for something one of them opens. It slices history through `_proj_history` with the SAME
+basis `_proj_map` used for the headline, so the sheet and the card are measured over one
+book, and caps at `_JC_DETAIL_ITEM_CAP` (2000) - complete for a Division Head (520 items)
+and for Admin (730). Rows with neither projection nor dispatch across all four cycles are
+dropped, and so is all dispatch to `JC_DETAIL_EXCLUDE_COLLECTORS` (GROUP COMPANY)
+- an inter-group transfer rather than a sale, the biggest collector in
+stg_dispatch at 10,296 rows and 40.7% of Admin's actual volume over JC2-JC5, and
+present in NO projection table, so it can only ever widen the gap it is measured
+against. It is passed as `dashboard_datasets(exclude_collectors=...)`, which
+filters the DISPATCH side only: projected columns are untouched, actual columns
+drop, accuracy is recomputed from the pair that is left, and an item whose only
+movement was a transfer leaves the sheet (Admin 730 -> 643 items). This applies to
+THIS sheet alone, so it deliberately does NOT tie to the "Projection by JC" and
+"By segment 3" sheets beside it, which still count the whole book. Two keys are in play and they are not interchangeable: quantities aggregate on
+`_norm(name)`, but `activity_map` is keyed by `_pf._squash(name)`, so the activity lookup
+squashes the row's stored name - using `_norm` there silently blanked every activity.
+
+**The projection gap is decomposed into four parts that SUM to it** (`forward.parts`), so
+the split can be checked rather than believed. The buckets are assigned at the SAME grain as
+the lines they hold - customer x item - because deciding them on each item's totals let a
+line contradict its own label: 184 of Admin's 500 "Projected above recent sales" rows had a
+NEGATIVE difference and 168 carried no projection at all, since an item over-projected
+overall can still be unprojected for one customer. Re-bucketing changes nothing about the
+total, the gap being the sum of (projection - dispatch) over every line however it is
+partitioned, and each part's kg, item count and lines are all derived from its own rows so
+they cannot disagree. Lines are classified on the ROUNDED figures the table displays, or a
+line carrying 0.04 KG of projection files as "projected below recent sales" while showing a
+projection of 0.0. Each part also carries the lines behind it at CUSTOMER x ITEM grain (`rows`, capped at
+`_PART_ROW_CAP`, biggest contributor first) with the commercial figures beside them - SOC,
+open quote, annual potential, annual budget - and clicking the row on the card opens them.
+An item that sells but was never projected has no entry in the projection map, so its
+display name comes from the dispatch cube. Lines whose difference is zero are dropped: a
+customer with an order or a budget but the same projection as dispatch moves the gap by
+nothing, and excluding them cut Admin's largest bucket from 8,521 lines to 3,015.
+
+The customer split is safe because customer-grain projection and dispatch sum back to the
+item-grain figures the decomposition uses - verified per persona and per bucket. A market-circle or customer persona used to be the exception: `_proj_map` read the
+per-collector rows, which are WIDER than that persona, so one Sales Executive's cycle
+projection counted 30,110 KG against the 15,730 KG in his own circle, and 3,000 of one
+bucket's 3,200 KG belonged to two customers of another rep on the same collector (TTP01,
+not his TTP02). `_proj_map` now returns a `basis` and, for those scopes, reads
+stg_projection_customer filtered to their own customers - forward figure AND per-cycle
+history (`read_projection_customer_all`), so the trend and the gap cannot drift apart. His
+buckets and lines now reconcile exactly, and projected-but-not-selling items are no longer
+dropped from his item universe because the projection slice finally matches the sales slice.
+A collector-scoped persona keeps the per-collector rows, which are exactly right for it.
+Each part therefore carries `rows_kg`, the total of its own lines, and `row_items`, the
+items those lines cover - the modal counts THOSE rather than the bucket's own item count,
+which would otherwise read "5 items across 1 customer line" beside a single row. An amber
+note states both totals whenever they differ.
+
+The gap modal also sets its own `maxHeight`: the shared `.modal-container` caps every modal
+at 400px and scrolls its body, so even a one-row table arrived with a scrollbar. The inner
+table's max-height is gone with it, leaving one scroll region rather than two nested. Every item falls in exactly one bucket:
+projected below recent sales, selling but not projected at all, projected above recent
+sales, projected with no recent sales. For Admin the -1,100,704 KG gap is -966,878 (274
+items under-projected), -265,921 (221 selling with no projection), +122,748 (130 over) and
++9,348 (65 projected but not selling).
+
+Note this decomposition and the budget comparison answer DIFFERENT questions and do not
+agree by design: the decomposition is item-level on the DISPATCH scope against recent
+dispatch, where under-projection dominates; the budget comparison is customer x item on the
+COMMERCIAL scope against the annual plan, where missing projections dominate (6,792 of
+Admin's budgeted lines carry no cycle projection, worth 1.46M KG/cycle). Both are true.
+
 **The commercial table: SOC, open quote, annual potential, annual budget.** Three sources
 that share a customer x item grain, joined on the normalised item name and rolled up by
 item, customer or segment (`dashboard._commercial_block`). SOC is the LIVE committed
@@ -157,6 +253,35 @@ Chemicals bulk solvent. `api.item_activity` delegates to the same map so the das
 the order-book pages cannot drift. The maps are resolved ONCE per call and the sync stamp
 re-checked once a minute; the first cut re-validated per row, one DB round-trip each, and
 a single order-book read took minutes.
+
+**A second global gate drops GROUP COMPANY**, an inter-group transfer rather than a
+sale to a customer. `staging.EXCLUDED_COLLECTORS` names it and `staging._excl_where`
+turns it into one SQL condition, spliced into every read of the four tables that carry
+a collector: stg_dispatch (10,296 rows), stg_dispatch_scope (11,080), stg_order_commit
+(4,139) and stg_open_quote (26). It is in NO projection, annual-plan or user-scope
+table, so wherever it was counted it landed on one side of a comparison whose other
+side could never carry it - 40.7% of Admin's actual volume over JC2-JC5, against a
+projected column that never included a rupee of it. Thirteen reads splice it in, via
+`_scope_where` (the dispatch cube, quotes, annual plan, projections), `_commit_where` /
+`_commit_scope_where` (the order book), and seven that build their own SQL
+(read_dispatch, ledger_dispatch, ledger_open_soc, commit_schedule, commit_holders,
+commit_orgs, rm_impact._fg_money). Emptying the tuple turns the whole thing off.
+
+It is a READ-side gate, next to `pc_only`, NOT a sync-time one: staging has to stay a
+faithful mirror of CRM, and 690 item codes have never moved under any other collector,
+so dropping their rows at sync would erase those items from the tool's own item universe
+rather than merely from its transaction totals. For that same reason
+`item_activity.allowed_item_codes` is deliberately NOT filtered - it answers "which
+items are ours" from the item master, and filtering identity by who happened to ship
+something would drop those 690 items entirely, including any that carry a projection and
+should read as projected-but-never-dispatched.
+
+Two consequences worth knowing. The Admin payload is a snapshot in `computed_plan`, keyed
+on `_PAYLOAD_V` and the sync stamp, so a change in what the numbers MEAN has to bump
+`_PAYLOAD_V` (31 -> 32 here) or Admin keeps being served the old book - the per-persona
+paths recompute live and were correct immediately. And the RM exposure card moves with
+it: per-cycle exposure fell from 172,142 to 44,021 once transfer volume stopped counting
+as consumption.
 
 One thing the gate does NOT settle, deliberately left visible: 1,280 PC items with no
 manufacturing or repack BOM (9.97M KG) are excluded from My Dashboard by the activity rule,
@@ -270,9 +395,12 @@ query now runs once in the worker instead of blocking a page request.
 `business_plan_projection` (multi-JC, Projection-Accuracy) and
 `business_plan_projection_rows` (Projection-vs-Sales).
 
-**Done — Phase 4 (operational):** `worker.py --schedule` (APScheduler: full sync every
-20 min + drains the Refresh-now queue every 30s), `GET /api/sync-status`,
+**Done — Phase 4 (operational):** `worker.py --schedule` (APScheduler: syncs once at
+boot, then drains the Refresh-now queue every 30s), `GET /api/sync-status`,
 `POST /api/refresh`, and a "Data as of…" + Refresh banner in the app header.
+**CRM is pulled on demand, not on a timer** — a planner clicks Refresh when they want
+fresh data. Re-enable the timer with `worker.py --schedule <seconds>` or
+`WORKER_SYNC_INTERVAL`; `WORKER_BOOT_SYNC=0` drops even the sync at boot.
 
 **Done — Phase 3 (instant pages):** the worker precomputes the RM-Plan after each sync
 (`compute_rm_planning` → `computed_plan` table); the API `_rm_planning()` just reads the
@@ -326,10 +454,10 @@ Separate the three concerns into **two processes** that communicate only through
 
 ```
         ┌───────────────────────────────────────────────┐
-CRM ───▶ │  worker.py   (APScheduler — every ~20 min)     │
+CRM ───▶ │  worker.py   (APScheduler — on demand)         │
 SQLSvr   │    SYNC:    CRM  → MySQL staging tables         │
 BOMfiles │    COMPUTE: staging + BOM → plan → MySQL         │──┐ writes
-─────────│    also runs on a "refresh now" request         │  │
+─────────│    runs at boot + on every "refresh now" request │  │
          └───────────────────────────────────────────────┘  ▼
                                               ┌────────────────────────────┐
                             reads only        │           MySQL            │
@@ -515,8 +643,8 @@ when the last sync failed.
 ## 4. "Refresh now" (no message broker)
 
 1. UI button → `POST /api/refresh` → API inserts a row into a small `sync_requests` table.
-2. `worker.py` polls `sync_requests` every ~30s (in addition to its schedule), claims the
-   request, runs sync + compute, writes `sync_runs`.
+2. `worker.py` polls `sync_requests` every ~30s — its only routine job, since the
+   interval sync is off — claims the request, runs sync + compute, writes `sync_runs`.
 3. UI polls `GET /api/sync-status` → shows "Refreshing…" then "Updated 2 min ago".
 
 Durable (survives restarts), single-server-friendly, and no Redis/Celery required.
@@ -532,7 +660,7 @@ Durable (survives restarts), single-server-friendly, and no Redis/Celery require
 | `app/integration/planning_filter.py` (engine) | **Untouched** — the worker feeds it staging rows instead of live CRM rows. |
 | `app/prewarm.py` + the lifespan prewarm | **Removed** — nothing heavy runs in the API startup anymore. |
 | `app/integration/mysql_db.py` | Gains the staging upsert/prune helpers (generalizing the existing `ingest_po_receipts`). |
-| New: `backend/worker.py` | APScheduler process: sync jobs + compute job + `sync_requests` poller. |
+| New: `backend/worker.py` | APScheduler process: `sync_requests` poller (+ an opt-in interval sync) driving the sync and compute jobs. |
 
 The React frontend is largely unchanged — add a **freshness indicator** ("data as of …")
 and a **Refresh now** button.

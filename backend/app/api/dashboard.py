@@ -30,7 +30,7 @@ from ..integration.planning_filter import _proj_flag   # the plan's ±20% band
 
 # bump when the payload shape changes so stale precomputed admin payloads
 # (computed_plan.dashboard_admin) are rebuilt instead of served
-_PAYLOAD_V = 20
+_PAYLOAD_V = 32
 
 # broadest scope first — a user holding several personas gets the widest view
 _PERSONA_PRIORITY = ["Division Head", "Business Head", "Technical Head",
@@ -147,21 +147,42 @@ def _scope_lines(persona: str, stype: str, mine: list[dict]) -> list[str]:
 # signal. Reported separately rather than dropped, exactly like stale SOC.
 _QUOTE_LIVE_MONTHS = 12
 _COMMERCIAL_CAP = 3000
+# A job cycle is 4 weeks and the year holds 13 of them, so the annual budget
+# divided by 13 is the per-cycle share a projection should be tracking. It is a
+# flat pro-rata: real demand is seasonal, so one cycle can sit either side of it
+# legitimately. It is reliable for "nothing at all versus something", which is
+# where the projection gap actually lives.
+_JC_PER_YEAR = 13
+# items listed inside one gap bucket's drill-down (the biggest contributors)
+_PART_ROW_CAP = 500
 
 
-def _commercial_block(flt: dict, flt_c: dict, acc_year: str) -> dict | None:
+def _commercial_block(flt: dict, flt_c: dict, acc_year: str,
+                     gap_parts: list[dict] | None = None) -> dict | None:
     """SOC / open quote / annual potential / annual budget over one scope.
 
     The four measures come from three tables that share a customer x item grain,
     so they are joined on the item name (normalised) and rolled up three ways.
     SOC is the LIVE committed balance — the same stale rule the order-book pages
     use, so this table and My Supply Position agree.
+
+    ``gap_parts`` is the projection card's gap decomposition. When given, each
+    part's item-level rows are replaced by customer x item rows carrying these
+    same commercial figures — done here rather than in ``_projection_block``
+    because this is where the order book, the quote book and the annual plan
+    have already been read, and reading them twice is the expensive part.
     """
     from .competition import STALE_DAYS
     if flt is None:
         return None
     cutoff = (date.today() - timedelta(days=STALE_DAYS)).isoformat()
     quote_cut = (date.today() - timedelta(days=30 * _QUOTE_LIVE_MONTHS)).isoformat()
+    # the SAME cycle the projection card scores, so the two cards agree on which
+    # plan is being talked about
+    fw = _forward_scope(_msl.jc_window())
+    scored_jc = int((fw or {}).get("scored", {}).get("jc") or 0)
+    scored_fy = str((fw or {}).get("scored", {}).get("fy") or acc_year)
+    scored_label = str((fw or {}).get("scored", {}).get("label") or "")
 
     # One row per item x customer — the grain all three sources share, so the
     # item and the customer are on the same line rather than in two tables.
@@ -176,8 +197,8 @@ def _commercial_block(flt: dict, flt_c: dict, acc_year: str) -> dict | None:
             g = agg[k] = {"key": f"{item_key}|{cust_id if cust_id is not None else cust_name}",
                           "item": item_name, "customer": cust_name or "—", "seg": seg or "",
                           "soc": 0.0, "quote": 0.0, "quote_stale": 0.0,
-                          "potential": 0.0, "budget": 0.0, "quotes": set(),
-                          "_item": item_key, "_cust": cust_id}
+                          "potential": 0.0, "budget": 0.0, "projection": 0.0,
+                          "quotes": set(), "_item": item_key, "_cust": cust_id}
         g[field] += qty
         if not g["seg"] and seg:
             g["seg"] = seg
@@ -212,6 +233,17 @@ def _commercial_block(flt: dict, flt_c: dict, acc_year: str) -> dict | None:
             if g is not None:
                 g["quotes"].add(r.get("quote_id"))
 
+    # ── the cycle projection, at the same customer x item grain ─────────────
+    if scored_jc:
+        for r in staging.read_projection_customer(flt, scored_fy, scored_jc):
+            nm = str(r.get("item_name") or "").strip()
+            key = _norm(nm)
+            if not key:
+                continue
+            add(nm, str(r.get("customer_name") or "—"),
+                r.get("segment3") or r.get("segment2") or "",
+                r.get("customer_id"), key, "projection", float(r.get("current_q") or 0))
+
     # ── annual potential + budget ───────────────────────────────────────────
     for r in staging.read_annual_plan(flt, acc_year):
         nm = str(r.get("item_name") or "").strip()
@@ -224,23 +256,41 @@ def _commercial_block(flt: dict, flt_c: dict, acc_year: str) -> dict | None:
         add(nm, cname, seg, cust, key, "potential", float(r.get("potential_qty") or 0))
         add(nm, cname, seg, cust, key, "budget", float(r.get("budget_qty") or 0))
 
+    # normalise the gap parts to row grain FIRST: even with no annual plan,
+    # quote or order, the dispatch side can still produce lines, and a part must
+    # never be left carrying the item-level shape
+    if gap_parts:
+        _fill_gap_rows(gap_parts, agg, flt, fw)
+
     if not agg:
         return None
 
-    rows = [{
-        "key": g["key"], "item": g["item"], "customer": g["customer"], "seg": g["seg"],
-        "soc": round(g["soc"], 1), "quote": round(g["quote"], 1),
-        "quote_stale": round(g["quote_stale"], 1),
-        "potential": round(g["potential"], 1), "budget": round(g["budget"], 1),
-        "quotes": len(g["quotes"]),
-    } for g in agg.values()]
+    rows = []
+    for g in agg.values():
+        bud_cycle = g["budget"] / _JC_PER_YEAR
+        rows.append({
+            "key": g["key"], "item": g["item"], "customer": g["customer"], "seg": g["seg"],
+            "soc": round(g["soc"], 1), "quote": round(g["quote"], 1),
+            "quote_stale": round(g["quote_stale"], 1),
+            "potential": round(g["potential"], 1), "budget": round(g["budget"], 1),
+            "budget_cycle": round(bud_cycle, 1),
+            "projection": round(g["projection"], 1),
+            # what the rep planned for this cycle against their own annual budget
+            "variance": round(g["projection"] - bud_cycle, 1),
+            "quotes": len(g["quotes"]),
+        })
     # budget is the planning anchor, so it ranks; the live figures break ties
     rows.sort(key=lambda r: (-(r["budget"] or 0), -(r["soc"] or 0), -(r["quote"] or 0),
                              -(r["potential"] or 0)))
 
     tot = {f: round(sum(r[f] for r in rows), 1)
-           for f in ("soc", "quote", "quote_stale", "potential", "budget")}
+           for f in ("soc", "quote", "quote_stale", "potential", "budget",
+                     "budget_cycle", "projection", "variance")}
     tot["rows"] = len(rows)
+    tot["budgeted_not_projected"] = sum(1 for r in rows
+                                        if r["budget"] > 0 and r["projection"] <= 0)
+    tot["budgeted_not_projected_kg"] = round(
+        sum(r["budget_cycle"] for r in rows if r["budget"] > 0 and r["projection"] <= 0), 1)
     tot["items"] = len({g["_item"] for g in agg.values()})
     tot["customers"] = len({g["_cust"] for g in agg.values() if g["_cust"] is not None})
     tot["quotes"] = len({q for g in agg.values() for q in g["quotes"]})
@@ -248,6 +298,8 @@ def _commercial_block(flt: dict, flt_c: dict, acc_year: str) -> dict | None:
         "acc_year": acc_year,
         "quote_months": _QUOTE_LIVE_MONTHS,
         "stale_days": STALE_DAYS,
+        "jc_per_year": _JC_PER_YEAR,
+        "cycle_label": scored_label,
         "totals": tot,
         "count": len(rows),
         "rows": rows[:_COMMERCIAL_CAP],
@@ -274,6 +326,87 @@ def _scopes(kpis: dict | None, commercial: dict | None) -> dict:
     }
 
 
+def _fill_gap_rows(gap_parts: list[dict], agg: dict, flt: dict, fw: dict | None) -> None:
+    """Replace each gap bucket's item rows with customer x item rows.
+
+    Dispatch is read separately rather than folded into ``agg``: an item that
+    merely shipped would otherwise enter the commercial table and inflate the
+    Budget & quotation scope count, which names a different universe on purpose.
+    """
+    done_idx = [n for n, _j in (fw or {}).get("done", [])]
+    if not done_idx:
+        return
+    n_done = len(done_idx)
+    disp: dict = {}
+    dnames: dict = {}
+    for r in staging.dispatch_by_customer_item(
+            flt, done_idx, _activity.allowed_item_codes()):
+        k = _norm(r.get("item_name"))
+        cid = r.get("customer_id")
+        disp.setdefault(k, {})[cid] = float(r.get("qty") or 0) / n_done
+        dnames[(k, cid)] = str(r.get("customer_name") or "—")
+
+    by_item: dict = {}
+    for (ik, cid), g in agg.items():
+        by_item.setdefault(ik, {})[cid] = g
+
+    # every item the buckets cover, from whichever bucket its totals landed in
+    items: dict = {}
+    for part in gap_parts:
+        for ir in (part.get("rows") or []):
+            if ir.get("key"):
+                items[ir["key"]] = ir
+
+    def bucket_of(proj: float, disp: float, diff: float) -> str:
+        if proj > 0 and disp > 0:
+            return "over" if diff >= 0 else "under"
+        return "new" if proj > 0 else "missing"
+
+    lines: dict = {"over": [], "under": [], "new": [], "missing": []}
+    for ik, ir in items.items():
+        seg = ir.get("seg") or ""
+        seen: dict = {}
+        for cid, g in (by_item.get(ik) or {}).items():
+            seen[cid] = {"customer": g["customer"], "soc": g["soc"],
+                         "quote": g["quote"], "potential": g["potential"],
+                         "budget": g["budget"], "projection": g["projection"],
+                         "dispatch": 0.0}
+        for cid, q in (disp.get(ik) or {}).items():
+            e = seen.setdefault(cid, {"customer": dnames.get((ik, cid), "—"),
+                                      "soc": 0.0, "quote": 0.0, "potential": 0.0,
+                                      "budget": 0.0, "projection": 0.0, "dispatch": 0.0})
+            e["dispatch"] = q
+        for cid, e in seen.items():
+            # classify on the SAME rounded figures the table shows, or a line
+            # carrying 0.04 KG of projection is filed as "projected below recent
+            # sales" while displaying a projection of 0.0
+            pv = round(e["projection"], 1)
+            dv = round(e["dispatch"], 1)
+            # only lines that actually MOVE the gap belong here. A customer with
+            # an order or a budget but the same projection as dispatch
+            # contributes nothing to any bucket and is just noise.
+            diff = round(pv - dv, 1)
+            if diff == 0:
+                continue
+            lines[bucket_of(pv, dv, diff)].append({
+                "item": ir.get("item"), "customer": e["customer"], "seg": seg,
+                "soc": round(e["soc"], 1), "quote": round(e["quote"], 1),
+                "potential": round(e["potential"], 1), "budget": round(e["budget"], 1),
+                "projection": pv, "dispatch": dv, "diff": diff,
+            })
+
+    for part in gap_parts:
+        out = lines.get(part["key"], [])
+        out.sort(key=lambda r: -abs(r["diff"]))
+        # the part now DESCRIBES its own lines rather than the items above them
+        part["kg"] = round(sum(r["diff"] for r in out), 1)
+        part["items"] = len({r["item"] for r in out})
+        part["row_items"] = part["items"]
+        part["row_count"] = len(out)
+        part["rows_kg"] = part["kg"]
+        part["rows"] = out[:_PART_ROW_CAP]
+
+
 def _empty_datasets() -> dict:
     return {"kpis": {"qty": 0, "value": 0, "customers": 0, "items": 0,
                      "last_jc_qty": 0, "prev_jc_qty": 0},
@@ -284,15 +417,42 @@ def _norm(s) -> str:
     return str(s or "").strip().upper()
 
 
-def _proj_map(mine: list[dict], admin: bool, acc_year: str, jc: int):
-    """(projection map, use_rows): norm item name -> current/next1/next2 KG.
-    Collector-named scopes read the per-collector projection rows; everyone
-    else reads the item-level plan table (approved slice).
+def _proj_map(mine: list[dict], admin: bool, acc_year: str, jc: int,
+              stype: str | None = None, flt: dict | None = None):
+    """(projection map, basis): norm item name -> current/next1/next2 KG.
+
+    ``basis`` says where the numbers came from, because the three sources are
+    scoped differently:
+
+      "customer"  - any scope keyed to collectors, circles or customers. The
+                    projection is recorded per item x collector, which is WIDER
+                    than a market circle: reading the collector rows charged one
+                    Sales Executive with 30,110 KG against the 15,730 KG in his
+                    own circle. Reading the customer grain also keys collectors
+                    by ID rather than by NAME, which is what left one Branch
+                    Manager's buckets 50 KG short of his own gap.
+      "collector" - kept for a scope with collector names but no usable filter.
+      "item"      - everyone else, from the item-level plan table.
 
     Traded items are dropped here as well as on the dispatch side — otherwise a
     projected-but-not-selling solvent would still surface as a 'new' item and
     the coverage percentages would be measured against a universe the rest of
     the page no longer counts."""
+    if not admin and stype in ("market_circle", "customer", "collector") and flt:
+        proj: dict = {}
+        for r in staging.read_projection_customer(flt, acc_year, int(jc)):
+            k = _norm(r.get("item_name"))
+            if not k or (keep_map := _activity.activity_map()) and \
+                    _pf._squash(r.get("item_name")) not in keep_map:
+                continue
+            e = proj.setdefault(k, {"proj": 0.0, "next1": 0.0, "next2": 0.0,
+                                    "name": str(r.get("item_name")).strip(),
+                                    "s2": r.get("segment2"), "s3": r.get("segment3")})
+            e["proj"] += float(r.get("current_q") or 0)
+            e["next1"] += float(r.get("next1_q") or 0)
+            e["next2"] += float(r.get("next2_q") or 0)
+        return proj, "customer"
+
     coll_names = {g.get("collector_name") for g in mine if g.get("collector_name")}
     use_rows = bool(coll_names) and not admin
     if use_rows:
@@ -313,7 +473,7 @@ def _proj_map(mine: list[dict], admin: bool, acc_year: str, jc: int):
         p["proj"] += float(r.get("CurrentQ") or 0)
         p["next1"] += float(r.get("Next1Q") or 0)
         p["next2"] += float(r.get("Next2Q") or 0)
-    return proj, use_rows
+    return proj, ("collector" if use_rows else "item")
 
 
 def _forward_scope(window: list[dict], today: date | None = None) -> dict | None:
@@ -357,6 +517,21 @@ def _forward_scope(window: list[dict], today: date | None = None) -> dict | None
             "days_left": days_left, "done": done[-_ACC_JCS:]}
 
 
+def _proj_history(basis: str, mine: list[dict], acc_year: str,
+                  flt: dict | None) -> list[dict]:
+    """Every staged cycle's projection, sliced the SAME way ``_proj_map`` slices
+    the current one — otherwise a trend and its own headline would be measured
+    over different books."""
+    if basis == "customer":
+        return staging.read_projection_customer_all(flt or {}, acc_year)
+    if basis == "collector":
+        wanted = {_norm(c) for c in
+                  {g.get("collector_name") for g in mine if g.get("collector_name")}}
+        return [r for r in staging.read_projection_rows_all(acc_year)
+                if _norm(r.get("collector")) in wanted]
+    return staging.read_projection_all(acc_year, approved=True)
+
+
 def _wmape_acc(pairs) -> float | None:
     """Accuracy % over (projected, actual) pairs — 100 - WMAPE, the same metric
     the Projection-Accuracy page uses (projection_accuracy._metrics). Summing the
@@ -386,7 +561,8 @@ def _weighted_mean(rows) -> float | None:
 
 
 def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict],
-                      mine: list[dict], stype: str, admin: bool = False) -> dict | None:
+                      mine: list[dict], stype: str, admin: bool = False,
+                      flt: dict | None = None) -> dict | None:
     """Projection accuracy for the user's scope: the plan-table projection
     (stg_projection CurrentQ for the planning JC — the same slice the RM plan
     build reads) vs the scoped 3-JC AVERAGE sales per item, flagged with the
@@ -405,7 +581,8 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
     if not acc_year or not jc:
         return None
 
-    proj, use_rows = _proj_map(mine, admin, acc_year, int(jc))
+    proj, basis = _proj_map(mine, admin, acc_year, int(jc), stype, flt)
+    use_rows = basis == "collector"
 
     # scoped items with sales in the last 3 JCs
     items = []
@@ -437,8 +614,11 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
         # whole company, whole collector(s), or a segment-filtered division —
         # narrower scopes (circle / customer / segment+collector) would pull
         # unrelated projected items in
-        ok = admin or (use_rows and stype == "collector") or \
-            (stype == "segment" and not use_rows
+        # the projection slice must match the sales slice. It now does for a
+        # market circle or a customer scope too, since those read their own
+        # customers rather than the whole collector.
+        ok = admin or basis == "customer" or (use_rows and stype == "collector") or \
+            (stype == "segment" and basis == "item"
              and (p.get("s2") in grant_s2 or p.get("s3") in grant_s3))
         if ok:
             items.append({"name": p["name"], "code": None, "proj": round(p["proj"], 1),
@@ -478,10 +658,12 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
     # tag each item with the SAME segment expression the dispatch cube groups by,
     # so drilling into a slice of the segment chart lands on the right items
     cube_seg: dict = {}
+    cube_name: dict = {}
     for r in (item_jc or []):
         kk = _norm(r.get("name"))
         if kk and kk not in cube_seg:
             cube_seg[kk] = r.get("segment3") or r.get("segment2") or "—"
+            cube_name[kk] = str(r.get("name") or "").strip()
     pipeline_rows = [{"code": i.get("code"), "name": i["name"], "avg3": i["avg3"],
                       "proj": round(i["proj"], 1), "next1": round(i["next1"], 1),
                       "next2": round(i["next2"], 1), "flag": i["flag"],
@@ -533,13 +715,9 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
         d = act_by_jc.setdefault(int(r["jc"]), {})
         d[k] = d.get(k, 0.0) + float(r.get("qty") or 0)
 
-    if use_rows:
-        wanted = {_norm(c) for c in
-                  {g.get("collector_name") for g in mine if g.get("collector_name")}}
-        hist = [r for r in staging.read_projection_rows_all(acc_year)
-                if _norm(r.get("collector")) in wanted]
-    else:
-        hist = staging.read_projection_all(acc_year, approved=True)
+    # the history must be sliced the SAME way as the forward figure, or the
+    # trend and the gap would be measured over different books
+    hist = _proj_history(basis, mine, acc_year, flt)
     proj_by_jc: dict = {}
     # Both sides of the comparison must cover the same universe. The actuals come
     # from the dispatch cube, already filtered to what we make or repack; without
@@ -596,8 +774,8 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
     forward = None
     fw = _forward_scope(window)
     if fw:
-        fproj, _ur = _proj_map(mine, admin, str(fw["scored"].get("fy") or acc_year),
-                               int(fw["scored"].get("jc") or 0))
+        fproj, _b = _proj_map(mine, admin, str(fw["scored"].get("fy") or acc_year),
+                              int(fw["scored"].get("jc") or 0), stype, flt)
         rate: dict = {}
         for n, _j in fw["done"]:
             for k, v in (act_by_jc.get(n) or {}).items():
@@ -610,6 +788,37 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
         pairs_f = [(fproj.get(k, {}).get("proj", 0.0), rate.get(k, 0.0))
                    for k in set(fproj) | set(rate)]
         pairs_fp = [x for x in pairs_f if x[0] > 0]
+
+        # Where the gap comes from. Every item falls into exactly one bucket and
+        # the four add up to the gap itself, so the decomposition can be checked
+        # rather than believed: a plan that is merely cautious looks nothing like
+        # one that omits half the book, and the card could not tell them apart.
+        parts = {"over": [0.0, 0], "under": [0.0, 0], "new": [0.0, 0], "missing": [0.0, 0]}
+        part_rows: dict = {"over": [], "under": [], "new": [], "missing": []}
+        for k in set(fproj) | set(rate):
+            pv = fproj.get(k, {}).get("proj", 0.0)
+            av = rate.get(k, 0.0)
+            if pv <= 0 and av <= 0:
+                continue
+            diff = pv - av
+            if pv > 0 and av > 0:
+                b = "over" if diff >= 0 else "under"
+            elif pv > 0:
+                b = "new"
+            else:
+                b = "missing"
+            parts[b][0] += diff
+            parts[b][1] += 1
+            pr = fproj.get(k) or {}
+            part_rows[b].append({
+                "key": k,
+                "item": pr.get("name") or cube_name.get(k) or k,
+                "seg": cube_seg.get(k) or pr.get("s3") or pr.get("s2") or "—",
+                "projection": round(pv, 1), "dispatch": round(av, 1),
+                "diff": round(diff, 1),
+            })
+        for b in part_rows:
+            part_rows[b].sort(key=lambda r: -abs(r["diff"]))
         # The comparison is TOTAL to TOTAL, as the KPI definitions say: all of the
         # upcoming projection against all of the recent dispatch. Restricting the
         # dispatch side to items that happen to carry a projection would flatter
@@ -640,6 +849,17 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
             "accuracy": _wmape_acc(pairs_fp),
             "accuracy_all": _wmape_acc(pairs_f),
             "projected_items_dispatch_avg_kg": round(sum(a for _p, a in pairs_fp), 1),
+            "parts": [
+                {"key": key, "label": label,
+                 "kg": round(parts[key][0], 1), "items": parts[key][1],
+                 "rows": part_rows[key][:_PART_ROW_CAP]}
+                for key, label in (
+                    ("under", "Projected below recent sales"),
+                    ("missing", "Selling, not projected at all"),
+                    ("over", "Projected above recent sales"),
+                    ("new", "Projected, no recent sales"),
+                )
+            ],
         }
 
     # every scoped item grouped by its status, so the status chart can drill
@@ -658,7 +878,7 @@ def _projection_block(sales3: list[dict], item_jc: list[dict], window: list[dict
                    for i in with_sales if i["flag"] == "none"][:500]
     return {
         "acc_year": acc_year, "jc": int(jc),
-        "basis": "collector" if use_rows else "item",
+        "basis": basis,
         "coverage_pct": round(covered / total_avg3 * 100, 1),
         "summary": summary,
         "items_by_flag": items_by_flag,
@@ -753,7 +973,7 @@ def item_detail(username: str | None = None, email: str | None = None,
     if admin:
         mine, flt = [], {}
     elif persona:
-        _stype, mine, flt = _scope_flt(persona, grants)
+        stype, mine, flt = _scope_flt(persona, grants)
     else:
         mine, flt = [], None
 
@@ -771,17 +991,133 @@ def item_detail(username: str | None = None, email: str | None = None,
     ctx = staging.read_context() or {}
     if ctx.get("acc_year") and ctx.get("plan_jc"):
         acc_year, plan_jc = ctx["acc_year"], int(ctx["plan_jc"])
-        pm, use_rows = _proj_map(mine, admin, acc_year, plan_jc)
+        pm, basis = _proj_map(mine, admin, acc_year, plan_jc, stype, flt)
         e = pm.get(_norm(item)) or {}
         proj_v = round(e.get("proj", 0.0), 1)
         n1 = round(e.get("next1", 0.0), 1)
         n2 = round(e.get("next2", 0.0), 1)
-        basis = "collector" if use_rows else "item"
+
 
     flag = "none" if (proj_v <= 0 and avg3 > 0) else _proj_flag(proj_v, avg3)
     return {"item": item, "code": code, "jcs": jc_labels, "qty": qty,
             "avg3": avg3, "proj": proj_v, "next1": n1, "next2": n2,
             "flag": flag, "basis": basis, "plan_jc": plan_jc, "acc_year": acc_year}
+
+
+# How many completed cycles the Projection-by-JC download details. Four lands on
+# JC2..JC5 today: JC6 is still running and JC1 carries almost no projection.
+JC_DETAIL_CYCLES = 4
+_JC_DETAIL_ITEM_CAP = 2000
+
+
+def jc_item_detail(username: str | None = None, email: str | None = None,
+                   admin: bool = False, persona: str | None = None,
+                   cycles: int = JC_DETAIL_CYCLES) -> dict | None:
+    """Per item x completed cycle: projected, actual and accuracy.
+
+    Built on demand for the Projection-by-JC download — the page payload only
+    carries per-cycle TOTALS and a per-item 3-cycle average, and shipping this to
+    every load would cost every persona for something only one of them opens.
+
+    Dispatch to ``staging.EXCLUDED_COLLECTORS`` is left out here as it is
+    everywhere else, so an item whose only movement was an inter-group transfer
+    does not appear on the sheet at all.
+    """
+    grants = []
+    if not admin:
+        grants = staging.read_user_scope(email=email or None, username=username or None) \
+            if (email or username) else []
+        if not (persona and any(g["persona"] == persona for g in grants)):
+            persona = _pick_persona(grants)
+        if not persona:
+            return None
+        stype, mine, flt = _scope_flt(persona, grants)
+        if flt is None:
+            return None
+    else:
+        stype, mine, flt = "", [], {}
+
+    ctx = staging.read_context() or {}
+    acc_year = ctx.get("acc_year")
+    if not acc_year:
+        return None
+    window = _msl.jc_window()
+    today = date.today()
+
+    def _d(v):
+        try:
+            return datetime.strptime(str(v)[:10], "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            return None
+
+    # completed cycles of THIS accounting year, most recent `cycles` of them
+    done = [(i, w) for i, w in enumerate(window)
+            if str(w.get("fy")) == str(acc_year) and (_d(w.get("to")) or today) < today]
+    done = done[-int(cycles):]
+    if not done:
+        return None
+    idx_label = {i: str(w.get("label") or f"JC{w.get('jc')}") for i, w in done}
+    labels = [idx_label[i] for i, _w in done]
+    jc_of_idx = {i: int(w.get("jc") or 0) for i, w in done}
+
+    ds = staging.dashboard_datasets(flt, jc_from=max(0, len(window) - 3),
+                                    item_codes=_activity.allowed_item_codes())
+    # actual per item x cycle, and the names/segments to label them with
+    act: dict = {}
+    name_of, seg_of, code_of = {}, {}, {}
+    for r in (ds["item_jc"] or []):
+        i = int(r["jc"])
+        if i not in jc_of_idx:
+            continue
+        k = _norm(r.get("name"))
+        if not k:
+            continue
+        name_of.setdefault(k, str(r.get("name")).strip())
+        seg_of.setdefault(k, r.get("segment3") or r.get("segment2") or "")
+        act.setdefault(k, {})[i] = act.get(k, {}).get(i, 0.0) + float(r.get("qty") or 0)
+    for r in (ds["sales3"] or []):
+        k = _norm(r.get("name"))
+        if k and r.get("code"):
+            code_of.setdefault(k, r["code"])
+
+    _pm, basis = _proj_map(mine, admin, acc_year, int(ctx.get("plan_jc") or 0), stype, flt)
+    keep = _activity.activity_map()
+    want_jc = {jc_of_idx[i]: i for i in jc_of_idx}
+    proj: dict = {}
+    for r in _proj_history(basis, mine, acc_year, flt):
+        jc = int(r.get("jc") or 0)
+        if jc not in want_jc:
+            continue
+        nm = r.get("item_name")
+        k = _norm(nm)
+        if not k or (keep and _pf._squash(nm) not in keep):
+            continue
+        name_of.setdefault(k, str(nm).strip())
+        seg_of.setdefault(k, r.get("segment3") or r.get("segment2") or "")
+        i = want_jc[jc]
+        proj.setdefault(k, {})[i] = proj.get(k, {}).get(i, 0.0) + float(r.get("current_q") or 0)
+
+    label = {"manufacturing": "Manufacturing", "repack_relabel": "Repack/Relabel"}
+    rows = []
+    for k in set(act) | set(proj):
+        per = {}
+        for i, _w in done:
+            per[idx_label[i]] = {
+                "proj": round((proj.get(k) or {}).get(i, 0.0), 1),
+                "act": round((act.get(k) or {}).get(i, 0.0), 1),
+            }
+        tp = round(sum(v["proj"] for v in per.values()), 1)
+        ta = round(sum(v["act"] for v in per.values()), 1)
+        if not tp and not ta:
+            continue
+        rows.append({"key": k, "item": name_of.get(k, k), "code": code_of.get(k, ""),
+                     "seg": seg_of.get(k, ""),
+                     # activity_map is keyed by the SQUASHED name, not _norm
+                     "activity": label.get(keep.get(_pf._squash(name_of.get(k, k))), ""),
+                     "per": per, "total_proj": tp, "total_act": ta})
+    rows.sort(key=lambda r: -r["total_act"])
+    return {"cycles": labels, "acc_year": acc_year, "persona": persona or "Admin",
+            "count": len(rows), "rows": rows[:_JC_DETAIL_ITEM_CAP]}
 
 
 def persona_users() -> dict:
@@ -844,11 +1180,14 @@ def my_dashboard(username: str | None = None, email: str | None = None,
         else:
             ds = staging.dashboard_datasets({}, jc_from=jc_from,
                                             item_codes=_activity.allowed_item_codes())
+            proj = _projection_block(ds["sales3"], ds["item_jc"], jcs,
+                                     [], "", admin=True, flt={})
             payload = {**base, "scope": _scope_summary("Admin", "", []),
                        **_assemble(ds, len(jcs)),
-                       "projection": _projection_block(ds["sales3"], ds["item_jc"], jcs,
-                                                      [], "", admin=True),
-                       "commercial": _commercial_block({}, {}, ctx_acc_year())}
+                       "projection": proj,
+                       "commercial": _commercial_block(
+                           {}, {}, ctx_acc_year(),
+                           gap_parts=((proj or {}).get("forward") or {}).get("parts"))}
             payload["scopes"] = _scopes(payload.get("kpis"), payload.get("commercial"))
             staging.save_computed("dashboard_admin", payload)
         _CACHE[key] = payload
@@ -864,9 +1203,11 @@ def my_dashboard(username: str | None = None, email: str | None = None,
         # imported lazily: commit.py imports from this module
         from .commit import _commit_flt   # order-book scope keys collectors by NAME
         _stc, _mnc, flt_c = _commit_flt(persona, grants)
-        data = {**_assemble(ds, len(jcs)),
-                "projection": _projection_block(ds["sales3"], ds["item_jc"], jcs, mine, stype),
-                "commercial": _commercial_block(flt, flt_c, ctx_acc_year())}
+        proj = _projection_block(ds["sales3"], ds["item_jc"], jcs, mine, stype, flt=flt)
+        data = {**_assemble(ds, len(jcs)), "projection": proj,
+                "commercial": _commercial_block(
+                    flt, flt_c, ctx_acc_year(),
+                    gap_parts=((proj or {}).get("forward") or {}).get("parts"))}
     else:
         data = _empty_datasets()
     payload = {**base, "scope": _scope_summary(persona, stype, mine),

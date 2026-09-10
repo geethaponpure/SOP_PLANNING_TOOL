@@ -1476,6 +1476,16 @@ td.num b { color: var(--navy); }
 }
 .modal-container-title svg { width: 28px; height: 28px; color: #750550; flex: none; }
 .modal-container-body { padding: 20px 24px 44px; overflow-y: auto; color: #475569; font-size: 14px; }
+/* The gap drill-down keeps its summary, note and search pinned and scrolls the
+   TABLE alone, so the sticky column headers stay on screen. Letting the shared
+   body scroll instead pushed all of that out of view on a long bucket. */
+.modal-container-body.gap-drill-body {
+  display: flex; flex-direction: column; min-height: 0;
+  overflow: hidden; padding-bottom: 20px;
+}
+.modal-container-body.gap-drill-body > .tbl-wrap {
+  flex: 1 1 auto; min-height: 0; max-height: none;
+}
 .modal-container .rtf > * + * { margin-top: 1em; }
 .modal-container-footer {
   padding: 18px 24px; display: flex; align-items: center; justify-content: flex-end;
@@ -1865,6 +1875,11 @@ td.num b { color: var(--navy); }
    takes whatever is left, so resizing the card really does resize the chart */
 .dash-item > .card > * { flex: 0 0 auto; }
 .dash-item > .card > .echart-fill { flex: 1 1 auto; min-height: 0; }
+/* A card body made of several stacked blocks (two tables plus a note) needs the
+   same treatment as a lone table: `.dash-item > .card > *` pins every direct
+   child at its natural height and the card is `overflow: hidden`, so without
+   this the lower blocks are clipped rather than scrolled. */
+.dash-item > .card > .card-scroll { flex: 0 1 auto; min-height: 0; overflow: auto; }
 /* Tables size to their CONTENT and shrink (with a scrollbar) when the card is
    too short — stretching them left a tall empty box under a handful of rows. */
 .dash-item > .card > .tbl-wrap { flex: 0 1 auto; min-height: 0; max-height: none; }

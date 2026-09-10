@@ -33,6 +33,12 @@ SECTION_TITLES = {
     "commercial": "Annual plan vs demand",
 }
 
+# Who gets the extra Projection-by-JC detail. Admin is here because it backs
+# the View-as switcher, the same rule the RM price card uses.
+JC_DETAIL_PERSONAS = ("Division Head", "Admin")
+
+_ACTIVITY_LABEL = {"manufacturing": "Manufacturing", "repack_relabel": "Repack/Relabel"}
+
 _FLAG_LABEL = {"ontrack": "On-track", "over": "Over-projected",
                "under": "Under-projected", "none": "No projection",
                "new": "New (no sales yet)"}
@@ -40,6 +46,65 @@ _FLAG_LABEL = {"ontrack": "On-track", "over": "Over-projected",
 
 def _num(v):
     return 0 if v is None else v
+
+
+def _accuracy(proj, actual):
+    """100 - the absolute variance as a share of what actually sold, floored at
+    0 — the same shape as the per-cycle accuracy on the card."""
+    if not actual:
+        return None
+    return round(max(0.0, 100 - 100 * abs(proj - actual) / actual), 1)
+
+
+def _jc_item_rows(payload: dict, detail: dict | None = None) -> list[dict]:
+    """Every item behind the cycle totals: its activity, then projected, actual
+    and accuracy for each completed cycle, with the four-cycle total at the end.
+
+    ``detail`` comes from ``dashboard.jc_item_detail`` — the payload itself only
+    carries per-cycle TOTALS and a per-item 3-cycle average, so the per-cycle
+    split has to be built for this download.
+    """
+    if not detail or not detail.get("rows"):
+        return [{"Item": "no items in this scope", "Activity": "", "Segment": ""}]
+    cycles = detail.get("cycles") or []
+    out = []
+    for r in detail["rows"]:
+        row = {"Item code": r.get("code") or "", "Item": r.get("item"),
+               "Activity": r.get("activity") or "", "Segment": r.get("seg") or ""}
+        for c in cycles:
+            v = (r.get("per") or {}).get(c) or {}
+            pj, ac = _num(v.get("proj")), _num(v.get("act"))
+            row[f"{c} projected (KG)"] = pj
+            row[f"{c} actual (KG)"] = ac
+            row[f"{c} accuracy (%)"] = _accuracy(pj, ac)
+        tp, ta = _num(r.get("total_proj")), _num(r.get("total_act"))
+        row[f"Total projected {cycles[0]}-{cycles[-1]} (KG)"] = tp
+        row[f"Total actual {cycles[0]}-{cycles[-1]} (KG)"] = ta
+        row["Overall accuracy (%)"] = _accuracy(tp, ta)
+        out.append(row)
+    return out
+
+
+def _jc_segment_rows(payload: dict) -> list[dict]:
+    """The same projection-vs-actual comparison rolled up to Segment 3."""
+    p = payload.get("projection") or {}
+    jc = p.get("jc")
+    out = []
+    for g in ((p.get("by_group") or {}).get("segment3") or []):
+        proj, act = _num(g.get("proj")), _num(g.get("avg3"))
+        out.append({
+            "Segment 3": g.get("name"),
+            f"Projected JC{jc} (KG)": proj,
+            "Actual 3-JC avg (KG)": act,
+            "Variance (KG)": round(proj - act, 1),
+            "Accuracy (%)": _accuracy(proj, act),
+            "Items": _num(g.get("items")),
+            "Items with no projection": _num(g.get("missing")),
+            "Sales with a projection (KG)": _num(g.get("covered_kg")),
+            "Sales with none (KG)": _num(g.get("uncovered_kg")),
+        })
+    out.sort(key=lambda d: -(d["Actual 3-JC avg (KG)"] or 0))
+    return out or [{"Segment 3": "no segments in this scope"}]
 
 
 def _cube_by(payload: dict, field: str) -> list[dict]:
@@ -81,6 +146,13 @@ def _forward_rows(payload: dict) -> list[dict]:
                      else f"we are inside {f.get('current_label')}, so its own plan is shown"),
          "Value": f.get("label")},
         {"KPI": "Items with a projection", "Formula": "", "Value": f.get("items_projected")},
+        {"KPI": "", "Formula": "", "Value": ""},
+        {"KPI": "WHERE THE GAP COMES FROM", "Formula": "these four add up to the gap",
+         "Value": ""},
+    ] + [
+        {"KPI": x.get("label"), "Formula": f"{x.get('items')} items", "Value": x.get("kg")}
+        for x in (f.get("parts") or [])
+    ] + [
         {"KPI": f"Items sold in {cycles}", "Formula": "", "Value": f.get("items_sold")},
     ]
     return rows
@@ -96,11 +168,18 @@ def _commercial_rows(payload: dict) -> list[dict]:
                  "Segment": "", "SOC (KG)": "", "Open quote (KG)": "",
                  "Annual potential (KG)": "", "Annual budget (KG)": "",
                  "Open quotations": "", "Quoted before the window (KG)": ""}]
+    cyc = c.get("cycle_label") or "cycle"
+    n = c.get("jc_per_year") or 13
     return [{
         "Item": r.get("item"), "Customer": r.get("customer"), "Segment": r.get("seg") or "",
         "SOC (KG)": r.get("soc"), "Open quote (KG)": r.get("quote"),
         "Annual potential (KG)": r.get("potential"),
         "Annual budget (KG)": r.get("budget"),
+        f"Budget per cycle (/{n})": r.get("budget_cycle"),
+        f"{cyc} projection (KG)": r.get("projection"),
+        "Projection vs budget per cycle": r.get("variance"),
+        "Budgeted but not projected": ("yes" if (r.get("budget") or 0) > 0
+                                       and not (r.get("projection") or 0) else ""),
         "Open quotations": r.get("quotes"),
         "Quoted before the window (KG)": r.get("quote_stale"),
     } for r in rows]
@@ -270,7 +349,8 @@ def _line(ws, title, n, cat_col, val_cols):
     return ch
 
 
-def build(payload: dict, section: str | None = None) -> bytes:
+def build(payload: dict, section: str | None = None,
+          jc_detail: dict | None = None) -> bytes:
     """One section, or the whole dashboard (charts sheet + every table)."""
     import openpyxl
 
@@ -280,6 +360,11 @@ def build(payload: dict, section: str | None = None) -> bytes:
         ws = wb.active
         ws.title = SECTION_TITLES.get(section, "Data")[:31]
         _write(ws, section_rows(payload, section))
+        # a Division Head also gets the detail behind those cycle totals
+        if section == "jc_trend" and payload.get("persona") in JC_DETAIL_PERSONAS:
+            _write(wb.create_sheet("By item and activity"),
+                   _jc_item_rows(payload, jc_detail))
+            _write(wb.create_sheet("By segment 3"), _jc_segment_rows(payload))
         buf = io.BytesIO()
         wb.save(buf)
         return buf.getvalue()

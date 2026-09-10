@@ -2,7 +2,8 @@
 from ._deps import *
 from ..api import commit_export as _cx
 from ..api.commit import commit_risk, scoped_rows
-from ..api.dashboard import item_detail, my_dashboard, persona_users
+from ..api.dashboard import (item_detail, jc_item_detail, my_dashboard,
+                             persona_users)
 from ..api.rm_impact import rm_impact
 from ..api import rm_export as _rmx
 from ..api import dashboard_export as _dx
@@ -83,7 +84,13 @@ def export_my_dashboard(username: str = "", email: str = "", admin: int = 0,
         raise HTTPException(400, f"unknown section '{section}'")
     payload = my_dashboard(username=username or None, email=email or None,
                            admin=bool(admin), persona=persona or None)
-    data = _dx.build(payload, section or None)
+    # the per-cycle item detail is not in the payload — it is built only for the
+    # one download that shows it, and only for the personas allowed to see it
+    detail = None
+    if section == "jc_trend" and payload.get("persona") in _dx.JC_DETAIL_PERSONAS:
+        detail = jc_item_detail(username=username or None, email=email or None,
+                                admin=bool(admin), persona=persona or None)
+    data = _dx.build(payload, section or None, jc_detail=detail)
     who = (payload.get("persona") or "dashboard").replace(" ", "_")
     name = f"{_dx.SECTION_TITLES[section].replace(' ', '_')}_{who}.xlsx" if section         else f"My_Dashboard_{who}.xlsx"
     return _xlsx(data, name)

@@ -6,11 +6,14 @@ serves those tables and never touches CRM at request time.
 
 Usage:
     python worker.py               # run one full sync now, then exit
-    python worker.py --loop 1200   # sync now, then every 1200s; also drains the
-                                   #   "Refresh now" queue every 30s
+    python worker.py --schedule    # stay resident: sync once at boot, then only
+                                   #   when someone clicks "Refresh now"
+    python worker.py --schedule 1200   # ALSO re-sync on a 1200s timer (opt-in)
 
-(The APScheduler-based scheduling in ARCHITECTURE.md Phase 4 will replace the
-simple --loop below; the sync functions here stay the same.)
+CRM is NOT pulled on a timer by default. The resident worker syncs once at boot
+and then sits on the "Refresh now" queue (drained every 30s), so the data moves
+when a planner asks for it. Put the timer back with an interval argument or
+WORKER_SYNC_INTERVAL=<seconds>; skip even the boot sync with WORKER_BOOT_SYNC=0.
 """
 from __future__ import annotations
 
@@ -326,45 +329,72 @@ def _drain_requests() -> None:
         run_all()
 
 
-def _schedule(interval: int) -> None:
-    """Recommended runner: APScheduler does a full CRM sync every `interval`
-    seconds and drains the Refresh-now queue every 30s. Blocks (dedicated
+def _interval(arg: str | None) -> int:
+    """Seconds between automatic full syncs. 0 — the default — means CRM is only
+    pulled at boot and when someone clicks "Refresh now"; pass the seconds on the
+    command line (or set WORKER_SYNC_INTERVAL) to put it back on a timer."""
+    raw = arg if arg is not None else os.getenv("WORKER_SYNC_INTERVAL", "0")
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _boot_sync() -> bool:
+    """One sync when the worker starts, so staging is not left stale by a restart.
+    WORKER_BOOT_SYNC=0 skips it and waits for the first Refresh click."""
+    return os.getenv("WORKER_BOOT_SYNC", "1") != "0"
+
+
+def _schedule(interval: int = 0) -> None:
+    """Recommended runner: APScheduler drains the Refresh-now queue every 30s and,
+    only when `interval` > 0, ALSO re-syncs CRM on that timer. Blocks (dedicated
     worker process)."""
     from apscheduler.schedulers.blocking import BlockingScheduler
-    run_all()   # sync once at boot so staging is warm immediately
+    if _boot_sync():
+        run_all()   # sync once at boot so staging is warm immediately
     sched = BlockingScheduler()
-    sched.add_job(run_all, "interval", seconds=interval, id="full_sync",
-                  max_instances=1, coalesce=True)
+    if interval > 0:
+        sched.add_job(run_all, "interval", seconds=interval, id="full_sync",
+                      max_instances=1, coalesce=True)
     sched.add_job(_drain_requests, "interval", seconds=30, id="drain_refresh",
                   max_instances=1, coalesce=True)
-    print(f"[worker] scheduler running: full sync every {interval}s · "
-          f"refresh-drain every 30s (Ctrl+C to stop)")
+    print("[worker] scheduler running: "
+          + (f"full sync every {interval}s · " if interval > 0
+             else "automatic full sync OFF — Refresh-now only · ")
+          + "refresh-drain every 30s (Ctrl+C to stop)")
     try:
         sched.start()
     except (KeyboardInterrupt, SystemExit):
         print("[worker] scheduler stopped.")
 
 
-def _loop(interval: int) -> None:
-    """Dependency-free fallback scheduler (no APScheduler): full sync every
-    `interval` seconds, draining the Refresh-now queue every ~30s in between."""
-    run_all()
-    next_full = time.time() + interval
+def _loop(interval: int = 0) -> None:
+    """Dependency-free fallback scheduler (no APScheduler): drains the Refresh-now
+    queue every ~30s and, only when `interval` > 0, re-syncs on that timer too."""
+    if _boot_sync():
+        run_all()
+    next_full = time.time() + interval if interval > 0 else None
+    print("[worker] loop running: "
+          + (f"full sync every {interval}s · " if interval > 0
+             else "automatic full sync OFF — Refresh-now only · ")
+          + "refresh-drain every 30s (Ctrl+C to stop)")
     while True:
         time.sleep(30)
         if staging.claim_pending_requests():
             print("[worker] refresh requested → syncing")
             run_all()
-            next_full = time.time() + interval
-        elif time.time() >= next_full:
+            next_full = time.time() + interval if interval > 0 else None
+        elif next_full is not None and time.time() >= next_full:
             run_all()
             next_full = time.time() + interval
 
 
 if __name__ == "__main__":
+    _arg = sys.argv[2] if len(sys.argv) >= 3 else None
     if len(sys.argv) >= 2 and sys.argv[1] == "--schedule":
-        _schedule(int(sys.argv[2]) if len(sys.argv) >= 3 else 1200)
-    elif len(sys.argv) >= 3 and sys.argv[1] == "--loop":
-        _loop(int(sys.argv[2]))
+        _schedule(_interval(_arg))
+    elif len(sys.argv) >= 2 and sys.argv[1] == "--loop":
+        _loop(_interval(_arg))
     else:
         run_all()

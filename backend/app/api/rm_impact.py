@@ -168,9 +168,12 @@ def _fg_money(n_jc: int = 3) -> tuple[dict, dict]:
             with conn.cursor() as cur:
                 cur.execute("SELECT MAX(jc_index) m FROM stg_dispatch_scope")
                 top = int((cur.fetchone() or {}).get("m") or 0)
+                ew, ep = staging._excl_where()
                 cur.execute("SELECT item_name, SUM(qty) q, SUM(value_) v "
                             "FROM stg_dispatch_scope WHERE jc_index >= %s "
-                            "GROUP BY item_name", (max(0, top - n_jc + 1),))
+                            + "".join(" AND " + c for c in ew) +
+                            " GROUP BY item_name",
+                            tuple([max(0, top - n_jc + 1)] + ep))
                 for r in cur.fetchall():
                     k = _key(r["item_name"])
                     if not k:

@@ -75,6 +75,22 @@ def last_sync(source: str) -> dict | None:
         return None
 
 
+# A run row is only written back by finish_run, so a worker killed mid-sync (or
+# a crashed CRM connection) leaves its row on 'running' for ever. Anything older
+# than this is treated as abandoned, not as a sync still in flight.
+STALE_RUN_MIN = 30
+
+
+def _run_age_min(started_at) -> float | None:
+    """Minutes since a run started; None when the stamp is missing or unparseable."""
+    if not started_at:
+        return None
+    try:
+        return (datetime.now() - datetime.fromisoformat(str(started_at))).total_seconds() / 60.0
+    except (TypeError, ValueError):
+        return None
+
+
 # ── transactional full-replace helper ─────────────────────────────────────────
 
 def _replace(table: str, columns: list[str], rows: list[tuple],
@@ -697,8 +713,11 @@ def read_dispatch(variant: str, n_jc: int) -> list[dict]:
         conn = mysql_db._connect()
         try:
             with conn.cursor() as cur:
+                ew, ep = _excl_where()
                 cur.execute("SELECT item_code, item_name, collector, collector_id, jc_index, qty "
-                            "FROM stg_dispatch WHERE variant=%s", (variant,))
+                            "FROM stg_dispatch WHERE variant=%s"
+                            + ("".join(" AND " + c for c in ew)),
+                            tuple([variant] + ep))
                 agg: dict = {}
                 for r in cur.fetchall():
                     key = (r["item_code"], r["collector"], r["collector_id"])
@@ -807,6 +826,31 @@ def read_projection_customer(flt: dict, acc_year: str, jc: int) -> list[dict]:
         return []
 
 
+def read_projection_customer_all(flt: dict, acc_year: str) -> list[dict]:
+    """Every staged JC of one accounting year at customer x item grain, inside a
+    persona's scope — the history behind the per-cycle trend for scopes narrower
+    than the collector the projection is recorded against."""
+    where, params = _scope_where(flt or {}, "p")
+    where = ["p.acc_year=%s"] + where
+    params = [acc_year] + list(params)
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT p.jc, p.item_name, p.segment2, p.segment3, p.current_q "
+                    "FROM stg_projection_customer p WHERE " + " AND ".join(where),
+                    tuple(params))
+                rows = pc_only(cur.fetchall())
+                for r in rows:
+                    r["current_q"] = float(r["current_q"] or 0)
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
 def _cust_in(customer_ids) -> tuple[str, list]:
     ids = sorted({int(c) for c in (customer_ids or []) if c is not None})
     if not ids:
@@ -836,9 +880,10 @@ def ledger_open_soc(customer_ids, jc_from: str, jc_to: str) -> list[dict]:
                     "       SUM(CASE WHEN COALESCE(resched_date, sched_date) < %s "
                     "                THEN balance ELSE 0 END) AS backlog, "
                     "       COUNT(*) AS lines_ "
-                    "FROM stg_order_commit WHERE " + cin +
+                    "FROM stg_order_commit WHERE " + cin
+                    + "".join(" AND " + c for c in _excl_where()[0]) +
                     " GROUP BY customer_id, UPPER(TRIM(item_name))",
-                    tuple([jc_from, jc_to, jc_from] + params))
+                    tuple([jc_from, jc_to, jc_from] + params + _excl_where()[1]))
                 rows = pc_only(cur.fetchall())
                 for r in rows:
                     r["in_jc"] = float(r["in_jc"] or 0)
@@ -864,9 +909,10 @@ def ledger_dispatch(customer_ids, jc_index) -> list[dict]:
                 cur.execute(
                     "SELECT customer_id, UPPER(TRIM(item_name)) AS item_key, "
                     "       SUM(qty) AS qty FROM stg_dispatch_scope "
-                    "WHERE jc_index=%s AND " + cin +
+                    "WHERE jc_index=%s AND " + cin
+                    + "".join(" AND " + c for c in _excl_where()[0]) +
                     " GROUP BY customer_id, UPPER(TRIM(item_name))",
-                    tuple([int(jc_index)] + params))
+                    tuple([int(jc_index)] + params + _excl_where()[1]))
                 rows = pc_only(cur.fetchall())
                 for r in rows:
                     r["qty"] = float(r["qty"] or 0)
@@ -887,7 +933,7 @@ def ledger_dispatch(customer_ids, jc_index) -> list[dict]:
 def _commit_scope_where(flt) -> tuple[list[str], list]:
     """Scope conditions over stg_order_commit (collector by NAME — the pending
     order feed carries no collector id). flt None/{} = the whole book."""
-    where, params = [], []
+    where, params = _excl_where()
     if not flt:
         return where, params
     if flt.get("mc_codes"):
@@ -925,8 +971,10 @@ def commit_orgs() -> list[dict]:
         conn = mysql_db._connect()
         try:
             with conn.cursor() as cur:
+                ew, ep = _excl_where()
                 cur.execute("SELECT DISTINCT inv_org FROM stg_order_commit "
-                            "WHERE inv_org IS NOT NULL AND inv_org <> ''")
+                            "WHERE inv_org IS NOT NULL AND inv_org <> ''"
+                            + ("".join(" AND " + c for c in ew)), tuple(ep))
                 return cur.fetchall()
         finally:
             conn.close()
@@ -1024,9 +1072,10 @@ def commit_schedule(stale_cutoff: str) -> list[dict]:
                     "WHERE balance > 0 "
                     "  AND (COALESCE(resched_date, sched_date) IS NULL "
                     "       OR COALESCE(resched_date, sched_date) >= %s) "
+                    + "".join("  AND " + c + " " for c in _excl_where()[0]) +
                     "GROUP BY REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', ''), "
                     "         COALESCE(resched_date, sched_date)",
-                    (stale_cutoff,))
+                    tuple([stale_cutoff] + _excl_where()[1]))
                 rows = pc_only(cur.fetchall())
                 for r in rows:
                     r["qty"] = float(r["qty"] or 0)
@@ -1063,14 +1112,49 @@ def commit_holders(item_keys, stale_cutoff: str) -> list[dict]:
                     "WHERE (COALESCE(resched_date, sched_date) IS NULL "
                     "       OR COALESCE(resched_date, sched_date) >= %s) "
                     "  AND REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', '') IN (" + ph + ") "
+                    + "".join("  AND " + c + " " for c in _excl_where()[0]) +
                     "GROUP BY REGEXP_REPLACE(UPPER(item_name), '[^A-Z0-9]', ''), "
                     "         customer_id, collector, mc_code",
-                    tuple([stale_cutoff] + keys))
+                    tuple([stale_cutoff] + keys + _excl_where()[1]))
                 rows = pc_only(cur.fetchall())
                 for r in rows:
                     r["balance"] = float(r["balance"] or 0)
                     if r.get("due") is not None:
                         r["due"] = str(r["due"])[:10]
+                return rows
+        finally:
+            conn.close()
+    except Exception:   # noqa: BLE001
+        return []
+
+
+def dispatch_by_customer_item(flt: dict, jc_indexes: list[int],
+                             item_codes: list[str] | None = None) -> list[dict]:
+    """Dispatched qty per (customer, item) over the given cube cycles, inside a
+    persona's scope. The dashboard cube is aggregated per item; the gap
+    drill-down needs the customer behind each one."""
+    if not jc_indexes:
+        return []
+    where, params = _scope_where(flt or {}, "d")
+    where = ["d.jc_index IN (" + ",".join(["%s"] * len(jc_indexes)) + ")"] + where
+    params = [int(i) for i in jc_indexes] + list(params)
+    if item_codes is not None:
+        if not item_codes:
+            return []
+        where.append("d.item_code IN (" + ",".join(["%s"] * len(item_codes)) + ")")
+        params += [str(c) for c in item_codes]
+    try:
+        conn = mysql_db._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT d.customer_id, MAX(d.customer_name) AS customer_name, "
+                    "d.item_name, SUM(d.qty) AS qty FROM stg_dispatch_scope d "
+                    "WHERE " + " AND ".join(where) +
+                    " GROUP BY d.customer_id, d.item_name", tuple(params))
+                rows = pc_only(cur.fetchall())
+                for r in rows:
+                    r["qty"] = float(r["qty"] or 0)
                 return rows
         finally:
             conn.close()
@@ -1293,6 +1377,26 @@ def replace_dispatch_scope(crm_rows: list[dict], n_jc: int) -> int:
 _SEG_LEVELS = {"segment2", "segment3", "segment4"}
 
 
+# Collectors that are an inter-group transfer rather than a sale, excluded from
+# EVERY read of the transaction tables. Matched case-insensitively on the
+# collector NAME, which is the only key the pending-order feed carries.
+# Emptying this tuple turns the whole exclusion off; nothing else needs editing.
+EXCLUDED_COLLECTORS: tuple[str, ...] = ("GROUP COMPANY",)
+
+
+def _excl_where(alias: str | None = None) -> tuple[list[str], list]:
+    """The conditions + params dropping EXCLUDED_COLLECTORS, for a table that
+    carries a ``collector`` column. ``alias`` qualifies it where the query uses
+    one. Returns empty lists when the exclusion is switched off, so callers can
+    splice it in unconditionally."""
+    if not EXCLUDED_COLLECTORS:
+        return [], []
+    col = f"{alias}.collector" if alias else "collector"
+    ph = ", ".join(["%s"] * len(EXCLUDED_COLLECTORS))
+    return ([f"UPPER(COALESCE({col}, '')) NOT IN ({ph})"],
+            [c.strip().upper() for c in EXCLUDED_COLLECTORS])
+
+
 def _scope_where(flt: dict, a: str = "d") -> tuple[list[str], list]:
     """WHERE conditions + params for a persona scope filter over any table that
     carries the scope columns (mc_code, collector_id, customer_id, segment2-4).
@@ -1319,7 +1423,8 @@ def _scope_where(flt: dict, a: str = "d") -> tuple[list[str], list]:
                 params += [int(c) for c in g["collector_ids"]]
             ors.append(f"({cond})")
         where.append("(" + " OR ".join(ors) + ")")
-    return where, params
+    ew, ep = _excl_where(a)
+    return where + ew, params + ep
 
 
 def _dash_where(flt: dict) -> tuple[list[str], list]:
@@ -1649,7 +1754,7 @@ def _commit_where(flt: dict) -> tuple[list[str], list]:
     """Persona scope over stg_order_commit. Unlike the dispatch cube this table
     keys collectors by NAME (the pending-order feed has no collector id), so the
     collector conditions come from the grants' collector_name column."""
-    where, params = [], []
+    where, params = _excl_where()
     if flt.get("mc_codes"):
         where.append("mc_code IN (" + ",".join(["%s"] * len(flt["mc_codes"])) + ")")
         params += list(flt["mc_codes"])
@@ -1746,6 +1851,11 @@ def sync_status() -> dict:
     for src in SYNC_SOURCES:
         ls = last_sync(src) or {}
         st = ls.get("status")
+        # an abandoned 'running' row is not a live sync — counting it as one used
+        # to wedge the header on "Refreshing…" until the next successful sync
+        age = _run_age_min(ls.get("started_at")) if st == "running" else None
+        if age is not None and age > STALE_RUN_MIN:
+            st = "interrupted"
         sources.append({"source": src, "status": st, "row_count": ls.get("row_count"),
                         "finished_at": ls.get("finished_at"),
                         "error": (ls.get("error") or "")[:120] or None})
@@ -1761,7 +1871,13 @@ def sync_status() -> dict:
         conn = mysql_db._connect()
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) AS c FROM sync_requests WHERE status='pending'")
+                # only requests young enough that a worker could still be coming
+                # for them: with the interval sync off, a click made while no
+                # worker was resident would otherwise wedge the header on
+                # "Refreshing…" for good.
+                cur.execute("SELECT COUNT(*) AS c FROM sync_requests "
+                            "WHERE status='pending' "
+                            "AND requested_at >= NOW() - INTERVAL 10 MINUTE")
                 pending = (cur.fetchone() or {}).get("c", 0)
         finally:
             conn.close()

@@ -38,14 +38,15 @@ const JC_VIEWS = [
 // columns; one row unit is 30px + a 14px gutter). A saved layout wins.
 const DASH_DEFAULTS = {
   byColl:     { x: 0, y: 0, w: 6, h: 8 },
-  projCanvas: { x: 0, y: 8, w: 12, h: 10 },
+  // the KPI table plus the gap breakdown beneath it
+  projCanvas: { x: 0, y: 8, w: 12, h: 14 },
   jcTrend:    { x: 0, y: 18, w: 6, h: 9 },
   status:     { x: 6, y: 18, w: 6, h: 9 },
   compare:    { x: 0, y: 45, w: 12, h: 12 },
   // only rendered for Division Head / Business Head / Admin; the slot is simply
   // unused for everyone else
   rmImpact:   { x: 0, y: 57, w: 12, h: 12 },
-  commercial: { x: 0, y: 69, w: 12, h: 13 },
+  commercial: { x: 0, y: 69, w: 12, h: 16 },
 };
 
 // RM price impact: what a raw-material rise does to the finished goods that use
@@ -252,6 +253,153 @@ function ProjCompareTable({ rows, onItem, jc }) {
 // popup: one item's dispatched KG per JC (scoped) + projection reference lines
 // Which raw materials moved, by how much, and what each contributes to this
 // product's cost — the brief's section 5 drill-down.
+// One bucket of the projection gap, item by item. The rows add up to the
+// bucket's own figure, so the modal can be reconciled against the card.
+function GapDrill({ part, cycle, cycles, onClose }) {
+  const [q, setQ] = useState("");
+  // The modal stays mounted between opens, so the search text outlives the
+  // bucket it was typed in: a query from one bucket would filter the next one
+  // to nothing while its header still showed that bucket's totals. Its own
+  // effect, because onClose is a fresh arrow on every render and folding this
+  // into the key-handler effect below would clear the box as you type.
+  useEffect(() => { setQ(""); }, [part]);
+  useEffect(() => {
+    if (!part) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [part, onClose]);
+  const rows = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const all = part?.rows || [];
+    if (!t) return all;
+    return all.filter((r) => (r.item || "").toLowerCase().includes(t)
+      || (r.customer || "").toLowerCase().includes(t)
+      || (r.seg || "").toLowerCase().includes(t));
+  }, [part, q]);
+  if (!part) return null;
+  return createPortal(
+    <div className="modal-overlay" onMouseDown={onClose}>
+      <div className="modal-container" role="dialog" aria-modal="true"
+        style={{ maxWidth: 1180, width: "96vw", maxHeight: "90vh" }}
+        onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-container-header">
+          <div className="modal-container-title" style={{ minWidth: 0 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7,
+              overflow: "hidden" }}>
+              <Target size={16} style={{ flex: "none" }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis",
+                whiteSpace: "nowrap" }}>{part.label}</span>
+            </span>
+          </div>
+          <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="modal-container-body gap-drill-body">
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 12,
+            padding: "10px 12px", marginBottom: 12, borderRadius: 6, background: "#f7fafc",
+            border: "1px solid var(--border)" }}>
+            <span style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: "tabular-nums",
+              color: part.kg < 0 ? "#c53030" : "#3182ce" }}>
+              {part.kg > 0 ? "+" : ""}{fmt.num(part.kg)} kg
+            </span>
+            <span style={{ fontSize: 12.5, color: "var(--muted)" }}>
+              {fmt.num(part.row_items ?? part.items)}{" "}
+              item{(part.row_items ?? part.items) === 1 ? "" : "s"} across{" "}
+              {fmt.num(part.row_count ?? (part.rows || []).length)} customer line
+              {(part.row_count ?? (part.rows || []).length) === 1 ? "" : "s"} · their share of
+              the projection gap · <b>{cycle}</b> projection against the {cycles} average
+            </span>
+          </div>
+          {part.rows_kg != null
+            && Math.abs(part.rows_kg - part.kg) > Math.max(2, Math.abs(part.kg) * 0.005) && (
+            <div style={{ padding: "8px 12px", marginBottom: 12, borderRadius: 6,
+              background: "#FFF8EC", border: "1px solid #f0dcc0", fontSize: 12,
+              color: "#7a5b1e" }}>
+              These lines add up to <b>{part.rows_kg > 0 ? "+" : ""}{fmt.num(part.rows_kg)} kg</b>,
+              not the {fmt.num(part.kg)} kg above. The cycle projection is recorded against
+              the whole collector, while the lines below are only the customers inside your
+              scope — so the two do not reconcile for your role.
+            </div>
+          )}
+          <div className="pagebar" style={{ marginBottom: 10 }}>
+            <SmoothInput className="searchbox" placeholder="Search item / customer / segment…"
+              value={q} onChange={(e) => setQ(e.target.value)} />
+            <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
+              {fmt.num(rows.length)} of {fmt.num((part.rows || []).length)}
+            </span>
+          </div>
+          <div className="tbl-wrap">
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...HCELL, textAlign: "left" }}>Item</th>
+                  <th style={{ ...HCELL, textAlign: "left" }}>Customer</th>
+                  <th style={{ ...HCELL, textAlign: "left" }}>Segment</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>SOC (KG)</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>Open quote (KG)</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>Annual potential (KG)</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>Annual budget (KG)</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>{cycle} projection</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>3-cycle avg dispatch</th>
+                  <th style={{ ...HCELL, textAlign: "right" }}>Difference</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={`${r.item}|${r.customer}|${i}`}>
+                    <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>{r.item}</td>
+                    <td style={{ ...CELL }}>{r.customer}</td>
+                    <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)" }}>
+                      {r.seg || "—"}
+                    </td>
+                    <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>
+                      {r.soc ? fmt.num(r.soc) : "—"}
+                    </td>
+                    <td style={{ ...CELL, textAlign: "right",
+                      color: r.quote ? "#3182ce" : "var(--muted)" }}>
+                      {r.quote ? fmt.num(r.quote) : "—"}
+                    </td>
+                    <td style={{ ...CELL, textAlign: "right" }}>
+                      {r.potential ? fmt.num(r.potential) : "—"}
+                    </td>
+                    <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>
+                      {r.budget ? fmt.num(r.budget) : "—"}
+                    </td>
+                    <td style={{ ...CELL, textAlign: "right" }}>
+                      {r.projection ? fmt.num(r.projection) : "—"}
+                    </td>
+                    <td style={{ ...CELL, textAlign: "right" }}>
+                      {r.dispatch ? fmt.num(r.dispatch) : "—"}
+                    </td>
+                    <td style={{ ...CELL, textAlign: "right", fontWeight: 700,
+                      fontVariantNumeric: "tabular-nums",
+                      color: r.diff < 0 ? "#c53030" : "#3182ce" }}>
+                      {r.diff > 0 ? "+" : ""}{fmt.num(r.diff)}
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr><td colSpan={10} style={CELL}>Nothing matches that search.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {(part.rows || []).length < (part.row_count ?? 0) && (
+            <div style={{ marginTop: 8, fontSize: 11.5, color: "#b7791f" }}>
+              Showing the {fmt.num((part.rows || []).length)} biggest contributors of{" "}
+              {fmt.num(part.row_count)} — the header total counts them all.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>, document.body);
+}
+
 function ItemGraphModal({ target, idParams, onClose }) {
   const { data, loading, error } = useAsync(
     () => (target ? api.myDashboardItem({ ...idParams, item: target.name, code: target.code || "" })
@@ -326,7 +474,8 @@ function ItemGraphModal({ target, idParams, onClose }) {
                   Next JC: <b style={{ color: "#1f3a5f" }}>{fmt.num(data.next1)}</b> ·
                   JC after next: <b style={{ color: "#1f3a5f" }}>{fmt.num(data.next2)}</b> ·
                   3-JC avg sales: <b style={{ color: "#1f3a5f" }}>{fmt.num(data.avg3)}</b> KG
-                  {data.basis === "collector" ? " · projections for your collectors" : ""}
+                  {data.basis === "collector" ? " · projections for your collectors"
+                    : data.basis === "customer" ? " · projections for your own customers" : ""}
                 </span>
               </div>
               <EChart option={opt} height={300} />
@@ -384,7 +533,7 @@ const accColor = (v) => (v == null ? "#90a1ac" : v < 40 ? "#c53030" : v < 70 ? "
 const upliftColor = (u) => (u == null ? "#90a1ac"
   : Math.abs(u) <= 20 ? "#2f855a" : Math.abs(u) <= 50 ? "#b7791f" : "#c53030");
 
-function ProjectionKpis({ f }) {
+function ProjectionKpis({ f, onPick }) {
   if (!f) {
     return <div style={{ padding: "26px 16px", textAlign: "center", color: "var(--muted)" }}>
       No completed cycle to compare against yet.
@@ -405,7 +554,9 @@ function ProjectionKpis({ f }) {
     ["Projection Gap", "Projection − Avg", signedKg(f.gap_kg), c, false],
   ];
   return (
-    <div>
+    // card-scroll: this body is several stacked blocks, so it needs the shrink
+    // -and-scroll behaviour a lone .tbl-wrap gets from the grid CSS
+    <div className="card-scroll">
       <div className="tbl-wrap">
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
@@ -428,6 +579,46 @@ function ProjectionKpis({ f }) {
           </tbody>
         </table>
       </div>
+      {(f.parts || []).some((x) => x.kg) && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#1f3a5f", marginBottom: 6 }}>
+            Where the gap comes from
+          </div>
+          <div className="tbl-wrap">
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              <tbody>
+                {f.parts.map((x) => (
+                  <tr key={x.key}
+                    onClick={() => x.items && onPick && onPick(x)}
+                    style={{ cursor: x.items ? "pointer" : "default" }}
+                    title={x.items ? "Click to see the items behind this" : ""}>
+                    <td style={{ ...CELL }}>{x.label}</td>
+                    <td style={{ ...CELL, textAlign: "right", color: "var(--muted)",
+                      fontSize: 11.5, whiteSpace: "nowrap" }}>
+                      {fmt.num(x.items)} item{x.items === 1 ? "" : "s"}
+                    </td>
+                    <td style={{ ...CELL, textAlign: "right", fontWeight: 600,
+                      fontVariantNumeric: "tabular-nums",
+                      color: x.kg < 0 ? "#c53030" : x.kg > 0 ? "#3182ce" : "var(--muted)" }}>
+                      {x.kg > 0 ? "+" : ""}{fmt.num(x.kg)} kg
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td colSpan={2} style={{ ...CELL, background: "#f7fafc", fontWeight: 700 }}>
+                    Projection Gap
+                  </td>
+                  <td style={{ ...CELL, background: "#f7fafc", textAlign: "right",
+                    fontWeight: 700, fontVariantNumeric: "tabular-nums",
+                    color: upliftColor(f.uplift_pct) }}>
+                    {f.gap_kg > 0 ? "+" : ""}{fmt.num(f.gap_kg)} kg
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--muted)" }}>
         {f.in_last_week
           ? `${f.current_label} ends in ${f.days_left} day${f.days_left === 1 ? "" : "s"}, so ${f.label} — the next cycle — is the plan shown.`
@@ -803,7 +994,7 @@ export default function Dashboard({ session, isAdmin }) {
   useEffect(() => {
     setPipeView("chart"); setPipeQ(""); setItemPop(null);
     setStatusFlag(null); setStatusView("chart"); setStatusQ("");
-    setProjMetric("accuracy"); setCommQ("");
+    setProjMetric("accuracy"); setCommQ(""); setGapPick(null);
     setJcMetric("qty"); setJcView("chart");
   }, [viewAs.username, viewAs.persona]);
 
@@ -840,6 +1031,7 @@ export default function Dashboard({ session, isAdmin }) {
   // the commercial table: annual plan against what is actually committed
   const comm = data?.commercial || null;
   const [commQ, setCommQ] = useState("");
+  const [gapPick, setGapPick] = useState(null);
   const commAll = useMemo(() => (comm?.rows || []), [comm]);
   const commRows = useMemo(() => {
     const q = commQ.trim().toLowerCase();
@@ -935,11 +1127,10 @@ export default function Dashboard({ session, isAdmin }) {
   };
   const expandedCards = useMemo(() => {
     const out = {};
-    // the card carries a table either way — the five KPIs, or the item groups
-    out.commercial = fitRows(commRows.length, true);
-    out.projCanvas = projMetric === "accuracy"
-      ? fitRows(5)
-      : fitRows(missingRows.length, true);
+    // projCanvas and commercial are NOT listed here on purpose: their body is
+    // always a table, so they take a default height and the user resizes them.
+    // DashGrid discards a resize of an expanded card, so listing them would
+    // silently undo every drag of the bottom edge.
     if (pipeView === "table") out.compare = fitRows(pipeRows.length, true);
     if (jcView === "table") out.jcTrend = fitRows((p?.jc_trend?.length || 0) + 1);
     // only the drill-down has a table view now; the card itself is always the donut
@@ -947,8 +1138,8 @@ export default function Dashboard({ session, isAdmin }) {
     if (rmView === "table" && rmData) out.rmImpact = fitRows(rmData.fgs.length) + 3;  // + the KPI strip
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projMetric, pipeView, jcView, statusView, statusFlag, flagRows.length,
-      p, missingRows.length, pipeRows.length, rmView, rmData, commRows.length]);
+  }, [pipeView, jcView, statusView, statusFlag, flagRows.length,
+      p, pipeRows.length, rmView, rmData]);
 
   if (loading && !data) return <Loading what="your dashboard" />;
   if (error) return <>{switcher}<ErrorBox msg={error} /></>;
@@ -1072,7 +1263,7 @@ export default function Dashboard({ session, isAdmin }) {
             </div>
 
             {projMetric === "accuracy" ? (
-              <ProjectionKpis f={fwd} />
+              <ProjectionKpis f={fwd} onPick={setGapPick} />
             ) : (
               <>
                 <div className="pagebar" style={{ marginBottom: 10 }}>
@@ -1244,7 +1435,9 @@ export default function Dashboard({ session, isAdmin }) {
                   <Target size={16} /> Projection vs 3-JC avg sales</h3>
                   <div className="sub">
                     {pipeView === "chart"
-                      ? <>projected KG for JC{p.jc} and the two cycles after it · {p.basis === "collector" ? "your collectors" : "per item, company-wide"}</>
+                      ? <>projected KG for JC{p.jc} and the two cycles after it · {p.basis === "collector" ? "your collectors"
+                        : p.basis === "customer" ? "your own customers"
+                        : "per item, company-wide"}</>
                       : <>each item's 3-JC average sales against its projection for the next three cycles · ±20% band · <b>{p.coverage_pct}%</b> of your sales volume has a projection</>}
                   </div></div>
                 <SegTabs size="sm" value={pipeView} onChange={setPipeView}
@@ -1362,120 +1555,16 @@ export default function Dashboard({ session, isAdmin }) {
           </div>
         )}
 
-        {comm && (
-          <div key="commercial" className="card">
-            <ExportBtn section="commercial" idParams={idParams} />
-            <div className="supply-dash-cardhead">
-              <div>
-                <h3 style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-                  <ClipboardList size={16} /> Annual plan vs live demand
-                </h3>
-                <div className="sub">
-                  one line per item and customer · what is committed and quoted today
-                  against the {comm.acc_year} annual plan · quotes still open and raised in
-                  the last {comm.quote_months} months · SOC excludes lines overdue by more
-                  than {comm.stale_days} days
-                </div>
-              </div>
-              <div className="card-filters">
-                <span className="chip" style={{ cursor: "default", background: "#F1F5F9",
-                  fontSize: 11.5 }} title={data.scopes?.note}>
-                  Included products: <b>{fmt.num(comm.totals.items)}</b>
-                </span>
-              </div>
-            </div>
-
-            <div className="pagebar" style={{ marginBottom: 10 }}>
-              <SmoothInput className="searchbox" placeholder="Search…"
-                value={commQ} onChange={(e) => setCommQ(e.target.value)} />
-              <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted)" }}>
-                {fmt.num(commRows.length)} of {fmt.num(comm.count)} lines ·{" "}
-                {fmt.num(comm.totals.items)} products · {fmt.num(comm.totals.customers)} customers
-                {comm.totals.quote_stale > 0 && <>
-                  {" · "}{fmt.num(comm.totals.quote_stale)} KG quoted over{" "}
-                  {comm.quote_months} months ago, not counted
-                </>}
-              </span>
-            </div>
-
-            <div className="tbl-wrap">
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr>
-                    <SortTh label="Item" k="item" dir0="asc" {...cm.th} style={GH_L} />
-                    <SortTh label="Customer" k="customer" dir0="asc" {...cm.th} style={GH_L} />
-                    <SortTh label="Segment" k="seg" dir0="asc" {...cm.th} style={GH_L} />
-                    <SortTh label="SOC (KG)" k="soc" {...cm.th} style={GH_R} />
-                    <SortTh label="Open quote (KG)" k="quote" {...cm.th} style={GH_R} />
-                    <SortTh label="Annual potential (KG)" k="potential" {...cm.th} style={GH_R} />
-                    <SortTh label="Annual budget (KG)" k="budget" {...cm.th} style={GH_R} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {cm.rows.map((r, i) => (
-                    <tr key={`${r.key}|${i}`}>
-                      <td style={{ ...CELL, fontWeight: 600, color: "#1f3a5f" }}>{r.item}</td>
-                      <td style={{ ...CELL }}>{r.customer}</td>
-                      <td style={{ ...CELL, fontSize: 11.5, color: "var(--muted)" }}>
-                        {r.seg || "—"}
-                      </td>
-                      <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>
-                        {r.soc ? fmt.num(r.soc) : "—"}
-                      </td>
-                      <td style={{ ...CELL, textAlign: "right",
-                        color: r.quote ? "#3182ce" : "var(--muted)",
-                        fontWeight: r.quote ? 600 : 400 }}
-                        title={r.quotes ? `${r.quotes} open quotation${r.quotes === 1 ? "" : "s"}` : ""}>
-                        {r.quote ? fmt.num(r.quote) : "—"}
-                      </td>
-                      <td style={{ ...CELL, textAlign: "right" }}>
-                        {r.potential ? fmt.num(r.potential) : "—"}
-                      </td>
-                      <td style={{ ...CELL, textAlign: "right", fontWeight: 600 }}>
-                        {r.budget ? fmt.num(r.budget) : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                  {cm.rows.length === 0 && (
-                    <tr><td colSpan={7} style={CELL}>
-                      {commAll.length ? "Nothing matches that search."
-                        : "No annual plan, quote or order in this scope."}
-                    </td></tr>
-                  )}
-                </tbody>
-                {!commQ && (
-                  <tfoot>
-                    <tr>
-                      <td colSpan={3}
-                        style={{ ...CELL, background: "#f7fafc", fontWeight: 700 }}>
-                        Total · {fmt.num(comm.totals.items)} product
-                        {comm.totals.items === 1 ? "" : "s"} ·{" "}
-                        {fmt.num(comm.totals.customers)} customer
-                        {comm.totals.customers === 1 ? "" : "s"}
-                      </td>
-                      {["soc", "quote", "potential", "budget"].map((f) => (
-                        <td key={f} style={{ ...CELL, background: "#f7fafc",
-                          fontWeight: 700, textAlign: "right" }}>
-                          {fmt.num(comm.totals[f])}
-                        </td>
-                      ))}
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-            {comm.count > commAll.length && (
-              <div style={{ marginTop: 8, fontSize: 11.5, color: "#b7791f" }}>
-                Showing the {fmt.num(commAll.length)} biggest of {fmt.num(comm.count)} lines,
-                ranked by annual budget — the total row counts them all, and the download
-                carries the rest.
-              </div>
-            )}
-          </div>
-        )}
+        {/* The "Annual plan vs live demand" card is hidden at the user's request.
+            Its data still ships in the payload (data.commercial), still feeds the
+            Budget & quotation scope chip, and still exports as its own sheet — so
+            re-showing it is putting this block back, nothing more. */}
       </DashGrid>
       </div>
 
+      <GapDrill part={gapPick} cycle={p?.forward?.label || ""}
+        cycles={(p?.forward?.dispatch_jcs || []).join("/")}
+        onClose={() => setGapPick(null)} />
       <ItemGraphModal target={itemPop} idParams={idParams} onClose={() => setItemPop(null)} />
     </>
   );
